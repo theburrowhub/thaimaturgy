@@ -1,0 +1,11 @@
+{
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "temperature": 0.8,
+  "max_tokens": 2048,
+  "show_scanlines": false,
+  "border_style": "rounded",
+  "default_setting": "fantasy",
+  "auto_save": true,
+  "auto_save_interval": 300
+}

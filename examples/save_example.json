@@ -1,0 +1,130 @@
+{
+  "save_name": "aldric_adventure",
+  "character": {
+    "name": "Aldric the Brave",
+    "race": "Human",
+    "class": "Fighter",
+    "level": 3,
+    "background": "Soldier",
+    "alignment": "Lawful Good",
+    "abilities": {
+      "str": 16,
+      "dex": 14,
+      "con": 15,
+      "int": 10,
+      "wis": 12,
+      "cha": 8
+    },
+    "max_hp": 28,
+    "current_hp": 28,
+    "temp_hp": 0,
+    "ac": 16,
+    "initiative": 2,
+    "speed": 30,
+    "proficiency_bonus": 2,
+    "skills": [
+      {"name": "Athletics", "ability": 0, "proficient": true, "expert": false},
+      {"name": "Intimidation", "ability": 5, "proficient": true, "expert": false}
+    ],
+    "inventory": [
+      {"name": "Longsword", "quantity": 1, "equipped": true},
+      {"name": "Shield", "quantity": 1, "equipped": true},
+      {"name": "Chain Mail", "quantity": 1, "equipped": true},
+      {"name": "Torch", "quantity": 5},
+      {"name": "Rations", "quantity": 10},
+      {"name": "Rope (50 ft)", "quantity": 1},
+      {"name": "Healing Potion", "quantity": 2}
+    ],
+    "conditions": [],
+    "gold": 50,
+    "xp": 900,
+    "notes": "On a quest to find the Lost Gem of Eldoria"
+  },
+  "world": {
+    "setting": "fantasy",
+    "current_location": {
+      "name": "Thornwood Forest",
+      "description": "A dense forest with ancient oaks. The canopy blocks most sunlight, creating an eerie twilight even at midday. Strange sounds echo through the mist.",
+      "exits": ["north", "south", "east"]
+    },
+    "time_of_day": "afternoon",
+    "day_number": 3,
+    "quests": [
+      {
+        "id": "main_quest_1",
+        "name": "The Lost Gem of Eldoria",
+        "description": "Find the legendary gem stolen by goblins and return it to the village elder.",
+        "status": "active",
+        "giver": "Elder Morana"
+      },
+      {
+        "id": "side_quest_1",
+        "name": "Clear the Goblin Camp",
+        "description": "Defeat the goblin raiders that have been terrorizing travelers.",
+        "status": "active",
+        "giver": "Captain Varn"
+      }
+    ],
+    "npcs": {
+      "Elder Morana": {
+        "name": "Elder Morana",
+        "description": "A wise old woman who leads the village",
+        "disposition": "friendly",
+        "is_alive": true
+      },
+      "Goblin Chief Snarl": {
+        "name": "Goblin Chief Snarl",
+        "description": "A cunning and cruel goblin leader",
+        "disposition": "hostile",
+        "is_alive": true
+      }
+    },
+    "flags": {
+      "met_elder": true,
+      "found_goblin_tracks": true,
+      "entered_forest": true
+    },
+    "memory_summary": "Aldric arrived at the village of Millhaven three days ago. He learned from Elder Morana that goblins stole the village's sacred gem. After gathering supplies and speaking with Captain Varn, he tracked the goblins into Thornwood Forest.",
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-15T14:45:00Z"
+  },
+  "conversation": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "I enter the forest, following the goblin tracks.",
+        "timestamp": "2024-01-15T14:30:00Z"
+      },
+      {
+        "role": "assistant",
+        "content": "The ancient trees of Thornwood Forest close in around you as you follow the muddy goblin tracks deeper into the woods. The air grows thick with the scent of moss and decay. Shafts of pale light pierce the canopy here and there, illuminating dancing dust motes.\n\nThe tracks are fresh—perhaps a day old at most. You notice broken twigs and crushed undergrowth, suggesting the goblins weren't trying to hide their passage. Either they're confident in their safety, or they were in a hurry.\n\nAhead, the path splits. The main goblin trail continues north, but you spot a thin column of smoke rising from somewhere to the east—perhaps a campfire.\n\nWhat do you do?\n- Continue following the main goblin trail north\n- Investigate the smoke to the east\n- Search the immediate area for more clues\n- Climb a tree to get a better vantage point",
+        "timestamp": "2024-01-15T14:30:15Z"
+      }
+    ],
+    "max_size": 50
+  },
+  "event_log": {
+    "events": [
+      {
+        "type": "location_change",
+        "message": "Traveled to: Thornwood Forest",
+        "timestamp": "2024-01-15T14:30:00Z"
+      },
+      {
+        "type": "dice_roll",
+        "message": "Survival check - Rolled 1d20+3: [15]+3 = 18",
+        "data": {
+          "notation": "1d20+3",
+          "rolls": [15],
+          "total": 18,
+          "modifier": 3
+        },
+        "timestamp": "2024-01-15T14:25:00Z"
+      }
+    ],
+    "max_size": 100
+  },
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T14:45:00Z",
+  "play_time": 14400000000000
+}
