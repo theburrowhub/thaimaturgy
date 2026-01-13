@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>thAImaturgy - AI-Powered Dungeon Master</title>
+    <meta name="description" content="A retro-styled terminal RPG with an AI Dungeon Master. Experience classic text adventures powered by modern LLMs.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #111111;
+            --bg-terminal: #0d1117;
+            --color-cyan: #00ffff;
+            --color-magenta: #ff00ff;
+            --color-yellow: #ffff00;
+            --color-green: #00ff00;
+            --color-red: #ff0000;
+            --color-white: #ffffff;
+            --color-gray: #888888;
+            --color-dark-gray: #333333;
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-retro: 'Press Start 2P', cursive;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-mono);
+            background: var(--bg-primary);
+            color: var(--color-white);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Scanline effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 0, 0, 0.1) 2px,
+                rgba(0, 0, 0, 0.1) 4px
+            );
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        /* Grid background */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(10, 10, 10, 0.95);
+            border-bottom: 2px solid var(--color-cyan);
+            padding: 15px 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        nav .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: var(--font-retro);
+            font-size: 14px;
+            color: var(--color-cyan);
+            text-decoration: none;
+            text-shadow: 0 0 10px var(--color-cyan);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 30px;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--color-white);
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.3s, text-shadow 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--color-cyan);
+            text-shadow: 0 0 10px var(--color-cyan);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 120px 20px 60px;
+        }
+
+        .ascii-logo {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            line-height: 1.2;
+            color: var(--color-cyan);
+            white-space: pre;
+            margin-bottom: 30px;
+            text-shadow: 0 0 20px var(--color-cyan);
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            from { text-shadow: 0 0 10px var(--color-cyan); }
+            to { text-shadow: 0 0 30px var(--color-cyan), 0 0 50px var(--color-cyan); }
+        }
+
+        .tagline {
+            font-family: var(--font-retro);
+            font-size: 12px;
+            color: var(--color-magenta);
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px var(--color-magenta);
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: var(--color-gray);
+            max-width: 600px;
+            margin-bottom: 40px;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 15px 30px;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            text-decoration: none;
+            border: 2px solid;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--color-cyan);
+            border-color: var(--color-cyan);
+            color: var(--bg-primary);
+        }
+
+        .btn-primary:hover {
+            background: transparent;
+            color: var(--color-cyan);
+            box-shadow: 0 0 20px var(--color-cyan);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border-color: var(--color-magenta);
+            color: var(--color-magenta);
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-magenta);
+            color: var(--bg-primary);
+            box-shadow: 0 0 20px var(--color-magenta);
+        }
+
+        /* Terminal Preview */
+        .terminal-preview {
+            margin-top: 60px;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .terminal {
+            background: var(--bg-terminal);
+            border: 2px solid var(--color-cyan);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 40px rgba(0, 255, 255, 0.2);
+        }
+
+        .terminal-header {
+            background: var(--bg-secondary);
+            padding: 10px 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--color-dark-gray);
+        }
+
+        .terminal-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .terminal-dot.red { background: var(--color-red); }
+        .terminal-dot.yellow { background: var(--color-yellow); }
+        .terminal-dot.green { background: var(--color-green); }
+
+        .terminal-title {
+            margin-left: 10px;
+            color: var(--color-gray);
+            font-size: 12px;
+        }
+
+        .terminal-body {
+            padding: 20px;
+            font-size: 13px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .terminal-body .cyan { color: var(--color-cyan); }
+        .terminal-body .magenta { color: var(--color-magenta); }
+        .terminal-body .yellow { color: var(--color-yellow); }
+        .terminal-body .green { color: var(--color-green); }
+        .terminal-body .gray { color: var(--color-gray); }
+
+        /* Features Section */
+        .section {
+            padding: 100px 20px;
+        }
+
+        .section-title {
+            font-family: var(--font-retro);
+            font-size: 16px;
+            color: var(--color-yellow);
+            text-align: center;
+            margin-bottom: 60px;
+            text-shadow: 0 0 10px var(--color-yellow);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--color-dark-gray);
+            padding: 30px;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--color-cyan);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 255, 255, 0.1);
+        }
+
+        .feature-icon {
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+
+        .feature-title {
+            font-size: 16px;
+            color: var(--color-cyan);
+            margin-bottom: 10px;
+        }
+
+        .feature-desc {
+            color: var(--color-gray);
+            font-size: 14px;
+        }
+
+        /* Installation Section */
+        .install-section {
+            background: var(--bg-secondary);
+        }
+
+        .install-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .install-option {
+            background: var(--bg-terminal);
+            border: 1px solid var(--color-dark-gray);
+            padding: 25px;
+        }
+
+        .install-option h3 {
+            color: var(--color-magenta);
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .code-block {
+            background: var(--bg-primary);
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        .code-block code {
+            color: var(--color-green);
+            font-size: 13px;
+        }
+
+        /* Commands Section */
+        .commands-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .command-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: var(--bg-secondary);
+            border-left: 3px solid var(--color-cyan);
+        }
+
+        .command-key {
+            font-family: var(--font-mono);
+            background: var(--bg-terminal);
+            padding: 5px 10px;
+            color: var(--color-yellow);
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        .command-desc {
+            color: var(--color-gray);
+            font-size: 13px;
+        }
+
+        /* Providers Section */
+        .providers {
+            display: flex;
+            justify-content: center;
+            gap: 60px;
+            flex-wrap: wrap;
+        }
+
+        .provider {
+            text-align: center;
+        }
+
+        .provider-name {
+            font-size: 18px;
+            color: var(--color-cyan);
+            margin-bottom: 10px;
+        }
+
+        .provider-models {
+            color: var(--color-gray);
+            font-size: 13px;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--bg-secondary);
+            border-top: 2px solid var(--color-cyan);
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: var(--color-gray);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .footer-links a:hover {
+            color: var(--color-cyan);
+        }
+
+        .copyright {
+            color: var(--color-dark-gray);
+            font-size: 12px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .ascii-logo {
+                font-size: 6px;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .install-options {
+                grid-template-columns: 1fr;
+            }
+
+            .section-title {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <a href="#" class="logo">thAImaturgy</a>
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#install">Install</a></li>
+                <li><a href="#commands">Commands</a></li>
+                <li><a href="https://github.com/theburrowhub/thaimaturgy">GitHub</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <pre class="ascii-logo">
+ _____ _        _    ___ __  __       _
+|_   _| |__    / \  |_ _|  \/  | __ _| |_ _   _ _ __ __ _ _   _
+  | | | '_ \  / _ \  | || |\/| |/ _` | __| | | | '__/ _` | | | |
+  | | | | | |/ ___ \ | || |  | | (_| | |_| |_| | | | (_| | |_| |
+  |_| |_| |_/_/   \_\___|_|  |_|\__,_|\__|\__,_|_|  \__, |\__, |
+                                                    |___/ |___/
+        </pre>
+        <p class="tagline">AI-POWERED DUNGEON MASTER</p>
+        <p class="subtitle">
+            A retro-styled terminal RPG where modern LLMs become your Dungeon Master.
+            Create characters, roll dice, explore dungeons, and live epic adventures.
+        </p>
+        <div class="cta-buttons">
+            <a href="#install" class="btn btn-primary">Begin Adventure</a>
+            <a href="https://github.com/theburrowhub/thaimaturgy" class="btn btn-secondary">View Source</a>
+        </div>
+
+        <div class="terminal-preview">
+            <div class="terminal">
+                <div class="terminal-header">
+                    <span class="terminal-dot red"></span>
+                    <span class="terminal-dot yellow"></span>
+                    <span class="terminal-dot green"></span>
+                    <span class="terminal-title">thaimaturgy</span>
+                </div>
+                <div class="terminal-body"><span class="cyan">thAImaturgy</span> | <span class="gray">openai</span> | <span class="gray">gpt-4o-mini</span> | <span class="yellow">Aldric the Brave</span>
+
+<span class="magenta">NARRATION</span>
+You stand at the entrance of the ancient dungeon. Torches flicker
+in rusty sconces, casting dancing shadows on moss-covered walls.
+A cold draft carries the scent of decay from the darkness ahead.
+
+<span class="cyan">What do you do?</span>
+  - Proceed cautiously with sword drawn
+  - Light your own torch
+  - Listen for sounds
+  - Search for traps
+
+<span class="green">&gt;</span> I cautiously proceed down the corridor, sword drawn...
+
+<span class="gray">[14:32]</span> <span class="yellow">Rolled 1d20+3 = 17</span> <span class="green">[Stealth check SUCCESS]</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="features" class="section">
+        <div class="container">
+            <h2 class="section-title">// FEATURES</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F3B2;</div>
+                    <h3 class="feature-title">D&D 5e Character System</h3>
+                    <p class="feature-desc">Full character creation with races, classes, ability scores, inventory, conditions, and leveling.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F916;</div>
+                    <h3 class="feature-title">AI Dungeon Master</h3>
+                    <p class="feature-desc">Powered by OpenAI or Anthropic. The AI rolls dice, manages combat, and crafts immersive narratives.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F4BE;</div>
+                    <h3 class="feature-title">Save & Load</h3>
+                    <p class="feature-desc">Persistent game sessions with auto-save. Continue your adventure anytime.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F3A8;</div>
+                    <h3 class="feature-title">Retro TUI</h3>
+                    <p class="feature-desc">CGA/EGA-inspired color palette with classic box-drawing characters. Pure terminal nostalgia.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F50A;</div>
+                    <h3 class="feature-title">Voice Narration</h3>
+                    <p class="feature-desc">Optional text-to-speech narration using OpenAI TTS. Multiple voice options available.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F30D;</div>
+                    <h3 class="feature-title">Multi-Language</h3>
+                    <p class="feature-desc">Full support for English and Spanish. The DM speaks your language.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="install" class="section install-section">
+        <div class="container">
+            <h2 class="section-title">// INSTALLATION</h2>
+            <div class="install-options">
+                <div class="install-option">
+                    <h3>Go Install</h3>
+                    <div class="code-block">
+                        <code>go install github.com/theburrowhub/thaimaturgy/cmd/thaimaturgy@latest</code>
+                    </div>
+                </div>
+                <div class="install-option">
+                    <h3>From Source</h3>
+                    <div class="code-block">
+                        <code>git clone https://github.com/theburrowhub/thaimaturgy.git
+cd thaimaturgy
+make build
+./bin/thaimaturgy</code>
+                    </div>
+                </div>
+            </div>
+            <div style="text-align: center; margin-top: 40px;">
+                <p style="color: var(--color-gray); margin-bottom: 15px;">Set your API key:</p>
+                <div class="code-block" style="display: inline-block; text-align: left;">
+                    <code><span style="color: var(--color-gray);"># For OpenAI</span>
+export OPENAI_API_KEY=sk-your-key
+
+<span style="color: var(--color-gray);"># For Anthropic</span>
+export ANTHROPIC_API_KEY=sk-ant-your-key</code>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="commands" class="section">
+        <div class="container">
+            <h2 class="section-title">// COMMANDS</h2>
+            <div class="commands-grid">
+                <div class="command-item">
+                    <span class="command-key">/roll 2d6+3</span>
+                    <span class="command-desc">Roll dice</span>
+                </div>
+                <div class="command-item">
+                    <span class="command-key">/save</span>
+                    <span class="command-desc">Save game</span>
+                </div>
+                <div class="command-item">
+                    <span class="command-key">/load</span>
+                    <span class="command-desc">Load game</span>
+                </div>
+                <div class="command-item">
+                    <span class="command-key">/status</span>
+                    <span class="command-desc">Character status</span>
+                </div>
+                <div class="command-item">
+                    <span class="command-key">/inv</span>
+                    <span class="command-desc">Inventory</span>
+                </div>
+                <div class="command-item">
+                    <span class="command-key">/quests</span>
+                    <span class="command-desc">Active quests</span>
+                </div>
+                <div class="command-item">
+                    <span class="command-key">Ctrl+S</span>
+                    <span class="command-desc">Quick save</span>
+                </div>
+                <div class="command-item">
+                    <span class="command-key">Ctrl+N</span>
+                    <span class="command-desc">Toggle voice</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">// SUPPORTED PROVIDERS</h2>
+            <div class="providers">
+                <div class="provider">
+                    <p class="provider-name">OpenAI</p>
+                    <p class="provider-models">gpt-4o, gpt-4o-mini, gpt-4-turbo</p>
+                </div>
+                <div class="provider">
+                    <p class="provider-name">Anthropic</p>
+                    <p class="provider-models">claude-3-opus, claude-3-sonnet, claude-3-haiku</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="https://github.com/theburrowhub/thaimaturgy">GitHub</a>
+                <a href="https://github.com/theburrowhub/thaimaturgy/releases">Releases</a>
+                <a href="https://github.com/theburrowhub/thaimaturgy/issues">Issues</a>
+                <a href="https://github.com/theburrowhub">The Burrow Hub</a>
+            </div>
+            <p class="copyright">MIT License &copy; 2024 The Burrow Hub</p>
+        </div>
+    </footer>
+</body>
+</html>
