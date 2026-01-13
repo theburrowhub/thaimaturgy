@@ -20,10 +20,6 @@ builds:
     goarch:
       - amd64
       - arm64
-    ignore:
-      # CGO audio library doesn't cross-compile well for Linux ARM64
-      - goos: linux
-        goarch: arm64
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
