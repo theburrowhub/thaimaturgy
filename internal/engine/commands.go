@@ -2,491 +2,493 @@ package engine
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
 
+// CommandType enumerates the DM-facing slash commands.
 type CommandType int
 
 const (
 	CmdUnknown CommandType = iota
 	CmdHelp
-	CmdNew
+	CmdQuit
 	CmdSave
 	CmdLoad
-	CmdQuit
-	CmdCharSet
-	CmdInvAdd
-	CmdInvRemove
-	CmdCondAdd
-	CmdCondRemove
-	CmdProvider
-	CmdModel
-	CmdTemp
-	CmdSystem
-	CmdRoll
-	CmdStatus
-	CmdInventory
+	CmdImport
+	CmdGoto
+	CmdRoom
+	CmdZone
+	CmdNPC
+	CmdNPCs
+	CmdEvent
+	CmdItem
+	CmdMap
+	CmdArt
+	CmdNote
+	CmdFlag
 	CmdQuests
-	CmdLook
-	CmdNarration
+	CmdParty
+	CmdRoll
+	CmdSearch
+	CmdStatus
+	CmdOracle // free-form query to the oracle (no slash prefix)
 )
 
+// Command is a parsed DM instruction.
 type Command struct {
-	Type    CommandType
-	Raw     string
-	Args    []string
-	Params  map[string]string
+	Type CommandType
+	Raw  string
+	Args []string
 }
 
+// ParseCommand turns raw input into a Command. Text without a leading '/' or
+// ':' is an oracle query.
 func ParseCommand(input string) *Command {
 	input = strings.TrimSpace(input)
 	if input == "" {
 		return nil
 	}
-
-	cmd := &Command{
-		Raw:    input,
-		Args:   []string{},
-		Params: make(map[string]string),
-	}
+	cmd := &Command{Raw: input, Args: []string{}}
 
 	if !strings.HasPrefix(input, "/") && !strings.HasPrefix(input, ":") {
-		cmd.Type = CmdNarration
+		cmd.Type = CmdOracle
 		cmd.Args = []string{input}
 		return cmd
 	}
 
-	input = strings.TrimPrefix(input, "/")
-	input = strings.TrimPrefix(input, ":")
-
-	parts := strings.Fields(input)
+	body := strings.TrimPrefix(strings.TrimPrefix(input, "/"), ":")
+	parts := strings.Fields(body)
 	if len(parts) == 0 {
 		return nil
 	}
+	name := strings.ToLower(parts[0])
+	cmd.Args = parts[1:]
 
-	cmdName := strings.ToLower(parts[0])
-	args := parts[1:]
-
-	switch cmdName {
+	switch name {
 	case "help", "h", "?":
 		cmd.Type = CmdHelp
-	case "new", "n":
-		cmd.Type = CmdNew
-	case "save", "s":
-		cmd.Type = CmdSave
-		cmd.Args = args
-	case "load", "l":
-		cmd.Type = CmdLoad
-		cmd.Args = args
 	case "quit", "q", "exit":
 		cmd.Type = CmdQuit
-	case "char", "character", "c":
-		if len(args) > 0 && args[0] == "set" {
-			cmd.Type = CmdCharSet
-			cmd.Params = parseKeyValues(args[1:])
-		} else {
-			cmd.Type = CmdStatus
-		}
-	case "inv", "inventory", "i":
-		if len(args) > 0 {
-			switch args[0] {
-			case "add", "a":
-				cmd.Type = CmdInvAdd
-				cmd.Args = args[1:]
-			case "rm", "remove", "r":
-				cmd.Type = CmdInvRemove
-				cmd.Args = args[1:]
-			default:
-				cmd.Type = CmdInventory
-			}
-		} else {
-			cmd.Type = CmdInventory
-		}
-	case "cond", "condition":
-		if len(args) > 0 {
-			switch args[0] {
-			case "add", "a":
-				cmd.Type = CmdCondAdd
-				cmd.Args = args[1:]
-			case "rm", "remove", "r":
-				cmd.Type = CmdCondRemove
-				cmd.Args = args[1:]
-			}
-		}
-	case "provider", "p":
-		cmd.Type = CmdProvider
-		cmd.Args = args
-	case "model", "m":
-		cmd.Type = CmdModel
-		cmd.Args = args
-	case "temp", "temperature":
-		cmd.Type = CmdTemp
-		cmd.Args = args
-	case "system":
-		cmd.Type = CmdSystem
-	case "roll", "r":
-		cmd.Type = CmdRoll
-		cmd.Args = args
-	case "status", "st":
-		cmd.Type = CmdStatus
+	case "save", "s":
+		cmd.Type = CmdSave
+	case "load", "l":
+		cmd.Type = CmdLoad
+	case "import":
+		cmd.Type = CmdImport
+	case "goto", "enter", "go":
+		cmd.Type = CmdGoto
+	case "room", "look":
+		cmd.Type = CmdRoom
+	case "zone":
+		cmd.Type = CmdZone
+	case "npc":
+		cmd.Type = CmdNPC
+	case "npcs":
+		cmd.Type = CmdNPCs
+	case "event":
+		cmd.Type = CmdEvent
+	case "item":
+		cmd.Type = CmdItem
+	case "map":
+		cmd.Type = CmdMap
+	case "art":
+		cmd.Type = CmdArt
+	case "note":
+		cmd.Type = CmdNote
+	case "flag":
+		cmd.Type = CmdFlag
 	case "quests", "quest":
 		cmd.Type = CmdQuests
-	case "look":
-		cmd.Type = CmdLook
+	case "party":
+		cmd.Type = CmdParty
+	case "roll", "r":
+		cmd.Type = CmdRoll
+	case "search", "find":
+		cmd.Type = CmdSearch
+	case "status", "st":
+		cmd.Type = CmdStatus
 	default:
 		cmd.Type = CmdUnknown
-		cmd.Args = parts
 	}
-
 	return cmd
 }
 
-func parseKeyValues(args []string) map[string]string {
-	result := make(map[string]string)
-	for _, arg := range args {
-		if idx := strings.Index(arg, "="); idx > 0 {
-			key := strings.ToLower(arg[:idx])
-			value := arg[idx+1:]
-			result[key] = value
-		}
-	}
-	return result
-}
-
+// CommandResult reports the outcome of a command. Local commands fill Response
+// (a text block to show) and/or Message (a status line). Commands that require
+// the TUI to act set NeedsUI + UIAction (+ UIArg).
 type CommandResult struct {
-	Success  bool
-	Message  string
-	Events   []domain.Event
-	Response string
+	Success    bool
+	Message    string
+	Response   string
 	ShouldQuit bool
 	NeedsUI    bool
-	UIAction   string
+	UIAction   string // "oracle" | "save" | "load" | "import" | "image"
+	UIArg      string
 }
 
+// CommandHandler executes DM commands against a running session.
 type CommandHandler struct {
-	session *domain.GameSession
+	session *domain.Session
 }
 
-func NewCommandHandler(session *domain.GameSession) *CommandHandler {
+// NewCommandHandler binds a handler to a session.
+func NewCommandHandler(session *domain.Session) *CommandHandler {
 	return &CommandHandler{session: session}
 }
 
+func (h *CommandHandler) adv() *domain.Adventure      { return h.session.Adventure }
+func (h *CommandHandler) state() *domain.SessionState { return h.session.State }
+
+// Execute runs a command and returns its result.
 func (h *CommandHandler) Execute(cmd *Command) *CommandResult {
-	result := &CommandResult{Success: true, Events: []domain.Event{}}
+	r := &CommandResult{Success: true}
 
 	switch cmd.Type {
 	case CmdHelp:
-		result.Response = h.helpText()
+		r.Response = helpText()
+	case CmdStatus:
+		r.Response = h.statusText()
 	case CmdQuit:
-		result.ShouldQuit = true
-		result.Message = "Farewell, adventurer..."
+		r.ShouldQuit = true
+		r.Message = "Farewell, Dungeon Master."
 	case CmdSave:
 		if len(cmd.Args) > 0 {
-			h.session.State.SaveName = cmd.Args[0]
+			h.state().Name = cmd.Args[0]
 		}
-		result.NeedsUI = true
-		result.UIAction = "save"
-		result.Message = fmt.Sprintf("Saving game as '%s'...", h.session.State.SaveName)
+		r.NeedsUI, r.UIAction = true, "save"
+		r.Message = "Saving session '" + h.state().Name + "'..."
 	case CmdLoad:
-		result.NeedsUI = true
-		result.UIAction = "load"
+		r.NeedsUI, r.UIAction = true, "load"
 		if len(cmd.Args) > 0 {
-			result.Message = cmd.Args[0]
+			r.UIArg = cmd.Args[0]
 		}
-	case CmdNew:
-		result.NeedsUI = true
-		result.UIAction = "new"
-	case CmdCharSet:
-		events := h.handleCharSet(cmd.Params)
-		result.Events = events
-		result.Message = "Character updated"
-	case CmdInvAdd:
+	case CmdImport:
+		r.NeedsUI, r.UIAction = true, "import"
 		if len(cmd.Args) > 0 {
-			item := strings.Join(cmd.Args, " ")
-			h.session.State.Character.AddItem(domain.InventoryItem{Name: item, Quantity: 1})
-			result.Events = append(result.Events, domain.EventItemAdd(item, 1))
-			result.Message = fmt.Sprintf("Added %s to inventory", item)
-			h.session.MarkModified()
+			r.UIArg = strings.Join(cmd.Args, " ")
 		}
-	case CmdInvRemove:
-		if len(cmd.Args) > 0 {
-			item := strings.Join(cmd.Args, " ")
-			if h.session.State.Character.RemoveItem(item, 1) {
-				result.Events = append(result.Events, domain.EventItemRemove(item, 1))
-				result.Message = fmt.Sprintf("Removed %s from inventory", item)
-				h.session.MarkModified()
-			} else {
-				result.Success = false
-				result.Message = fmt.Sprintf("Item '%s' not found in inventory", item)
-			}
-		}
-	case CmdCondAdd:
-		if len(cmd.Args) > 0 {
-			cond := domain.Condition(strings.Join(cmd.Args, " "))
-			h.session.State.Character.AddCondition(cond)
-			result.Events = append(result.Events, domain.EventConditionAdd(cond))
-			result.Message = fmt.Sprintf("Condition added: %s", cond)
-			h.session.MarkModified()
-		}
-	case CmdCondRemove:
-		if len(cmd.Args) > 0 {
-			cond := domain.Condition(strings.Join(cmd.Args, " "))
-			h.session.State.Character.RemoveCondition(cond)
-			result.Events = append(result.Events, domain.EventConditionRemove(cond))
-			result.Message = fmt.Sprintf("Condition removed: %s", cond)
-			h.session.MarkModified()
-		}
-	case CmdProvider:
-		if len(cmd.Args) > 0 {
-			provider := domain.ProviderType(strings.ToLower(cmd.Args[0]))
-			if provider == domain.ProviderOpenAI || provider == domain.ProviderAnthropic {
-				h.session.Config.Provider = provider
-				result.Message = fmt.Sprintf("Provider set to: %s", provider)
-				result.Events = append(result.Events, domain.EventSystemMessage(result.Message))
-			} else {
-				result.Success = false
-				result.Message = "Invalid provider. Use 'openai' or 'anthropic'"
-			}
-		} else {
-			result.Message = fmt.Sprintf("Current provider: %s", h.session.Config.Provider)
-		}
-	case CmdModel:
-		if len(cmd.Args) > 0 {
-			h.session.Config.Model = cmd.Args[0]
-			result.Message = fmt.Sprintf("Model set to: %s", cmd.Args[0])
-			result.Events = append(result.Events, domain.EventSystemMessage(result.Message))
-		} else {
-			result.Message = fmt.Sprintf("Current model: %s", h.session.Config.Model)
-		}
-	case CmdTemp:
-		if len(cmd.Args) > 0 {
-			temp, err := strconv.ParseFloat(cmd.Args[0], 64)
-			if err == nil && temp >= 0 && temp <= 2 {
-				h.session.Config.Temperature = temp
-				result.Message = fmt.Sprintf("Temperature set to: %.1f", temp)
-			} else {
-				result.Success = false
-				result.Message = "Invalid temperature. Use a value between 0 and 2"
-			}
-		} else {
-			result.Message = fmt.Sprintf("Current temperature: %.1f", h.session.Config.Temperature)
-		}
-	case CmdSystem:
-		result.NeedsUI = true
-		result.UIAction = "system_prompt"
-	case CmdRoll:
-		if len(cmd.Args) > 0 {
-			notation := cmd.Args[0]
-			roll, err := RollDice(notation)
-			if err != nil {
-				result.Success = false
-				result.Message = err.Error()
-			} else {
-				result.Message = fmt.Sprintf("Rolling %s: %s", roll.String(), roll.ResultString())
-				result.Events = append(result.Events, domain.EventDiceRoll(roll.Notation, roll.Rolls, roll.Total, roll.Modifier))
-
-				if roll.IsCriticalHit() {
-					result.Message += " CRITICAL HIT!"
-				} else if roll.IsCriticalFail() {
-					result.Message += " CRITICAL FAIL!"
-				}
-			}
-		} else {
-			roll := RollD20()
-			result.Message = fmt.Sprintf("Rolling d20: %s", roll.ResultString())
-			result.Events = append(result.Events, domain.EventDiceRoll(roll.Notation, roll.Rolls, roll.Total, roll.Modifier))
-		}
-	case CmdStatus:
-		result.Response = h.statusText()
-	case CmdInventory:
-		result.Response = h.inventoryText()
+	case CmdOracle:
+		r.NeedsUI, r.UIAction = true, "oracle"
+		r.UIArg = cmd.Args[0]
+	case CmdGoto:
+		h.handleGoto(cmd, r)
+	case CmdRoom:
+		h.handleRoom(cmd, r)
+	case CmdZone:
+		h.handleZone(cmd, r)
+	case CmdNPC:
+		h.handleNPC(cmd, r)
+	case CmdNPCs:
+		r.Response = h.presentNPCsText()
+	case CmdEvent:
+		h.handleEvent(cmd, r)
+	case CmdItem:
+		h.handleItem(cmd, r)
+	case CmdMap:
+		h.handleMap(cmd, r)
+	case CmdArt:
+		h.handleArt(cmd, r)
+	case CmdNote:
+		h.handleNote(cmd, r)
+	case CmdFlag:
+		h.handleFlag(cmd, r)
 	case CmdQuests:
-		result.Response = h.questsText()
-	case CmdLook:
-		result.Response = h.lookText()
-	case CmdNarration:
-		result.NeedsUI = true
-		result.UIAction = "narration"
-		result.Message = cmd.Args[0]
+		r.Response = h.questsText()
+	case CmdParty:
+		r.Response = h.partyText()
+	case CmdRoll:
+		h.handleRoll(cmd, r)
+	case CmdSearch:
+		h.handleSearch(cmd, r)
 	case CmdUnknown:
-		result.Success = false
-		result.Message = fmt.Sprintf("Unknown command: %s. Type /help for available commands.", cmd.Raw)
+		r.Success = false
+		r.Message = "Unknown command: " + cmd.Raw + ". Type /help."
 	}
-
-	return result
+	return r
 }
 
-func (h *CommandHandler) handleCharSet(params map[string]string) []domain.Event {
-	var events []domain.Event
-	char := h.session.State.Character
+func (h *CommandHandler) handleGoto(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /goto <room_id>"
+		return
+	}
+	rid := cmd.Args[len(cmd.Args)-1] // allow "/goto <zone> <room>"
+	room, zone := h.adv().Room(rid)
+	if room == nil {
+		r.Success, r.Message = false, "No room with id "+rid
+		return
+	}
+	zid := ""
+	if zone != nil {
+		zid = zone.ID
+	}
+	h.state().SetLocation(zid, rid, room.Name)
+	h.session.MarkModified()
+	r.Message = "Party moved to " + room.Name
+	r.Response = FormatRoom(h.adv(), room)
+}
 
-	for key, value := range params {
-		switch key {
-		case "name":
-			char.Name = value
-		case "race":
-			char.Race = value
-		case "class":
-			char.Class = value
-		case "level":
-			if lvl, err := strconv.Atoi(value); err == nil {
-				char.Level = lvl
-			}
-		case "str":
-			if v, err := strconv.Atoi(value); err == nil {
-				char.Abilities.STR = v
-			}
-		case "dex":
-			if v, err := strconv.Atoi(value); err == nil {
-				char.Abilities.DEX = v
-			}
-		case "con":
-			if v, err := strconv.Atoi(value); err == nil {
-				char.Abilities.CON = v
-			}
-		case "int":
-			if v, err := strconv.Atoi(value); err == nil {
-				char.Abilities.INT = v
-			}
-		case "wis":
-			if v, err := strconv.Atoi(value); err == nil {
-				char.Abilities.WIS = v
-			}
-		case "cha":
-			if v, err := strconv.Atoi(value); err == nil {
-				char.Abilities.CHA = v
-			}
-		case "hp":
-			if v, err := strconv.Atoi(value); err == nil {
-				char.CurrentHP = v
-			}
-		case "maxhp":
-			if v, err := strconv.Atoi(value); err == nil {
-				char.MaxHP = v
-			}
-		case "ac":
-			if v, err := strconv.Atoi(value); err == nil {
-				char.AC = v
-			}
-		case "gold":
-			if v, err := strconv.Atoi(value); err == nil {
-				char.Gold = v
-			}
+func (h *CommandHandler) handleRoom(_ *Command, r *CommandResult) {
+	room, _ := h.adv().Room(h.state().CurrentRoom)
+	if room == nil {
+		r.Success, r.Message = false, "No current room. Use /goto <room_id>."
+		return
+	}
+	r.Response = FormatRoom(h.adv(), room)
+}
+
+func (h *CommandHandler) handleZone(cmd *Command, r *CommandResult) {
+	zid := h.state().CurrentZone
+	if len(cmd.Args) > 0 {
+		zid = cmd.Args[0]
+	}
+	z := h.adv().Zone(zid)
+	if z == nil {
+		r.Success, r.Message = false, "No zone with id "+zid
+		return
+	}
+	r.Response = FormatZone(z)
+}
+
+func (h *CommandHandler) handleNPC(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /npc <id>"
+		return
+	}
+	n := h.adv().NPC(cmd.Args[0])
+	if n == nil {
+		r.Success, r.Message = false, "No NPC with id "+cmd.Args[0]
+		return
+	}
+	r.Response = FormatNPC(n)
+}
+
+func (h *CommandHandler) handleEvent(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /event <id>"
+		return
+	}
+	e := h.adv().Event(cmd.Args[0])
+	if e == nil {
+		r.Success, r.Message = false, "No event with id "+cmd.Args[0]
+		return
+	}
+	r.Response = FormatEvent(e)
+}
+
+func (h *CommandHandler) handleItem(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /item <id>"
+		return
+	}
+	it := h.adv().Item(cmd.Args[0])
+	if it == nil {
+		r.Success, r.Message = false, "No item with id "+cmd.Args[0]
+		return
+	}
+	r.Response = FormatItem(it)
+}
+
+func (h *CommandHandler) handleMap(cmd *Command, r *CommandResult) {
+	zid := h.state().CurrentZone
+	if len(cmd.Args) > 0 {
+		zid = cmd.Args[0]
+	}
+	z := h.adv().Zone(zid)
+	if z == nil || z.MapImage == "" {
+		r.Success, r.Message = false, "No map image for zone "+zid
+		return
+	}
+	r.NeedsUI, r.UIAction, r.UIArg = true, "image", z.MapImage
+	r.Message = "Opening map: " + z.MapImage
+}
+
+// handleArt resolves an art reference (npc/room/item id, image catalog id, or a
+// literal relative path) to a relative asset path for the TUI to open.
+func (h *CommandHandler) handleArt(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /art <npc|room|item|image id | path>"
+		return
+	}
+	ref := cmd.Args[0]
+	path := h.resolveArt(ref)
+	if path == "" {
+		r.Success, r.Message = false, "No art found for "+ref
+		return
+	}
+	r.NeedsUI, r.UIAction, r.UIArg = true, "image", path
+	r.Message = "Opening art: " + path
+}
+
+func (h *CommandHandler) resolveArt(ref string) string {
+	adv := h.adv()
+	if n := adv.NPC(ref); n != nil && n.Image != "" {
+		return n.Image
+	}
+	if room, _ := adv.Room(ref); room != nil && room.Image != "" {
+		return room.Image
+	}
+	if it := adv.Item(ref); it != nil && it.Image != "" {
+		return it.Image
+	}
+	for _, img := range adv.Images {
+		if img.ID == ref {
+			return img.Path
 		}
 	}
+	if strings.Contains(ref, "/") || strings.Contains(ref, ".") {
+		return ref // treat as literal relative path
+	}
+	return ""
+}
 
+func (h *CommandHandler) handleNote(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /note <text>"
+		return
+	}
+	text := strings.Join(cmd.Args, " ")
+	h.state().AddNote(text)
 	h.session.MarkModified()
-	events = append(events, domain.EventSystemMessage("Character stats updated"))
-	return events
+	r.Message = "Noted."
 }
 
-func (h *CommandHandler) helpText() string {
-	return `
-COMMANDS:
-  /help, /h, /?         Show this help
-  /new, /n              Start new campaign
-  /save [name], /s      Save current game
-  /load [name], /l      Load saved game
-  /quit, /q             Exit game
-
-CHARACTER:
-  /char set <key>=<val> Set character attributes
-                        Keys: name, race, class, level,
-                              str, dex, con, int, wis, cha,
-                              hp, maxhp, ac, gold
-  /status, /st          Show character status
-  /inv, /i              Show inventory
-  /inv add <item>       Add item to inventory
-  /inv rm <item>        Remove item from inventory
-  /cond add <cond>      Add condition
-  /cond rm <cond>       Remove condition
-
-GAMEPLAY:
-  /roll <dice>          Roll dice (e.g., /roll 2d6+3)
-  /look                 Describe current location
-  /quests               Show active quests
-
-SETTINGS:
-  /provider <name>      Set LLM provider (openai/anthropic)
-  /model <id>           Set model ID
-  /temp <0-2>           Set temperature
-  /system               Edit system prompt
-
-Type any text without / to interact with the DM.
-`
-}
-
-func (h *CommandHandler) statusText() string {
-	c := h.session.State.Character
-	var sb strings.Builder
-
-	sb.WriteString(fmt.Sprintf("%s - Level %d %s %s\n", c.Name, c.Level, c.Race, c.Class))
-	sb.WriteString(fmt.Sprintf("HP: %d/%d  AC: %d  Speed: %d\n\n", c.CurrentHP, c.MaxHP, c.AC, c.Speed))
-
-	sb.WriteString("ABILITIES:\n")
-	sb.WriteString(fmt.Sprintf("  STR: %2d (%s)  DEX: %2d (%s)  CON: %2d (%s)\n",
-		c.Abilities.STR, domain.ModifierString(c.Abilities.STR),
-		c.Abilities.DEX, domain.ModifierString(c.Abilities.DEX),
-		c.Abilities.CON, domain.ModifierString(c.Abilities.CON)))
-	sb.WriteString(fmt.Sprintf("  INT: %2d (%s)  WIS: %2d (%s)  CHA: %2d (%s)\n",
-		c.Abilities.INT, domain.ModifierString(c.Abilities.INT),
-		c.Abilities.WIS, domain.ModifierString(c.Abilities.WIS),
-		c.Abilities.CHA, domain.ModifierString(c.Abilities.CHA)))
-
-	if len(c.Conditions) > 0 {
-		sb.WriteString(fmt.Sprintf("\nCONDITIONS: %v\n", c.Conditions))
+func (h *CommandHandler) handleFlag(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /flag key=true|false"
+		return
 	}
-
-	sb.WriteString(fmt.Sprintf("\nGold: %d  XP: %d\n", c.Gold, c.XP))
-
-	return sb.String()
+	arg := strings.Join(cmd.Args, "")
+	idx := strings.Index(arg, "=")
+	if idx <= 0 {
+		r.Success, r.Message = false, "Usage: /flag key=true|false"
+		return
+	}
+	key := arg[:idx]
+	val := strings.EqualFold(arg[idx+1:], "true")
+	h.state().SetFlag(key, val)
+	h.session.MarkModified()
+	r.Message = fmt.Sprintf("Flag %s = %v", key, val)
 }
 
-func (h *CommandHandler) inventoryText() string {
-	c := h.session.State.Character
-	if len(c.Inventory) == 0 {
-		return "Your inventory is empty."
+func (h *CommandHandler) handleRoll(cmd *Command, r *CommandResult) {
+	notation := "1d20"
+	if len(cmd.Args) > 0 {
+		notation = cmd.Args[0]
 	}
+	roll, err := RollDice(notation)
+	if err != nil {
+		r.Success, r.Message = false, err.Error()
+		return
+	}
+	msg := fmt.Sprintf("Rolled %s: %s", roll.String(), roll.ResultString())
+	if roll.IsCriticalHit() {
+		msg += " CRIT!"
+	} else if roll.IsCriticalFail() {
+		msg += " FUMBLE!"
+	}
+	h.state().Log.Add(domain.LogEntry{Type: domain.LogRoll, Message: msg})
+	h.session.MarkModified()
+	r.Message = msg
+}
 
+func (h *CommandHandler) handleSearch(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /search <query>"
+		return
+	}
+	router := NewToolRouter(h.session)
+	res := router.searchModule("", map[string]any{"query": strings.Join(cmd.Args, " ")})
+	if res.Error != "" {
+		r.Success, r.Message = false, res.Error
+		return
+	}
+	r.Response = res.Content
+}
+
+func (h *CommandHandler) presentNPCsText() string {
+	room, _ := h.adv().Room(h.state().CurrentRoom)
+	if room == nil || len(room.NPCIDs) == 0 {
+		return "No NPCs in the current room."
+	}
 	var sb strings.Builder
-	sb.WriteString("INVENTORY:\n")
-	for _, item := range c.Inventory {
-		if item.Quantity > 1 {
-			sb.WriteString(fmt.Sprintf("  - %s (x%d)\n", item.Name, item.Quantity))
-		} else {
-			sb.WriteString(fmt.Sprintf("  - %s\n", item.Name))
+	sb.WriteString("NPCs here:\n")
+	for _, nid := range room.NPCIDs {
+		if n := h.adv().NPC(nid); n != nil {
+			fmt.Fprintf(&sb, "  - %s [%s] %s\n", n.Name, n.ID, n.Role)
 		}
 	}
 	return sb.String()
 }
 
 func (h *CommandHandler) questsText() string {
-	quests := h.session.State.World.GetActiveQuests()
-	if len(quests) == 0 {
-		return "No active quests."
+	if len(h.state().Quests) == 0 {
+		return "No tracked quests."
 	}
-
 	var sb strings.Builder
-	sb.WriteString("ACTIVE QUESTS:\n")
-	for _, q := range quests {
-		sb.WriteString(fmt.Sprintf("  [%s] %s\n", q.Status, q.Name))
-		if q.Description != "" {
-			sb.WriteString(fmt.Sprintf("        %s\n", q.Description))
-		}
+	sb.WriteString("QUESTS:\n")
+	for _, q := range h.state().Quests {
+		fmt.Fprintf(&sb, "  [%s] %s\n", q.Status, q.Name)
 	}
 	return sb.String()
 }
 
-func (h *CommandHandler) lookText() string {
-	loc := h.session.State.World.CurrentLocation
+func (h *CommandHandler) partyText() string {
+	if len(h.state().Party) == 0 {
+		return "No party members tracked. The oracle adds them via update_party_member."
+	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("LOCATION: %s\n\n", loc.Name))
-	sb.WriteString(loc.Description)
-	if len(loc.Exits) > 0 {
-		sb.WriteString(fmt.Sprintf("\n\nExits: %s", strings.Join(loc.Exits, ", ")))
+	sb.WriteString("PARTY:\n")
+	for _, p := range h.state().Party {
+		fmt.Fprintf(&sb, "  %s — HP %d/%d AC %d %s\n", p.Name, p.CurrentHP, p.MaxHP, p.AC, p.Notes)
 	}
 	return sb.String()
+}
+
+func (h *CommandHandler) statusText() string {
+	st := h.state()
+	room, zone := h.adv().Room(st.CurrentRoom)
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Adventure: %s\n", h.adv().Title)
+	if zone != nil {
+		fmt.Fprintf(&sb, "Zone: %s\n", zone.Name)
+	}
+	if room != nil {
+		fmt.Fprintf(&sb, "Room: %s\n", room.Name)
+	}
+	fmt.Fprintf(&sb, "Visited rooms: %d | Timeline entries: %d\n", len(st.VisitedRooms), st.Log.Len())
+	return sb.String()
+}
+
+func helpText() string {
+	return `DM COMMANDS:
+  /help, /?            Show this help
+  /import <path>       Import an adventure module (.tar.gz)
+  /save [name]         Save the session
+  /load [name]         Load a session
+  /quit                Exit
+
+NAVIGATION & CONTENT:
+  /goto <room_id>      Move the party to a room (marks it visited)
+  /room, /look         Show the current room
+  /zone [id]           Show a zone (current if omitted)
+  /npc <id>            Show an NPC dossier
+  /npcs                List NPCs in the current room
+  /event <id>          Show a scripted event
+  /item <id>           Show an item
+  /search <query>      Search the whole module
+  /map [zone_id]       Open a zone map image (external viewer)
+  /art <id|path>       Open art for an NPC/room/item/image
+
+SESSION STATE:
+  /note <text>         Add a free-form note to the timeline
+  /flag key=true|false Set a story flag
+  /quests              Show tracked quests
+  /party               Show tracked player characters
+  /roll <dice>         Roll dice (e.g. /roll 2d6+3)
+  /status              Session status
+
+Type any text without '/' to ask the oracle about the adventure.`
 }

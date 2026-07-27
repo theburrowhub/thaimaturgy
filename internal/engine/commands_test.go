@@ -8,297 +8,177 @@ import (
 
 func TestParseCommand(t *testing.T) {
 	tests := []struct {
-		input    string
-		cmdType  CommandType
-		argsLen  int
-		paramsLen int
+		input   string
+		cmdType CommandType
+		argsLen int
 	}{
-		{"/help", CmdHelp, 0, 0},
-		{"/h", CmdHelp, 0, 0},
-		{"/?", CmdHelp, 0, 0},
-		{":help", CmdHelp, 0, 0},
-		{"/quit", CmdQuit, 0, 0},
-		{"/q", CmdQuit, 0, 0},
-		{"/exit", CmdQuit, 0, 0},
-		{"/save myGame", CmdSave, 1, 0},
-		{"/load myGame", CmdLoad, 1, 0},
-		{"/new", CmdNew, 0, 0},
-		{"/roll 2d6+3", CmdRoll, 1, 0},
-		{"/roll", CmdRoll, 0, 0},
-		{"/r 1d20", CmdRoll, 1, 0},
-		{"/status", CmdStatus, 0, 0},
-		{"/st", CmdStatus, 0, 0},
-		{"/inv", CmdInventory, 0, 0},
-		{"/inv add sword", CmdInvAdd, 1, 0},
-		{"/inv rm sword", CmdInvRemove, 1, 0},
-		{"/cond add Poisoned", CmdCondAdd, 1, 0},
-		{"/cond rm Poisoned", CmdCondRemove, 1, 0},
-		{"/provider openai", CmdProvider, 1, 0},
-		{"/model gpt-4", CmdModel, 1, 0},
-		{"/temp 0.7", CmdTemp, 1, 0},
-		{"/char set name=Bob", CmdCharSet, 0, 1},
-		{"/char set str=18 dex=14", CmdCharSet, 0, 2},
-		{"I attack the goblin", CmdNarration, 1, 0},
-		{"Look around the room", CmdNarration, 1, 0},
-		{"/unknown", CmdUnknown, 1, 0},
-		{"", CommandType(0), 0, 0},
+		{"/help", CmdHelp, 0},
+		{"/?", CmdHelp, 0},
+		{":help", CmdHelp, 0},
+		{"/quit", CmdQuit, 0},
+		{"/save mySession", CmdSave, 1},
+		{"/load mySession", CmdLoad, 1},
+		{"/import /tmp/a.tar.gz", CmdImport, 1},
+		{"/goto r1", CmdGoto, 1},
+		{"/room", CmdRoom, 0},
+		{"/look", CmdRoom, 0},
+		{"/npc guard", CmdNPC, 1},
+		{"/npcs", CmdNPCs, 0},
+		{"/event ambush", CmdEvent, 1},
+		{"/item sword", CmdItem, 1},
+		{"/map z1", CmdMap, 1},
+		{"/art guard", CmdArt, 1},
+		{"/note the party rested", CmdNote, 3},
+		{"/flag gate=true", CmdFlag, 1},
+		{"/roll 2d6+3", CmdRoll, 1},
+		{"/search altar", CmdSearch, 1},
+		{"/status", CmdStatus, 0},
+		{"What should happen here?", CmdOracle, 1},
+		{"/unknown", CmdUnknown, 0},
+		{"", CommandType(0), 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			cmd := ParseCommand(tt.input)
-
 			if tt.input == "" {
 				if cmd != nil {
 					t.Errorf("ParseCommand(%q) = %v, want nil", tt.input, cmd)
 				}
 				return
 			}
-
 			if cmd == nil {
-				t.Fatalf("ParseCommand(%q) = nil, want non-nil", tt.input)
+				t.Fatalf("ParseCommand(%q) = nil", tt.input)
 			}
-
 			if cmd.Type != tt.cmdType {
-				t.Errorf("ParseCommand(%q).Type = %v, want %v", tt.input, cmd.Type, tt.cmdType)
+				t.Errorf("Type = %v, want %v", cmd.Type, tt.cmdType)
 			}
-
 			if len(cmd.Args) != tt.argsLen {
-				t.Errorf("ParseCommand(%q) args len = %d, want %d", tt.input, len(cmd.Args), tt.argsLen)
-			}
-
-			if len(cmd.Params) != tt.paramsLen {
-				t.Errorf("ParseCommand(%q) params len = %d, want %d", tt.input, len(cmd.Params), tt.paramsLen)
+				t.Errorf("args len = %d, want %d", len(cmd.Args), tt.argsLen)
 			}
 		})
 	}
 }
 
-func TestParseCommandKeyValues(t *testing.T) {
-	cmd := ParseCommand("/char set name=Alice str=16 dex=14")
-
-	if cmd.Type != CmdCharSet {
-		t.Fatalf("Expected CmdCharSet, got %v", cmd.Type)
+func TestOracleQueryRouting(t *testing.T) {
+	cmd := ParseCommand("How does the guard react?")
+	if cmd.Type != CmdOracle {
+		t.Fatalf("expected CmdOracle, got %v", cmd.Type)
 	}
-
-	expectedParams := map[string]string{
-		"name": "Alice",
-		"str":  "16",
-		"dex":  "14",
+	handler := NewCommandHandler(createTestSession())
+	res := handler.Execute(cmd)
+	if !res.NeedsUI || res.UIAction != "oracle" {
+		t.Errorf("expected NeedsUI oracle action, got %+v", res)
 	}
-
-	for key, expected := range expectedParams {
-		if got := cmd.Params[key]; got != expected {
-			t.Errorf("Params[%q] = %q, want %q", key, got, expected)
-		}
+	if res.UIArg == "" {
+		t.Error("oracle query should carry the input")
 	}
 }
 
 func TestCommandHandlerHelp(t *testing.T) {
-	session := createTestSession()
-	handler := NewCommandHandler(session)
-
-	cmd := ParseCommand("/help")
-	result := handler.Execute(cmd)
-
-	if !result.Success {
-		t.Error("Help command should succeed")
-	}
-	if result.Response == "" {
-		t.Error("Help command should return response text")
+	handler := NewCommandHandler(createTestSession())
+	res := handler.Execute(ParseCommand("/help"))
+	if !res.Success || res.Response == "" {
+		t.Error("help should succeed and return text")
 	}
 }
 
 func TestCommandHandlerRoll(t *testing.T) {
 	session := createTestSession()
 	handler := NewCommandHandler(session)
-
-	cmd := ParseCommand("/roll 2d6")
-	result := handler.Execute(cmd)
-
-	if !result.Success {
-		t.Errorf("Roll command failed: %s", result.Message)
+	before := session.State.Log.Len()
+	res := handler.Execute(ParseCommand("/roll 2d6"))
+	if !res.Success {
+		t.Errorf("roll failed: %s", res.Message)
 	}
-	if len(result.Events) == 0 {
-		t.Error("Roll command should produce events")
-	}
-	if result.Events[0].Type != domain.EventTypeDiceRoll {
-		t.Errorf("Expected dice roll event, got %v", result.Events[0].Type)
+	if session.State.Log.Len() != before+1 {
+		t.Error("roll should append a timeline entry")
 	}
 }
 
-func TestCommandHandlerInventory(t *testing.T) {
+func TestCommandHandlerGoto(t *testing.T) {
 	session := createTestSession()
 	handler := NewCommandHandler(session)
-
-	cmd := ParseCommand("/inv add sword")
-	result := handler.Execute(cmd)
-
-	if !result.Success {
-		t.Errorf("Add item failed: %s", result.Message)
+	res := handler.Execute(ParseCommand("/goto r2"))
+	if !res.Success {
+		t.Errorf("goto failed: %s", res.Message)
 	}
-
-	if len(session.State.Character.Inventory) == 0 {
-		t.Error("Item should be added to inventory")
+	if session.State.CurrentRoom != "r2" {
+		t.Errorf("CurrentRoom = %q, want r2", session.State.CurrentRoom)
 	}
-	if session.State.Character.Inventory[0].Name != "sword" {
-		t.Errorf("Item name = %q, want %q", session.State.Character.Inventory[0].Name, "sword")
-	}
-
-	cmd = ParseCommand("/inv rm sword")
-	result = handler.Execute(cmd)
-
-	if !result.Success {
-		t.Errorf("Remove item failed: %s", result.Message)
-	}
-
-	if len(session.State.Character.Inventory) != 0 {
-		t.Error("Item should be removed from inventory")
+	if !session.State.VisitedRooms["r2"] {
+		t.Error("goto should mark the room visited")
 	}
 }
 
-func TestCommandHandlerConditions(t *testing.T) {
-	session := createTestSession()
-	handler := NewCommandHandler(session)
-
-	cmd := ParseCommand("/cond add Poisoned")
-	result := handler.Execute(cmd)
-
-	if !result.Success {
-		t.Errorf("Add condition failed: %s", result.Message)
+func TestCommandHandlerNPC(t *testing.T) {
+	handler := NewCommandHandler(createTestSession())
+	res := handler.Execute(ParseCommand("/npc guard"))
+	if !res.Success || res.Response == "" {
+		t.Errorf("npc dossier should be returned: %+v", res)
 	}
-
-	if !session.State.Character.HasCondition("Poisoned") {
-		t.Error("Condition should be added")
-	}
-
-	cmd = ParseCommand("/cond rm Poisoned")
-	result = handler.Execute(cmd)
-
-	if !result.Success {
-		t.Errorf("Remove condition failed: %s", result.Message)
-	}
-
-	if session.State.Character.HasCondition("Poisoned") {
-		t.Error("Condition should be removed")
+	res = handler.Execute(ParseCommand("/npc ghost"))
+	if res.Success {
+		t.Error("unknown npc should fail")
 	}
 }
 
-func TestCommandHandlerCharSet(t *testing.T) {
+func TestCommandHandlerFlagAndNote(t *testing.T) {
 	session := createTestSession()
 	handler := NewCommandHandler(session)
 
-	cmd := ParseCommand("/char set name=TestHero str=18 ac=16")
-	result := handler.Execute(cmd)
-
-	if !result.Success {
-		t.Errorf("Char set failed: %s", result.Message)
+	handler.Execute(ParseCommand("/flag gate=true"))
+	if !session.State.Flags["gate"] {
+		t.Error("flag gate should be true")
 	}
 
-	char := session.State.Character
-	if char.Name != "TestHero" {
-		t.Errorf("Name = %q, want %q", char.Name, "TestHero")
+	handler.Execute(ParseCommand("/note the party bribed the guard"))
+	found := false
+	for _, e := range session.State.Log.Entries {
+		if e.Type == domain.LogNote {
+			found = true
+		}
 	}
-	if char.Abilities.STR != 18 {
-		t.Errorf("STR = %d, want %d", char.Abilities.STR, 18)
-	}
-	if char.AC != 16 {
-		t.Errorf("AC = %d, want %d", char.AC, 16)
+	if !found {
+		t.Error("note should appear in the timeline")
 	}
 }
 
-func TestCommandHandlerProvider(t *testing.T) {
-	session := createTestSession()
-	handler := NewCommandHandler(session)
-
-	cmd := ParseCommand("/provider anthropic")
-	result := handler.Execute(cmd)
-
-	if !result.Success {
-		t.Errorf("Provider command failed: %s", result.Message)
+func TestCommandHandlerMap(t *testing.T) {
+	handler := NewCommandHandler(createTestSession())
+	res := handler.Execute(ParseCommand("/map z1"))
+	if !res.NeedsUI || res.UIAction != "image" {
+		t.Errorf("map should request an image open, got %+v", res)
 	}
-	if session.Config.Provider != domain.ProviderAnthropic {
-		t.Errorf("Provider = %v, want %v", session.Config.Provider, domain.ProviderAnthropic)
-	}
-
-	cmd = ParseCommand("/provider invalid")
-	result = handler.Execute(cmd)
-
-	if result.Success {
-		t.Error("Invalid provider should fail")
-	}
-}
-
-func TestCommandHandlerTemperature(t *testing.T) {
-	session := createTestSession()
-	handler := NewCommandHandler(session)
-
-	cmd := ParseCommand("/temp 0.5")
-	result := handler.Execute(cmd)
-
-	if !result.Success {
-		t.Errorf("Temperature command failed: %s", result.Message)
-	}
-	if session.Config.Temperature != 0.5 {
-		t.Errorf("Temperature = %f, want %f", session.Config.Temperature, 0.5)
-	}
-
-	cmd = ParseCommand("/temp 3.0")
-	result = handler.Execute(cmd)
-
-	if result.Success {
-		t.Error("Invalid temperature should fail")
-	}
-}
-
-func TestCommandHandlerNarration(t *testing.T) {
-	session := createTestSession()
-	handler := NewCommandHandler(session)
-
-	cmd := ParseCommand("I search the room carefully")
-	result := handler.Execute(cmd)
-
-	if cmd.Type != CmdNarration {
-		t.Errorf("Expected CmdNarration, got %v", cmd.Type)
-	}
-	if !result.NeedsUI {
-		t.Error("Narration should need UI handling")
-	}
-	if result.UIAction != "narration" {
-		t.Errorf("UIAction = %q, want %q", result.UIAction, "narration")
+	if res.UIArg != "assets/map.png" {
+		t.Errorf("UIArg = %q, want assets/map.png", res.UIArg)
 	}
 }
 
 func TestCommandHandlerQuit(t *testing.T) {
-	session := createTestSession()
-	handler := NewCommandHandler(session)
-
-	cmd := ParseCommand("/quit")
-	result := handler.Execute(cmd)
-
-	if !result.ShouldQuit {
-		t.Error("Quit command should set ShouldQuit")
+	handler := NewCommandHandler(createTestSession())
+	res := handler.Execute(ParseCommand("/quit"))
+	if !res.ShouldQuit {
+		t.Error("quit should set ShouldQuit")
 	}
 }
 
-func TestCommandHandlerStatus(t *testing.T) {
-	session := createTestSession()
-	handler := NewCommandHandler(session)
-
-	cmd := ParseCommand("/status")
-	result := handler.Execute(cmd)
-
-	if !result.Success {
-		t.Errorf("Status command failed: %s", result.Message)
+func createTestSession() *domain.Session {
+	adv := &domain.Adventure{
+		SchemaVersion: domain.SchemaVersion,
+		ID:            "test",
+		Title:         "Test Adventure",
+		Zones: []domain.Zone{{
+			ID:       "z1",
+			Name:     "Zone One",
+			MapImage: "assets/map.png",
+			Rooms: []domain.Room{
+				{ID: "r1", Name: "Entrance", NPCIDs: []string{"guard"}},
+				{ID: "r2", Name: "Hall"},
+			},
+		}},
+		NPCs: []domain.NPC{{ID: "guard", Name: "Gate Guard", Role: "sentry"}},
 	}
-	if result.Response == "" {
-		t.Error("Status should return character info")
-	}
-}
-
-func createTestSession() *domain.GameSession {
-	char := domain.NewCharacter("TestChar", "Human", "Fighter")
-	state := domain.NewGameState("test_save", char, "fantasy")
-	config := domain.DefaultConfig()
-	return domain.NewGameSession(state, config)
+	state := domain.NewSessionState("test_session", adv)
+	return domain.NewSession(state, adv, domain.DefaultConfig())
 }

@@ -28,58 +28,74 @@ make tidy               # Tidy go.mod
 
 ## Architecture Overview
 
-thAImaturgy is a retro-styled AI-powered dungeon master TUI application built with Go.
+thAImaturgy (v2) is a **DM assistant / oracle** TUI. The human is the Dungeon Master;
+the app loads a pre-authored adventure module and answers the DM's questions grounded in
+that module, while tracking the running session state. (v1 — where the AI *was* the DM
+and the human played a character — has been removed and its infrastructure repurposed.)
+
+**Guiding principle:** all logic lives in `internal/` and is UI-agnostic, so the TUI
+(`cmd/thaimaturgy`) and a future GUI (`cmd/thaimaturgy-gui`) are thin frontends over the
+same core.
 
 ### Layer Structure
 
 ```
 cmd/thaimaturgy/main.go    Entry point, initializes storage, config, and TUI
 internal/
-  domain/                  Core domain types (Character, World, GameState, Config)
-  engine/                  Game logic
-    orchestrator.go        AI conversation loop with tool calling
-    tools.go               AI tool definitions and execution (ToolRouter)
-    commands.go            User command parser and handler (/roll, /save, etc)
-    dice.go                Dice rolling engine
-  providers/               LLM provider interface and implementations
-    provider.go            Provider interface definition
-    openai.go              OpenAI implementation
-    anthropic.go           Anthropic implementation
-  storage/                 Persistence (config, saves, env files)
-  tui/                     Bubble Tea TUI
-    model.go               Main TUI model with screens (Boot, Menu, Wizard, Game)
+  domain/                  Core types
+    adventure.go           Authored module (immutable): Adventure, Zone, Room, NPC,
+                           Event, Item, StatBlock… + ValidateAdventure + lookups
+    session.go             Mutable play state: SessionState (structured + free-form
+                           timeline), Session (binds state+adventure+config)
+    character.go           AbilityScores/Modifier (reused by StatBlock; party tracking)
+    message.go, config.go  Conversation; config + oracle system prompts (EN/ES)
+  engine/
+    oracle.go              LLM loop + context builder (grounded in the module)
+    tools.go               Tool set + ToolRouter (retrieval + session mutation + dice)
+    commands.go            DM command parser/handler (/goto, /npc, /map, /note, …)
+    format.go              Renders adventure content to text (shared by tools/commands/TUI)
+    dice.go                Dice rolling engine (unchanged from v1)
+  providers/               LLM provider interface + OpenAI/Anthropic
+  storage/
+    module.go              Import/extract/validate .tar.gz modules (zip-slip safe),
+                           list/load adventures, resolve image paths
+    storage.go             Config, env/API keys, session save/load
+  platform/open.go         OS image-viewer launcher (open/xdg-open/start)
+  tui/
+    model.go               Bubble Tea model + update logic (screens/state)
+    views.go               View rendering for each screen
     styles.go              Lip Gloss styles
-  tts/                     Text-to-speech client (OpenAI TTS)
-  types/                   Shared types for tools
+  tts/                     Optional OpenAI TTS (narrate read-aloud text)
+  types/                   Shared tool types
 ```
 
 ### Key Data Flow
 
-1. User input in TUI (`tui/model.go`) goes to `engine/commands.go` for parsing
-2. Non-command input triggers `engine/orchestrator.go` which calls LLM providers
-3. LLM can invoke tools defined in `engine/tools.go` (dice rolls, HP updates, inventory, etc.)
-4. Tool results modify `domain.GameSession` state
-5. TUI renders updated state
+1. DM input in `tui/model.go` → `engine/commands.go` (`ParseCommand`/`CommandHandler`).
+2. Slash commands act locally (look up module content, mutate session, open images).
+   Free-form text → `engine/oracle.go` (`Oracle.Ask`).
+3. The oracle builds a grounded system prompt (adventure summary + current room + present
+   NPCs + session state + recent timeline) and runs a tool-calling loop.
+4. Tools (`engine/tools.go`) either **retrieve** authored content (`get_room`, `get_npc`,
+   `get_event`, `search_module`) or **mutate** the session (`set_location`,
+   `trigger_event`, `set_flag`, `log_note`, …) via `ToolRouter.Execute()`.
+5. TUI renders the three session panels: Location, Oracle transcript, Session log.
 
-### AI Tool System
+### Adventure modules
 
-The AI DM can call tools defined in `engine/tools.go`:
-- `roll_dice`, `skill_check`, `saving_throw` - Dice mechanics
-- `update_hp`, `update_gold`, `award_xp` - Character state
-- `add_item`, `remove_item`, `set_condition` - Inventory/conditions
-- `set_location`, `add_quest` - World state
-
-Tools are executed via `ToolRouter.Execute()` which updates `GameSession` and returns results to the LLM.
+A module is a `.tar.gz`: `adventure.json` at the root + referenced `assets/` images.
+Imported to `~/.thaimaturgy/adventures/<id>/`; sessions saved in `~/.thaimaturgy/sessions/`.
+Schema: `docs/adventure-schema.md`. Authoring: `docs/authoring-guide.md`. Example:
+`examples/adventures/the-sunken-crypt/`. Package with `make example-module` / `make modules`.
 
 ### TUI Screens
 
 Defined in `tui/model.go`:
 - `ScreenBoot` - Splash screen
-- `ScreenConfig` - API key setup wizard
-- `ScreenMenu` - Main menu
-- `ScreenWizard` - Character creation
-- `ScreenGame` - Main gameplay with 3-panel layout
-- `ScreenSaves` - Load game
+- `ScreenConfig` - Language + API key setup wizard
+- `ScreenLibrary` - Imported adventures, resumable sessions, import/settings/help/quit
+- `ScreenImport` - Enter a module path to import
+- `ScreenSession` - 3-panel play view (Location / Oracle / Session log) + input
 - `ScreenHelp` - Help screen
 
 ### Provider Configuration

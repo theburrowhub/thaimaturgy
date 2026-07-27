@@ -25,45 +25,45 @@ var (
 )
 
 type Styles struct {
-	App           lipgloss.Style
-	Header        lipgloss.Style
-	HeaderTitle   lipgloss.Style
-	HeaderStatus  lipgloss.Style
+	App          lipgloss.Style
+	Header       lipgloss.Style
+	HeaderTitle  lipgloss.Style
+	HeaderStatus lipgloss.Style
 
-	Panel         lipgloss.Style
-	PanelTitle    lipgloss.Style
-	PanelContent  lipgloss.Style
-	PanelFocused  lipgloss.Style
+	Panel        lipgloss.Style
+	PanelTitle   lipgloss.Style
+	PanelContent lipgloss.Style
+	PanelFocused lipgloss.Style
 
-	Input         lipgloss.Style
-	InputPrompt   lipgloss.Style
-	InputText     lipgloss.Style
+	Input       lipgloss.Style
+	InputPrompt lipgloss.Style
+	InputText   lipgloss.Style
 
-	Narration     lipgloss.Style
-	EventLog      lipgloss.Style
-	CharSheet     lipgloss.Style
+	Narration lipgloss.Style
+	EventLog  lipgloss.Style
+	CharSheet lipgloss.Style
 
-	StatLabel     lipgloss.Style
-	StatValue     lipgloss.Style
-	StatModifier  lipgloss.Style
+	StatLabel    lipgloss.Style
+	StatValue    lipgloss.Style
+	StatModifier lipgloss.Style
 
-	HPFull        lipgloss.Style
-	HPLow         lipgloss.Style
-	HPCritical    lipgloss.Style
+	HPFull     lipgloss.Style
+	HPLow      lipgloss.Style
+	HPCritical lipgloss.Style
 
-	Condition     lipgloss.Style
-	Item          lipgloss.Style
-	Quest         lipgloss.Style
+	Condition lipgloss.Style
+	Item      lipgloss.Style
+	Quest     lipgloss.Style
 
-	Hint          lipgloss.Style
-	Error         lipgloss.Style
-	Success       lipgloss.Style
+	Hint    lipgloss.Style
+	Error   lipgloss.Style
+	Success lipgloss.Style
 
-	BootLogo      lipgloss.Style
-	BootText      lipgloss.Style
+	BootLogo lipgloss.Style
+	BootText lipgloss.Style
 
-	WizardTitle   lipgloss.Style
-	WizardOption  lipgloss.Style
+	WizardTitle    lipgloss.Style
+	WizardOption   lipgloss.Style
 	WizardSelected lipgloss.Style
 }
 

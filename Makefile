@@ -34,7 +34,11 @@ YELLOW := \033[33m
 RED := \033[31m
 RESET := \033[0m
 
-.PHONY: all build run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall release
+.PHONY: all build run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall release example-module modules
+
+# Adventure modules
+EXAMPLES_DIR := examples/adventures
+DIST_DIR := dist/modules
 
 ##@ General
 
@@ -189,6 +193,23 @@ docker-build: ## Build Docker image
 docker-run: docker-build ## Run in Docker
 	@echo "$(CYAN)Running in Docker...$(RESET)"
 	docker run -it --rm $(BINARY_NAME):$(VERSION)
+
+##@ Adventure Modules
+
+example-module: ## Package the example adventure (the-sunken-crypt) into a .tar.gz
+	@echo "$(CYAN)Packaging example module...$(RESET)"
+	@mkdir -p $(DIST_DIR)
+	tar -czf $(DIST_DIR)/the-sunken-crypt.tar.gz -C $(EXAMPLES_DIR)/the-sunken-crypt .
+	@echo "$(GREEN)Built: $(DIST_DIR)/the-sunken-crypt.tar.gz$(RESET)"
+
+modules: ## Package every example adventure into dist/modules
+	@echo "$(CYAN)Packaging all adventure modules...$(RESET)"
+	@mkdir -p $(DIST_DIR)
+	@for d in $(EXAMPLES_DIR)/*/; do \
+		name=$$(basename $$d); \
+		tar -czf $(DIST_DIR)/$$name.tar.gz -C $$d .; \
+		echo "$(GREEN)Built: $(DIST_DIR)/$$name.tar.gz$(RESET)"; \
+	done
 
 ##@ Info
 

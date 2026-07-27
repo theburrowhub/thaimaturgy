@@ -47,8 +47,8 @@ type anthropicRequest struct {
 }
 
 type anthropicMessage struct {
-	Role    string           `json:"role"`
-	Content json.RawMessage  `json:"content"`
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
 }
 
 type anthropicContentBlock struct {
@@ -68,10 +68,10 @@ type anthropicTool struct {
 }
 
 type anthropicResponse struct {
-	ID           string `json:"id"`
-	Type         string `json:"type"`
-	Role         string `json:"role"`
-	Content      []struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Role    string `json:"role"`
+	Content []struct {
 		Type  string          `json:"type"`
 		Text  string          `json:"text,omitempty"`
 		ID    string          `json:"id,omitempty"`

@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	AppDir     = ".thaimaturgy"
-	ConfigFile = "config.json"
-	SavesDir   = "saves"
-	EnvFile    = ".env"
+	AppDir      = ".thaimaturgy"
+	ConfigFile  = "config.json"
+	SessionsDir = "sessions"
+	EnvFile     = ".env"
 )
 
 type Storage struct {
@@ -48,7 +48,7 @@ func NewWithPath(basePath string) (*Storage, error) {
 func (s *Storage) ensureDirectories() error {
 	dirs := []string{
 		s.basePath,
-		filepath.Join(s.basePath, SavesDir),
+		filepath.Join(s.basePath, SessionsDir),
 	}
 
 	for _, dir := range dirs {
@@ -131,63 +131,66 @@ func (s *Storage) SaveConfig(config *domain.Config) error {
 	return nil
 }
 
-func (s *Storage) LoadGame(name string) (*domain.GameState, error) {
-	savePath := filepath.Join(s.basePath, SavesDir, name+".json")
+func (s *Storage) sessionPath(name string) string {
+	return filepath.Join(s.basePath, SessionsDir, name+".json")
+}
 
-	data, err := os.ReadFile(savePath)
+// LoadSession reads a persisted play session by name.
+func (s *Storage) LoadSession(name string) (*domain.SessionState, error) {
+	data, err := os.ReadFile(s.sessionPath(name))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read save file: %w", err)
+		return nil, fmt.Errorf("failed to read session file: %w", err)
 	}
 
-	var state domain.GameState
+	var state domain.SessionState
 	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, fmt.Errorf("failed to parse save file: %w", err)
+		return nil, fmt.Errorf("failed to parse session file: %w", err)
 	}
 
 	return &state, nil
 }
 
-func (s *Storage) SaveGame(state *domain.GameState) error {
-	if state.SaveName == "" {
-		return fmt.Errorf("save name is required")
+// SaveSession persists a play session as JSON.
+func (s *Storage) SaveSession(state *domain.SessionState) error {
+	if state.Name == "" {
+		return fmt.Errorf("session name is required")
 	}
-
-	savePath := filepath.Join(s.basePath, SavesDir, state.SaveName+".json")
 
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal game state: %w", err)
+		return fmt.Errorf("failed to marshal session: %w", err)
 	}
 
-	if err := os.WriteFile(savePath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write save file: %w", err)
+	if err := os.WriteFile(s.sessionPath(state.Name), data, 0644); err != nil {
+		return fmt.Errorf("failed to write session file: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Storage) DeleteGame(name string) error {
-	savePath := filepath.Join(s.basePath, SavesDir, name+".json")
-
-	if err := os.Remove(savePath); err != nil {
+// DeleteSession removes a persisted session.
+func (s *Storage) DeleteSession(name string) error {
+	if err := os.Remove(s.sessionPath(name)); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("save file not found: %s", name)
+			return fmt.Errorf("session not found: %s", name)
 		}
-		return fmt.Errorf("failed to delete save file: %w", err)
+		return fmt.Errorf("failed to delete session file: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Storage) ListSaves() ([]SaveInfo, error) {
-	savesPath := filepath.Join(s.basePath, SavesDir)
-
-	entries, err := os.ReadDir(savesPath)
+// ListSessions enumerates persisted sessions with lightweight metadata.
+func (s *Storage) ListSessions() ([]SessionInfo, error) {
+	entries, err := os.ReadDir(filepath.Join(s.basePath, SessionsDir))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read saves directory: %w", err)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read sessions directory: %w", err)
 	}
 
-	var saves []SaveInfo
+	var sessions []SessionInfo
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
@@ -199,39 +202,38 @@ func (s *Storage) ListSaves() ([]SaveInfo, error) {
 			continue
 		}
 
-		state, err := s.LoadGame(name)
+		state, err := s.LoadSession(name)
 		if err != nil {
 			continue
 		}
 
-		saves = append(saves, SaveInfo{
-			Name:        name,
-			Character:   state.Character.Name,
-			Class:       state.Character.Class,
-			Level:       state.Character.Level,
-			Location:    state.World.CurrentLocation.Name,
-			PlayTime:    state.PlayTime,
-			ModifiedAt:  info.ModTime(),
+		sessions = append(sessions, SessionInfo{
+			Name:           name,
+			AdventureID:    state.AdventureID,
+			AdventureTitle: state.AdventureTitle,
+			CurrentRoom:    state.CurrentRoom,
+			PlayTime:       state.PlayTime,
+			ModifiedAt:     info.ModTime(),
 		})
 	}
 
-	return saves, nil
+	return sessions, nil
 }
 
-func (s *Storage) SaveExists(name string) bool {
-	savePath := filepath.Join(s.basePath, SavesDir, name+".json")
-	_, err := os.Stat(savePath)
+// SessionExists reports whether a session with the given name exists.
+func (s *Storage) SessionExists(name string) bool {
+	_, err := os.Stat(s.sessionPath(name))
 	return err == nil
 }
 
-type SaveInfo struct {
-	Name       string        `json:"name"`
-	Character  string        `json:"character"`
-	Class      string        `json:"class"`
-	Level      int           `json:"level"`
-	Location   string        `json:"location"`
-	PlayTime   interface{}   `json:"play_time"`
-	ModifiedAt interface{}   `json:"modified_at"`
+// SessionInfo is lightweight metadata for listing sessions.
+type SessionInfo struct {
+	Name           string      `json:"name"`
+	AdventureID    string      `json:"adventure_id"`
+	AdventureTitle string      `json:"adventure_title"`
+	CurrentRoom    string      `json:"current_room"`
+	PlayTime       interface{} `json:"play_time"`
+	ModifiedAt     interface{} `json:"modified_at"`
 }
 
 func (s *Storage) EnvFilePath() string {

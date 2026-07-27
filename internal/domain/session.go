@@ -1,0 +1,282 @@
+package domain
+
+import "time"
+
+// LogEntryType classifies an entry in the session timeline.
+type LogEntryType string
+
+const (
+	LogNote     LogEntryType = "note"     // free-form DM note
+	LogLocation LogEntryType = "location" // party moved
+	LogNPC      LogEntryType = "npc"      // NPC met / disposition / death
+	LogEvent    LogEntryType = "event"    // scripted event triggered
+	LogFlag     LogEntryType = "flag"     // flag/variable set
+	LogRoll     LogEntryType = "roll"     // dice roll / check
+	LogQuest    LogEntryType = "quest"    // quest progress
+	LogParty    LogEntryType = "party"    // party member update
+	LogSystem   LogEntryType = "system"   // system message
+)
+
+// LogEntry is a single event in the running session timeline — either a
+// free-form note the DM wrote or a structured marker of something that
+// happened at the table.
+type LogEntry struct {
+	Type      LogEntryType   `json:"type"`
+	Message   string         `json:"message"`
+	Data      map[string]any `json:"data,omitempty"`
+	Timestamp time.Time      `json:"timestamp"`
+}
+
+// SessionLog is a bounded timeline of LogEntry.
+type SessionLog struct {
+	Entries []LogEntry `json:"entries"`
+	MaxSize int        `json:"max_size"`
+}
+
+// NewSessionLog creates a log bounded to maxSize entries.
+func NewSessionLog(maxSize int) *SessionLog {
+	if maxSize <= 0 {
+		maxSize = 500
+	}
+	return &SessionLog{Entries: []LogEntry{}, MaxSize: maxSize}
+}
+
+// Add appends an entry, trimming oldest entries past MaxSize.
+func (l *SessionLog) Add(entry LogEntry) {
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = time.Now()
+	}
+	l.Entries = append(l.Entries, entry)
+	if len(l.Entries) > l.MaxSize {
+		l.Entries = l.Entries[len(l.Entries)-l.MaxSize:]
+	}
+}
+
+// GetLast returns the last n entries (all if n<=0 or n>len).
+func (l *SessionLog) GetLast(n int) []LogEntry {
+	if n <= 0 || n > len(l.Entries) {
+		return l.Entries
+	}
+	return l.Entries[len(l.Entries)-n:]
+}
+
+// Len returns the number of entries.
+func (l *SessionLog) Len() int { return len(l.Entries) }
+
+// NPCStatus tracks the running state of an NPC the party has interacted with.
+type NPCStatus struct {
+	Met         bool   `json:"met"`
+	Disposition string `json:"disposition,omitempty"`
+	Alive       bool   `json:"alive"`
+	Notes       string `json:"notes,omitempty"`
+}
+
+// PartyMember is the DM's lightweight tracking of a player character.
+type PartyMember struct {
+	Name      string `json:"name"`
+	Class     string `json:"class,omitempty"`
+	Level     int    `json:"level,omitempty"`
+	CurrentHP int    `json:"current_hp,omitempty"`
+	MaxHP     int    `json:"max_hp,omitempty"`
+	AC        int    `json:"ac,omitempty"`
+	Notes     string `json:"notes,omitempty"`
+}
+
+// QuestProgress tracks a quest/objective's state at the table.
+type QuestProgress struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"` // active | completed | failed
+	Notes  string `json:"notes,omitempty"`
+}
+
+// SessionState is the persisted, mutable record of a running play session of an
+// adventure. It references the adventure module by ID (the immutable content
+// lives in the Adventure struct, reloaded from disk).
+type SessionState struct {
+	Name           string `json:"name"`
+	AdventureID    string `json:"adventure_id"`
+	AdventureTitle string `json:"adventure_title"`
+
+	// Structured progress fed by the DM.
+	CurrentZone     string                `json:"current_zone,omitempty"`
+	CurrentRoom     string                `json:"current_room,omitempty"`
+	VisitedRooms    map[string]bool       `json:"visited_rooms,omitempty"`
+	KnownNPCs       map[string]*NPCStatus `json:"known_npcs,omitempty"`
+	TriggeredEvents map[string]bool       `json:"triggered_events,omitempty"`
+	Flags           map[string]bool       `json:"flags,omitempty"`
+	Variables       map[string]string     `json:"variables,omitempty"`
+	Party           []*PartyMember        `json:"party,omitempty"`
+	Quests          []QuestProgress       `json:"quests,omitempty"`
+
+	// Free-form timeline and running summary.
+	Log     *SessionLog `json:"log"`
+	Summary string      `json:"summary,omitempty"`
+
+	// The DM's dialogue with the oracle.
+	Conversation *Conversation `json:"conversation"`
+
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
+	PlayTime  time.Duration `json:"play_time"`
+}
+
+// NewSessionState creates a fresh session for an adventure, defaulting the
+// current location to the first room of the first zone when available.
+func NewSessionState(name string, adv *Adventure) *SessionState {
+	now := time.Now()
+	s := &SessionState{
+		Name:            name,
+		VisitedRooms:    make(map[string]bool),
+		KnownNPCs:       make(map[string]*NPCStatus),
+		TriggeredEvents: make(map[string]bool),
+		Flags:           make(map[string]bool),
+		Variables:       make(map[string]string),
+		Log:             NewSessionLog(500),
+		Conversation:    NewConversation(60),
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if adv != nil {
+		s.AdventureID = adv.ID
+		s.AdventureTitle = adv.Title
+		if len(adv.Zones) > 0 {
+			s.CurrentZone = adv.Zones[0].ID
+			if len(adv.Zones[0].Rooms) > 0 {
+				s.CurrentRoom = adv.Zones[0].Rooms[0].ID
+				s.VisitedRooms[s.CurrentRoom] = true
+			}
+		}
+	}
+	return s
+}
+
+func (s *SessionState) touch() { s.UpdatedAt = time.Now() }
+
+// SetLocation records the party's current zone and room, marking the room
+// visited and logging the move.
+func (s *SessionState) SetLocation(zoneID, roomID, roomName string) {
+	s.CurrentZone = zoneID
+	s.CurrentRoom = roomID
+	if roomID != "" {
+		s.VisitedRooms[roomID] = true
+	}
+	label := roomName
+	if label == "" {
+		label = roomID
+	}
+	s.Log.Add(LogEntry{Type: LogLocation, Message: "Entered " + label,
+		Data: map[string]any{"zone": zoneID, "room": roomID}})
+	s.touch()
+}
+
+// MeetNPC marks an NPC as met (creating status if needed) and returns it.
+func (s *SessionState) MeetNPC(id, name string) *NPCStatus {
+	st := s.KnownNPCs[id]
+	if st == nil {
+		st = &NPCStatus{Alive: true}
+		s.KnownNPCs[id] = st
+	}
+	if !st.Met {
+		st.Met = true
+		label := name
+		if label == "" {
+			label = id
+		}
+		s.Log.Add(LogEntry{Type: LogNPC, Message: "Met " + label,
+			Data: map[string]any{"npc": id}})
+	}
+	s.touch()
+	return st
+}
+
+// NPCState returns the tracked status for an NPC, creating a default if absent.
+func (s *SessionState) NPCState(id string) *NPCStatus {
+	st := s.KnownNPCs[id]
+	if st == nil {
+		st = &NPCStatus{Alive: true}
+		s.KnownNPCs[id] = st
+	}
+	return st
+}
+
+// TriggerEvent records that a scripted event has fired.
+func (s *SessionState) TriggerEvent(id, name string) {
+	if s.TriggeredEvents[id] {
+		return
+	}
+	s.TriggeredEvents[id] = true
+	label := name
+	if label == "" {
+		label = id
+	}
+	s.Log.Add(LogEntry{Type: LogEvent, Message: "Triggered event: " + label,
+		Data: map[string]any{"event": id}})
+	s.touch()
+}
+
+// SetFlag sets a boolean flag and logs it.
+func (s *SessionState) SetFlag(key string, value bool) {
+	s.Flags[key] = value
+	s.Log.Add(LogEntry{Type: LogFlag, Message: "Flag " + key + " set",
+		Data: map[string]any{"key": key, "value": value}})
+	s.touch()
+}
+
+// SetVariable sets a string variable and logs it.
+func (s *SessionState) SetVariable(key, value string) {
+	s.Variables[key] = value
+	s.Log.Add(LogEntry{Type: LogFlag, Message: "Variable " + key + " = " + value,
+		Data: map[string]any{"key": key, "value": value}})
+	s.touch()
+}
+
+// AddNote appends a free-form DM note to the timeline.
+func (s *SessionState) AddNote(text string) {
+	s.Log.Add(LogEntry{Type: LogNote, Message: text})
+	s.touch()
+}
+
+// AdvanceQuest creates or updates a quest's progress.
+func (s *SessionState) AdvanceQuest(id, name, status string) {
+	for i := range s.Quests {
+		if s.Quests[i].ID == id {
+			s.Quests[i].Status = status
+			if name != "" {
+				s.Quests[i].Name = name
+			}
+			s.Log.Add(LogEntry{Type: LogQuest, Message: "Quest '" + s.Quests[i].Name + "' → " + status})
+			s.touch()
+			return
+		}
+	}
+	s.Quests = append(s.Quests, QuestProgress{ID: id, Name: name, Status: status})
+	s.Log.Add(LogEntry{Type: LogQuest, Message: "New quest: " + name})
+	s.touch()
+}
+
+// Session is the runtime wrapper binding a persisted SessionState to its loaded
+// Adventure module and the active Config.
+type Session struct {
+	State      *SessionState
+	Adventure  *Adventure
+	Config     *Config
+	StartedAt  time.Time
+	IsModified bool
+}
+
+// NewSession binds state, adventure, and config into a runtime session.
+func NewSession(state *SessionState, adv *Adventure, config *Config) *Session {
+	return &Session{
+		State:     state,
+		Adventure: adv,
+		Config:    config,
+		StartedAt: time.Now(),
+	}
+}
+
+// MarkModified flags the session dirty and touches the timestamp.
+func (s *Session) MarkModified() {
+	s.IsModified = true
+	s.State.touch()
+}

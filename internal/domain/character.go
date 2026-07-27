@@ -80,10 +80,10 @@ func ModifierString(score int) string {
 }
 
 type Skill struct {
-	Name       string `json:"name"`
+	Name       string  `json:"name"`
 	Ability    Ability `json:"ability"`
-	Proficient bool   `json:"proficient"`
-	Expert     bool   `json:"expert"`
+	Proficient bool    `json:"proficient"`
+	Expert     bool    `json:"expert"`
 }
 
 var DefaultSkills = []Skill{
@@ -135,12 +135,12 @@ const (
 )
 
 type Character struct {
-	Name       string       `json:"name"`
-	Race       string       `json:"race"`
-	Class      string       `json:"class"`
-	Level      int          `json:"level"`
-	Background string       `json:"background"`
-	Alignment  string       `json:"alignment,omitempty"`
+	Name       string `json:"name"`
+	Race       string `json:"race"`
+	Class      string `json:"class"`
+	Level      int    `json:"level"`
+	Background string `json:"background"`
+	Alignment  string `json:"alignment,omitempty"`
 
 	Abilities AbilityScores `json:"abilities"`
 
@@ -158,9 +158,9 @@ type Character struct {
 	Inventory  []InventoryItem `json:"inventory"`
 	Conditions []Condition     `json:"conditions"`
 
-	Gold   int    `json:"gold"`
-	XP     int    `json:"xp"`
-	Notes  string `json:"notes,omitempty"`
+	Gold  int    `json:"gold"`
+	XP    int    `json:"xp"`
+	Notes string `json:"notes,omitempty"`
 }
 
 func NewCharacter(name, race, class string) *Character {

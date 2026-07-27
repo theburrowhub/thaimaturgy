@@ -17,11 +17,11 @@ const (
 )
 
 type Message struct {
-	Role       Role            `json:"role"`
-	Content    string          `json:"content"`
-	Name       string          `json:"name,omitempty"`
-	ToolCalls  []ToolCallInfo  `json:"tool_calls,omitempty"`
-	ToolCallID string          `json:"tool_call_id,omitempty"`
+	Role       Role           `json:"role"`
+	Content    string         `json:"content"`
+	Name       string         `json:"name,omitempty"`
+	ToolCalls  []ToolCallInfo `json:"tool_calls,omitempty"`
+	ToolCallID string         `json:"tool_call_id,omitempty"`
 }
 
 type ToolCallInfo struct {
@@ -36,20 +36,20 @@ type FunctionCall struct {
 }
 
 type ChatRequest struct {
-	Messages    []Message       `json:"messages"`
-	Tools       []types.Tool    `json:"tools,omitempty"`
-	Model       string          `json:"model"`
-	Temperature float64         `json:"temperature"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Messages    []Message    `json:"messages"`
+	Tools       []types.Tool `json:"tools,omitempty"`
+	Model       string       `json:"model"`
+	Temperature float64      `json:"temperature"`
+	MaxTokens   int          `json:"max_tokens,omitempty"`
 }
 
 type ChatResponse struct {
-	Content    string         `json:"content"`
-	ToolCalls  []ToolCallInfo `json:"tool_calls,omitempty"`
-	FinishReason string       `json:"finish_reason"`
-	Usage      Usage          `json:"usage"`
-	Model      string         `json:"model"`
-	Latency    int64          `json:"latency_ms"`
+	Content      string         `json:"content"`
+	ToolCalls    []ToolCallInfo `json:"tool_calls,omitempty"`
+	FinishReason string         `json:"finish_reason"`
+	Usage        Usage          `json:"usage"`
+	Model        string         `json:"model"`
+	Latency      int64          `json:"latency_ms"`
 }
 
 type Usage struct {

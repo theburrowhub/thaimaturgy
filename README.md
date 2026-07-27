@@ -9,245 +9,152 @@
                                                     |___/ |___/
 ```
 
-A retro-styled AI-powered dungeon master TUI application. Experience classic text adventures with the power of modern LLMs acting as your Dungeon Master.
+**An AI oracle for the Dungeon Master.** thAImaturgy is a tool for a human DM running a
+pre-authored D&D-style adventure. You load an **adventure module** (a `.tar.gz` with the
+full adventure and its maps/art), and the app becomes a grounded assistant: it answers
+your questions about what should happen, hands you read-aloud text and NPC roleplay,
+resolves quick mechanics, and tracks the running state of your session.
 
-## Features
+> **v2.0 — a change of purpose.** Earlier versions had the AI *play the DM* while a human
+> played a character. v2 inverts that: **you are the DM**, and the AI is your oracle,
+> grounded in the specific adventure you loaded. It never replaces the DM or controls the
+> players — it gives you the right information at the right moment.
 
-- **Retro TUI Interface**: CGA/EGA-inspired color palette with classic box-drawing characters
-- **AI Dungeon Master**: Powered by OpenAI or Anthropic LLMs
-- **D&D 5e Character Sheet**: Full character tracking with stats, inventory, conditions
-- **Dice Rolling**: Standard dice notation support (1d20, 2d6+3, etc.)
-- **Save/Load System**: Persistent game sessions
-- **Tool Calls**: AI can roll dice, manage inventory, update HP, and more
+## What it does
 
-## Screenshot
+- **Loads adventure modules** — a `.tar.gz` holding `adventure.json` (backstory, NPCs
+  with stats *and* motivations, zones/rooms, events, start/ending) plus referenced map
+  and art images.
+- **Grounds the oracle in the module** — every answer draws on the adventure's canon;
+  the model retrieves rooms/NPCs/events on demand so even large modules fit.
+- **Tracks the course of play** — you (and the oracle) record the current room, NPCs
+  met, events triggered, story flags, quests, and free-form notes, so answers stay
+  contextual as the adventure unfolds.
+- **Roleplay & mechanics support** — NPC voice/motivations/secrets, read-aloud text,
+  stat blocks, and dice (`/roll`, ability checks).
+- **Images** — `/map` and `/art` open maps and artwork in your system's image viewer.
+  (A GUI with inline images is planned — see Roadmap.)
+
+## Session view
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ thAImaturgy | openai | gpt-4o-mini | Aldric the Brave                       │
-├──────────────────┬────────────────────────────────┬─────────────────────────┤
-│   CHARACTER      │         NARRATION              │      EVENT LOG          │
-│                  │                                │                         │
-│ Aldric           │ You stand at the entrance of   │ [14:32] Rolled 1d20+3   │
-│ Level 3 Human    │ the ancient dungeon. Torches   │         = 17            │
-│ Fighter          │ flicker in rusty sconces,      │ [14:31] Gained 50 gold  │
-│                  │ casting dancing shadows on     │ [14:30] Quest added:    │
-│ HP: 28/28        │ moss-covered stone walls...    │         Find the Gem    │
-│ AC: 16  Init: +2 │                                │                         │
-│                  │ What do you do?                │                         │
-│ STR: 16 (+3)     │                                │                         │
-│ DEX: 14 (+2)     │ - Proceed cautiously           │                         │
-│ CON: 15 (+2)     │ - Light your own torch         │                         │
-│ INT: 10 (+0)     │ - Listen for sounds            │                         │
-│ WIS: 12 (+1)     │ - Search for traps             │                         │
-│ CHA: 8  (-1)     │                                │                         │
-│                  │                                │                         │
-│ Gold: 50 XP: 300 │                                │                         │
-├──────────────────┴────────────────────────────────┴─────────────────────────┤
-│ > I cautiously proceed down the corridor, sword drawn...                    │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ thAImaturgy | anthropic | claude-sonnet-4 | The Sunken Crypt                   │
+├──────────────────┬─────────────────────────────────┬──────────────────────────┤
+│    LOCATION      │            ORACLE               │       SESSION LOG        │
+│                  │                                 │                          │
+│ ZONE             │ » How does the guard react if   │ [21:04] Entered Gate     │
+│ Village of...    │   they bribe him?               │ [21:05] Met Gate Guard   │
+│                  │                                 │ [21:07] Flag gate set    │
+│ ROOM             │ Grask is a coward at heart...   │ [21:09] Rolled 2d6 = 8   │
+│ The Gate  [/art] │ (cites npc [grask]) He'll take  │                          │
+│                  │ the coin and point them to the  │                          │
+│ EXITS            │ sealed door. Read-aloud: "..."  │                          │
+│  → crypt         │                                 │                          │
+│ NPCs HERE        │                                 │                          │
+│  Gate Guard      │                                 │                          │
+├──────────────────┴─────────────────────────────────┴──────────────────────────┤
+│ » /goto crypt-antechamber                                                      │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+## Quick start
+
+```bash
+# Build and package the bundled example adventure
+make build
+make example-module            # → dist/modules/the-sunken-crypt.tar.gz
+
+# Run
+make run
+```
+
+In the app: **Import module…** → enter `dist/modules/the-sunken-crypt.tar.gz` → pick the
+adventure to start a session. Then ask the oracle a question, or use `/help` for commands.
 
 ## Installation
 
-### From Source
-
 ```bash
-# Clone the repository
 git clone https://github.com/theburrowhub/thaimaturgy.git
 cd thaimaturgy
-
-# Build
 go build -o thaimaturgy ./cmd/thaimaturgy
-
-# Run
 ./thaimaturgy
-```
-
-### Go Install
-
-```bash
-go install github.com/theburrowhub/thaimaturgy/cmd/thaimaturgy@latest
 ```
 
 ## Configuration
 
-### Environment Variables
-
-Set your API key using environment variables:
+Set your API key via environment variables (keys are never written to the config file):
 
 ```bash
-# For OpenAI (default provider)
-export THAIM_OPENAI_API_KEY=sk-your-api-key
-# or
-export OPENAI_API_KEY=sk-your-api-key
-
-# For Anthropic
-export THAIM_ANTHROPIC_API_KEY=sk-ant-your-api-key
-# or
-export ANTHROPIC_API_KEY=sk-ant-your-api-key
-
-# Optional: Set provider and model
-export THAIM_PROVIDER=openai  # or anthropic
-export THAIM_MODEL=gpt-4o-mini  # or claude-3-5-sonnet-20241022
+export THAIM_OPENAI_API_KEY=sk-your-api-key       # or OPENAI_API_KEY
+export THAIM_ANTHROPIC_API_KEY=sk-ant-your-key    # or ANTHROPIC_API_KEY
+export THAIM_PROVIDER=anthropic                    # openai | anthropic
+export THAIM_MODEL=claude-sonnet-4-20250514
 ```
 
-### Configuration File
+Config lives in `~/.thaimaturgy/config.json`. On first run a wizard collects your
+language, provider, and API key.
 
-Config is stored in `~/.thaimaturgy/config.json`:
+## DM commands
 
-```json
-{
-  "provider": "openai",
-  "model": "gpt-4o-mini",
-  "temperature": 0.8,
-  "max_tokens": 2048,
-  "show_scanlines": false,
-  "border_style": "rounded",
-  "default_setting": "fantasy",
-  "auto_save": true,
-  "auto_save_interval": 300
-}
-```
-
-**Note**: API keys are never stored in the config file for security. Always use environment variables.
-
-## Usage
-
-### Starting the Game
-
-1. Run `thaimaturgy`
-2. Press ENTER on the boot screen
-3. Select "New Campaign" from the menu
-4. Create your character:
-   - Enter a name
-   - Choose your race
-   - Choose your class
-   - Review your ability scores (press R to reroll)
-   - Confirm to begin
-
-### Commands
-
-Type commands starting with `/` or `:`:
+Type a question to consult the oracle, or a slash command:
 
 | Command | Description |
 |---------|-------------|
-| `/help`, `/h`, `/?` | Show help |
-| `/new`, `/n` | Start new campaign |
-| `/save [name]`, `/s` | Save current game |
-| `/load [name]`, `/l` | Load saved game |
-| `/quit`, `/q` | Exit game |
-| `/roll <dice>`, `/r` | Roll dice (e.g., `/roll 2d6+3`) |
-| `/status`, `/st` | Show character status |
-| `/inv`, `/i` | Show inventory |
-| `/inv add <item>` | Add item to inventory |
-| `/inv rm <item>` | Remove item |
-| `/cond add <cond>` | Add condition |
-| `/cond rm <cond>` | Remove condition |
-| `/char set key=val` | Set character attributes |
-| `/provider <name>` | Set LLM provider |
-| `/model <id>` | Set model |
-| `/temp <0-2>` | Set temperature |
+| `/import <path>` | Import an adventure module (`.tar.gz`) |
+| `/goto <room_id>` | Move the party to a room (marks it visited) |
+| `/room`, `/look` | Show the current room |
+| `/zone [id]` · `/npc <id>` · `/npcs` · `/event <id>` · `/item <id>` | Look up authored content |
+| `/search <query>` | Search the whole module |
+| `/map [zone]` · `/art <id\|path>` | Open a map/art image in your OS viewer |
+| `/note <text>` · `/flag key=true` | Feed the running session state |
+| `/roll <dice>` · `/quests` · `/party` · `/status` | Utilities |
+| `/save [name]` · `/load [name]` · `/quit` | Session management |
 
-### Gameplay
+Navigation: `TAB` switch panels · `Ctrl+↑/↓` or `PgUp/PgDn` scroll · `ESC` library ·
+`^S` save · `^N` toggle voice · `^Q` quit.
 
-- Type any text without `/` to interact with the AI Dungeon Master
-- The DM will describe scenes and present options
-- Use suggested actions or describe your own actions
-- The AI will roll dice when outcomes are uncertain
+## Creating adventures
 
-### Navigation
+- **[docs/adventure-schema.md](docs/adventure-schema.md)** — the full `adventure.json`
+  schema.
+- **[docs/authoring-guide.md](docs/authoring-guide.md)** — step-by-step authoring and
+  packaging.
+- **`examples/adventures/the-sunken-crypt/`** — a complete example to copy from.
 
-| Key | Action |
-|-----|--------|
-| TAB | Switch between panels |
-| PgUp/PgDown | Scroll content |
-| ESC | Return to menu |
-| ENTER | Submit command/action |
-| Ctrl+C | Quit |
-
-## Saves
-
-Game saves are stored in `~/.thaimaturgy/saves/`:
-
-```json
-{
-  "save_name": "my_adventure",
-  "character": {
-    "name": "Aldric",
-    "race": "Human",
-    "class": "Fighter",
-    "level": 3,
-    "abilities": { "str": 16, "dex": 14, ... },
-    "max_hp": 28,
-    "current_hp": 28,
-    "inventory": [...],
-    "conditions": []
-  },
-  "world": {
-    "setting": "fantasy",
-    "current_location": {...},
-    "quests": [...],
-    "day_number": 1
-  },
-  "conversation": {...},
-  "event_log": {...}
-}
-```
-
-## Supported Models
-
-### OpenAI
-- `gpt-4o` - Most capable
-- `gpt-4o-mini` - Fast and affordable (default)
-- `gpt-4-turbo` - Previous generation
-- `gpt-3.5-turbo` - Budget option
-
-### Anthropic
-- `claude-3-5-sonnet-20241022` - Best balance
-- `claude-3-opus-20240229` - Most capable
-- `claude-3-haiku-20240307` - Fastest
+Modules are stored in `~/.thaimaturgy/adventures/`; play sessions in
+`~/.thaimaturgy/sessions/`.
 
 ## Development
 
-### Running Tests
-
 ```bash
-go test ./...
+make check        # fmt-check + vet + tests (race)
+make test         # tests only
+make modules      # package every example adventure into dist/modules/
 ```
 
-### Project Structure
+### Project structure
 
 ```
-thaimaturgy/
-├── cmd/thaimaturgy/
-│   └── main.go           # Entry point
-├── internal/
-│   ├── domain/           # Core types
-│   │   ├── character.go  # Character model
-│   │   ├── world.go      # World state
-│   │   ├── message.go    # Conversation
-│   │   ├── event.go      # Event system
-│   │   ├── config.go     # Configuration
-│   │   └── game.go       # Game session
-│   ├── engine/           # Game engine
-│   │   ├── dice.go       # Dice roller
-│   │   ├── commands.go   # Command parser
-│   │   ├── tools.go      # AI tools
-│   │   └── orchestrator.go
-│   ├── providers/        # LLM providers
-│   │   ├── provider.go   # Interface
-│   │   ├── openai.go     # OpenAI
-│   │   └── anthropic.go  # Anthropic
-│   ├── storage/          # Persistence
-│   │   └── storage.go
-│   └── tui/              # Terminal UI
-│       ├── model.go      # Bubble Tea model
-│       └── styles.go     # Lipgloss styles
-├── go.mod
-├── go.sum
-└── README.md
+cmd/thaimaturgy/        Entry point (TUI)
+internal/
+  domain/               Core types: adventure.go (module), session.go (play state),
+                        character.go, message.go, config.go
+  engine/               oracle.go (LLM loop), tools.go (retrieval + session tools),
+                        commands.go (DM commands), format.go, dice.go
+  providers/            LLM provider interface + OpenAI/Anthropic
+  storage/              module.go (import/validate .tar.gz), storage.go (config/sessions)
+  platform/             OS image-viewer helper
+  tui/                  Bubble Tea model + views + styles
+  tts/                  Optional OpenAI text-to-speech (narrate read-aloud)
+examples/adventures/    Example modules
+docs/                   Schema + authoring guides
 ```
+
+## Roadmap
+
+- **GUI** (`cmd/thaimaturgy-gui`) reusing the same `internal/` core, rendering maps and
+  art **inline** so the DM doesn't need an external viewer.
 
 ## License
 
@@ -255,6 +162,4 @@ MIT License
 
 ## Acknowledgments
 
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
-- [Lip Gloss](https://github.com/charmbracelet/lipgloss) - Style definitions
-- [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Lip Gloss](https://github.com/charmbracelet/lipgloss), [Bubbles](https://github.com/charmbracelet/bubbles)

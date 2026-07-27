@@ -1,0 +1,248 @@
+{
+  "schema_version": "1.0",
+  "id": "the-sunken-crypt",
+  "title": "The Sunken Crypt",
+  "author": "thAImaturgy examples",
+  "system": "D&D 5e",
+  "language": "en",
+  "summary": "A one-session dungeon crawl for 3-5 characters of levels 2-3. The village of Mistmoor is plagued by nightly hauntings since a spring flood cracked open an ancient crypt beneath the marsh. The party must descend into the sunken crypt, uncover the source of the unrest, and lay the restless dead to peace.",
+  "background": "Three centuries ago, the knight-commander Sir Alden Vail was entombed in a marsh crypt with the cursed blade Sorrowmourn, which had driven him to slaughter his own men. Priests bound his spirit with a warding sigil. This spring's flood cracked the crypt and washed away the sigil-stone, freeing Alden's wraith. Every night it walks Mistmoor seeking soldiers to punish. The wraith cannot rest until Sorrowmourn is destroyed or re-consecrated. The goblin scavenger Grask has also crept in through the flood breach and is looting the outer tombs, unaware of what sleeps deeper.",
+  "introduction": "Read aloud when the party arrives:\n\n\"Mistmoor huddles at the edge of the marsh, its lantern-light smeared by fog. The villagers will not meet your eyes after dusk. At the well, an old woman presses a cold iron nail into your palm and whispers: 'He comes when the mist rises. He asks if you served. Do not answer.'\"\n\nThe party is hired (50 gp, or the promise of it) by Elder Rowan to stop the nightly hauntings. The trail leads to a flooded crypt mouth at the marsh's edge.",
+  "conclusion": "POSSIBLE ENDINGS:\n- PEACE: If the party destroys Sorrowmourn (forge-fire, holy water on the altar, or a successful re-consecration) the wraith of Sir Alden fades with gratitude. The hauntings end; Mistmoor rewards them and Rowan reveals she is Alden's last descendant.\n- DOMINATION: If a character claims Sorrowmourn and attunes to it, they gain a potent but cursed blade and the wraith latches onto them as its new 'commander' — a hook for a longer campaign.\n- FAILURE: If the party flees, the wraith grows bolder and Mistmoor is abandoned within a month.",
+  "hooks": [
+    "Elder Rowan's plea and the promise of coin.",
+    "A missing village child was last seen near the crypt mouth (taken by Grask, alive).",
+    "One PC recognizes the wraith's heraldry from a family story."
+  ],
+  "zones": [
+    {
+      "id": "mistmoor",
+      "name": "Village of Mistmoor",
+      "overview": "A fog-bound marsh village. Daytime is safe; after dusk the wraith may appear on the green. Use Mistmoor to deliver the hook, let the party gather rumors, and buy supplies.",
+      "description": "Sagging timber houses on stilts, connected by boardwalks over black water. A single well, a shrine to a forgotten saint, and the Drowned Duck tavern.",
+      "map_image": "assets/maps/mistmoor.png",
+      "connections": ["crypt"],
+      "rooms": [
+        {
+          "id": "mistmoor-green",
+          "name": "The Village Green",
+          "read_aloud": "A muddy commons around a mossy well. Iron charms hang from every eave, twisting in the damp wind.",
+          "dm_notes": "Elder Rowan can be found here by day. At night (if the party lingers), roll for a wraith sighting: it appears at 60 ft and asks, 'Soldier — did you serve under Vail?' Anyone who answers 'yes' is marked (disadvantage vs the wraith later).",
+          "npc_ids": ["elder-rowan"],
+          "event_ids": ["wraith-visitation"],
+          "exits": [
+            {"to": "drowned-duck", "direction": "east", "description": "Boardwalk to the tavern."},
+            {"to": "crypt", "direction": "south", "description": "A mud track to the flooded crypt mouth."}
+          ]
+        },
+        {
+          "id": "drowned-duck",
+          "name": "The Drowned Duck Tavern",
+          "read_aloud": "Warm, smoky, and too quiet. A handful of marsh-folk nurse their ales and watch the door.",
+          "dm_notes": "Rumors available (DC 10 Persuasion or a round of drinks): the flood cracked the old crypt; a goblin was seen dragging a sack; the ghost only bothers those who 'admit to soldiering.' The barkeep sells torches, oil, rope, and 2 flasks of holy water (25 gp each) — the holy water matters for the finale.",
+          "npc_ids": [],
+          "exits": [
+            {"to": "mistmoor-green", "direction": "west"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "crypt",
+      "name": "The Sunken Crypt",
+      "overview": "A partially flooded three-chamber tomb. Water is knee-to-waist deep in the outer hall. Grask lurks in the antechamber; the wraith and Sorrowmourn wait in the sepulchre.",
+      "description": "Cold worked stone slick with algae. Carvings of a kneeling knight repeat along the walls, his face chiseled away.",
+      "map_image": "assets/maps/crypt.png",
+      "connections": ["mistmoor"],
+      "rooms": [
+        {
+          "id": "crypt-mouth",
+          "name": "Flooded Entrance",
+          "read_aloud": "Black water laps at a cracked archway. A broken stone slab — its runes washed to smears — lies half-sunk in the muck.",
+          "dm_notes": "The broken slab is the warding sigil-stone (DC 12 Religion to recognize it once bound something here; DC 15 History for the Vail heraldry). Re-consecrating it later requires holy water and 10 minutes.",
+          "image": "assets/maps/crypt.png",
+          "features": [
+            {"name": "Warding sigil-stone", "skill": "Religion", "dc": 12, "success": "You realize this stone once sealed a vengeful spirit; it could be mended.", "failure": "Just weathered old carvings."}
+          ],
+          "exits": [
+            {"to": "crypt-antechamber", "direction": "down", "description": "Submerged steps lead into the dark."},
+            {"to": "mistmoor", "direction": "north"}
+          ]
+        },
+        {
+          "id": "crypt-antechamber",
+          "name": "The Looted Antechamber",
+          "read_aloud": "Waist-deep water fills a pillared hall. Burial niches gape open, their contents strewn and half-floating. Something small splashes away from your light.",
+          "dm_notes": "Grask the goblin is here with a stolen sack (and the missing child, bound and gagged in a dry niche — a moral choice: save the child or press on). Grask will parley if the party doesn't attack; he knows a 'shiny angry ghost man' guards the deepest room and will trade the child's location for safe passage.",
+          "npc_ids": ["grask"],
+          "event_ids": [],
+          "encounters": [
+            {"name": "Grask (if combat)", "creatures": ["grask"], "difficulty": "easy", "tactics": "Grask fights only if cornered, else flees toward the exit."}
+          ],
+          "treasure": ["12 sp in the sack", "a silver holy symbol (25 gp)"],
+          "exits": [
+            {"to": "crypt-sepulchre", "direction": "east", "description": "A sealed bronze door, its lock long rusted.", "locked": true},
+            {"to": "crypt-mouth", "direction": "up"}
+          ]
+        },
+        {
+          "id": "crypt-sepulchre",
+          "name": "Sepulchre of Sir Alden",
+          "read_aloud": "A dry, cold vault. Atop a marble bier lies an armored figure, hands folded over a black-bladed sword that seems to drink the torchlight.",
+          "dm_notes": "This is the climax. When the sword (Sorrowmourn) is touched, spoken to, or the party admits to being soldiers, the WRAITH OF SIR ALDEN manifests (trigger event 'wraith-manifests'). Resolutions: destroy the blade in the marsh forge-fire, douse it in holy water on the bier while re-consecrating, or claim it (cursed). See the adventure conclusion.",
+          "image": "assets/art/sir-alden.png",
+          "npc_ids": ["wraith-alden"],
+          "event_ids": ["wraith-manifests"],
+          "features": [
+            {"name": "Consecrate the bier", "skill": "Religion", "dc": 13, "success": "With holy water, the sigil flares and the wraith is bound to rest.", "failure": "The rite falters; the wraith attacks with fury (advantage its first turn)."}
+          ],
+          "treasure": ["Sorrowmourn (see item)", "Sir Alden's signet ring (proves Rowan's lineage)"],
+          "exits": [
+            {"to": "crypt-antechamber", "direction": "west"}
+          ]
+        }
+      ]
+    }
+  ],
+  "npcs": [
+    {
+      "id": "elder-rowan",
+      "name": "Elder Rowan",
+      "role": "quest giver",
+      "appearance": "A wiry old woman with river-grey eyes and iron charms sewn into her shawl.",
+      "personality": "Blunt, weary, secretly terrified. She has buried too many neighbors.",
+      "motivations": "Stop the hauntings and protect Mistmoor. She hides that she is the last of the Vail bloodline and feels the family curse is hers to end.",
+      "secrets": "She owns Sir Alden's faded portrait and recognizes his heraldry but is ashamed to admit the wraith is her ancestor.",
+      "voice": "Clipped, proverb-laden marsh dialect. 'Iron for the dead, salt for the living.'",
+      "knowledge": [
+        "The hauntings began after the spring flood cracked the old crypt.",
+        "The ghost asks about soldiering; those who answer suffer for it.",
+        "There are two flasks of holy water at the tavern."
+      ],
+      "sample_dialogue": [
+        "You've the look of folk who solve things with steel. Good. Bring me quiet nights.",
+        "Don't answer him. Whatever he asks — don't answer."
+      ],
+      "disposition": "helpful",
+      "default_location": "mistmoor-green",
+      "image": "assets/art/elder-rowan.png"
+    },
+    {
+      "id": "grask",
+      "name": "Grask the Scavenger",
+      "role": "wildcard",
+      "appearance": "A soggy, twitchy goblin draped in stolen funerary trinkets.",
+      "personality": "Cowardly, greedy, but not cruel. Talks fast, bargains faster.",
+      "motivations": "Loot the crypt and get out alive. He grabbed the child on impulse as a 'hostage' and now regrets it.",
+      "secrets": "He is genuinely frightened of the 'shiny angry ghost man' and will happily trade information for safe passage.",
+      "voice": "High, wheedling, third-person when nervous: 'Grask didn't mean nothing!'",
+      "knowledge": [
+        "A wraith guards the sealed bronze door to the east.",
+        "The bronze door's lock is rusted through — a good shove opens it.",
+        "Where the missing child is hidden."
+      ],
+      "sample_dialogue": [
+        "Peace, peace! Grask only takes what the dead don't need!",
+        "You want the ghost? Down there. Grask wants nothing to do with down there."
+      ],
+      "disposition": "wary",
+      "default_location": "crypt-antechamber",
+      "image": "assets/art/grask.png",
+      "stat_block": {
+        "ac": 15,
+        "max_hp": 7,
+        "speed": "30 ft",
+        "cr": "1/4",
+        "abilities": {"str": 8, "dex": 14, "con": 10, "int": 10, "wis": 8, "cha": 8},
+        "skills": ["Stealth +6"],
+        "traits": ["Nimble Escape: can Disengage or Hide as a bonus action."],
+        "actions": [
+          {"name": "Scimitar", "to_hit": "+4", "damage": "1d6+2 slashing"},
+          {"name": "Sling", "to_hit": "+4", "damage": "1d4+2 bludgeoning"}
+        ]
+      }
+    },
+    {
+      "id": "wraith-alden",
+      "name": "Wraith of Sir Alden Vail",
+      "role": "villain / tragic antagonist",
+      "appearance": "A tall shade in tattered knight's mail, a black sword bleeding shadow, its face a hollow of cold blue light.",
+      "personality": "Sorrowful and wrathful in turns. It is not evil so much as broken — trapped reliving its worst sin.",
+      "motivations": "To punish the soldiers who followed its mad orders — and, beneath the rage, to be released from Sorrowmourn's curse.",
+      "secrets": "It can be reasoned with briefly if a character offers to end the curse rather than fight. Destroying or consecrating Sorrowmourn frees it.",
+      "voice": "Hollow, echoing, formal battlefield cadence. 'Did you serve? ANSWER YOUR COMMANDER.'",
+      "knowledge": [
+        "The truth of Alden's massacre and the priests who bound him.",
+        "That Sorrowmourn is the anchor of its torment."
+      ],
+      "sample_dialogue": [
+        "You wear no colors I know... yet you carry steel into my hall.",
+        "End it. If you have the mercy my priests lacked — END IT."
+      ],
+      "disposition": "hostile",
+      "default_location": "crypt-sepulchre",
+      "image": "assets/art/sir-alden.png",
+      "stat_block": {
+        "ac": 13,
+        "max_hp": 45,
+        "speed": "0 ft, fly 60 ft (hover)",
+        "cr": "5",
+        "abilities": {"str": 6, "dex": 16, "con": 16, "int": 12, "wis": 14, "cha": 15},
+        "traits": [
+          "Incorporeal Movement: can move through creatures and objects (1d10 force if it ends inside).",
+          "Sunlight Sensitivity: disadvantage on attacks and Perception in sunlight.",
+          "Curse Anchor: cannot be destroyed while Sorrowmourn exists; reduced to 0 HP it reforms next dusk."
+        ],
+        "actions": [
+          {"name": "Life Drain", "to_hit": "+6", "damage": "4d8+3 necrotic; target's HP max is reduced by the damage taken"}
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "wraith-visitation",
+      "name": "Nightly Visitation",
+      "trigger": "The party remains on the village green after dusk.",
+      "description": "The wraith drifts across the green and interrogates a random PC.",
+      "read_aloud": "The mist thickens into a shape — a knight of cold light. It fixes on you. 'Soldier. Did you serve under Vail?'",
+      "dm_notes": "This is a scare, not the boss fight. The wraith is testing, not committing. If attacked here it withdraws into the mist after one round (it is not truly present). Anyone who answers 'yes' is MARKED: disadvantage on their first save against the wraith in the sepulchre. Set flag 'pc_marked' if so.",
+      "consequences": "Establishes the threat and the 'don't answer' rule. Escalates the party toward the crypt.",
+      "outcomes": [
+        {"condition": "a PC answers 'yes'", "result": "That PC is marked (flag pc_marked); the wraith lingers, savoring it."},
+        {"condition": "the party stays silent or flees indoors", "result": "The wraith fades; no penalty."}
+      ]
+    },
+    {
+      "id": "wraith-manifests",
+      "name": "The Wraith Awakens",
+      "trigger": "A creature touches or draws Sorrowmourn, admits to being a soldier, or attacks the bier.",
+      "description": "The full manifestation of Sir Alden — the climactic encounter.",
+      "read_aloud": "The shadow bleeding from the blade rises and takes the shape of a knight. 'YOU DARE?' its voice is an avalanche. 'Then answer your commander!'",
+      "dm_notes": "Run the wraith (see NPC wraith-alden). Remember Curse Anchor: it cannot be permanently destroyed while Sorrowmourn exists. Steer clever players toward destroying/consecrating the blade rather than grinding HP. Consecration on the bier (holy water + DC 13 Religion) ends the fight instantly and grants the good ending.",
+      "consequences": "Determines the adventure's ending — see the conclusion.",
+      "outcomes": [
+        {"condition": "Sorrowmourn destroyed or consecrated", "result": "The wraith rests; peace ending."},
+        {"condition": "A PC claims and attunes to Sorrowmourn", "result": "Cursed-blade ending; the wraith adopts them."},
+        {"condition": "The party flees", "result": "Failure ending; Mistmoor is doomed."}
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "sorrowmourn",
+      "name": "Sorrowmourn",
+      "description": "A longsword of black steel that drinks light. It whispers old orders to whoever holds it.",
+      "rarity": "very rare (cursed)",
+      "mechanics": "+1 longsword. On a hit, deals +1d6 necrotic. CURSE (attunement): while attuned you cannot willingly part with it and hear Sir Alden's voice; on a natural 1 you must succeed a DC 13 WIS save or attack the nearest creature. Destroying it (forge-fire or consecration) frees the wraith.",
+      "image": "assets/art/sir-alden.png"
+    }
+  ],
+  "images": [
+    {"id": "map-mistmoor", "path": "assets/maps/mistmoor.png", "kind": "map", "description": "Village of Mistmoor overview map."},
+    {"id": "map-crypt", "path": "assets/maps/crypt.png", "kind": "map", "description": "Three-chamber crypt map."},
+    {"id": "art-rowan", "path": "assets/art/elder-rowan.png", "kind": "art", "description": "Portrait of Elder Rowan."},
+    {"id": "art-grask", "path": "assets/art/grask.png", "kind": "art", "description": "Grask the goblin scavenger."},
+    {"id": "art-alden", "path": "assets/art/sir-alden.png", "kind": "art", "description": "The Wraith of Sir Alden and the blade Sorrowmourn."}
+  ]
+}

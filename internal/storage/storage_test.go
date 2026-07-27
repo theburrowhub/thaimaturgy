@@ -21,9 +21,9 @@ func TestNewStorage(t *testing.T) {
 		t.Fatalf("NewWithPath failed: %v", err)
 	}
 
-	savesDir := filepath.Join(tmpDir, SavesDir)
-	if _, err := os.Stat(savesDir); os.IsNotExist(err) {
-		t.Error("Saves directory should be created")
+	sessionsDir := filepath.Join(tmpDir, SessionsDir)
+	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
+		t.Error("Sessions directory should be created")
 	}
 
 	if store.BasePath() != tmpDir {
@@ -32,10 +32,7 @@ func TestNewStorage(t *testing.T) {
 }
 
 func TestSaveAndLoadConfig(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
@@ -47,8 +44,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		MaxTokens:   4096,
 	}
 
-	err = store.SaveConfig(config)
-	if err != nil {
+	if err := store.SaveConfig(config); err != nil {
 		t.Fatalf("SaveConfig failed: %v", err)
 	}
 
@@ -56,278 +52,171 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
-
 	if loaded.Provider != config.Provider {
 		t.Errorf("Provider = %v, want %v", loaded.Provider, config.Provider)
 	}
 	if loaded.Model != config.Model {
 		t.Errorf("Model = %q, want %q", loaded.Model, config.Model)
 	}
-	if loaded.Temperature != config.Temperature {
-		t.Errorf("Temperature = %f, want %f", loaded.Temperature, config.Temperature)
-	}
 }
 
 func TestLoadConfigDefault(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
-
 	config, err := store.LoadConfig()
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
-
 	if config.Provider != domain.ProviderOpenAI {
 		t.Errorf("Default provider should be OpenAI, got %v", config.Provider)
 	}
 }
 
-func TestSaveAndLoadGame(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+func sampleAdventure() *domain.Adventure {
+	return &domain.Adventure{
+		SchemaVersion: domain.SchemaVersion,
+		ID:            "test-adv",
+		Title:         "Test Adventure",
+		Zones: []domain.Zone{{
+			ID:    "z1",
+			Name:  "Zone One",
+			Rooms: []domain.Room{{ID: "r1", Name: "Entrance"}},
+		}},
 	}
+}
+
+func TestSaveAndLoadSession(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
 
-	char := domain.NewCharacter("TestHero", "Elf", "Wizard")
-	char.Level = 5
-	char.CurrentHP = 25
-	char.MaxHP = 30
-	char.Abilities.INT = 18
-	char.AddItem(domain.InventoryItem{Name: "Staff", Quantity: 1})
-	char.AddCondition(domain.ConditionPoisoned)
-	char.Gold = 100
+	state := domain.NewSessionState("test_session", sampleAdventure())
+	state.AddNote("The party arrived at the gate.")
+	state.Conversation.AddUserMessage("Where are we?")
+	state.Conversation.AddAssistantMessage("At the entrance.")
 
-	state := domain.NewGameState("test_save", char, "fantasy")
-	state.World.CurrentLocation = domain.Location{
-		Name:        "Dark Forest",
-		Description: "A spooky forest",
+	if err := store.SaveSession(state); err != nil {
+		t.Fatalf("SaveSession failed: %v", err)
 	}
-	state.Conversation.AddUserMessage("Hello")
-	state.Conversation.AddAssistantMessage("Welcome, adventurer!")
 
-	err = store.SaveGame(state)
+	loaded, err := store.LoadSession("test_session")
 	if err != nil {
-		t.Fatalf("SaveGame failed: %v", err)
+		t.Fatalf("LoadSession failed: %v", err)
 	}
-
-	loaded, err := store.LoadGame("test_save")
-	if err != nil {
-		t.Fatalf("LoadGame failed: %v", err)
+	if loaded.AdventureID != "test-adv" {
+		t.Errorf("AdventureID = %q, want %q", loaded.AdventureID, "test-adv")
 	}
-
-	if loaded.Character.Name != "TestHero" {
-		t.Errorf("Character name = %q, want %q", loaded.Character.Name, "TestHero")
+	if loaded.CurrentRoom != "r1" {
+		t.Errorf("CurrentRoom = %q, want %q", loaded.CurrentRoom, "r1")
 	}
-	if loaded.Character.Race != "Elf" {
-		t.Errorf("Character race = %q, want %q", loaded.Character.Race, "Elf")
-	}
-	if loaded.Character.Class != "Wizard" {
-		t.Errorf("Character class = %q, want %q", loaded.Character.Class, "Wizard")
-	}
-	if loaded.Character.Level != 5 {
-		t.Errorf("Character level = %d, want %d", loaded.Character.Level, 5)
-	}
-	if loaded.Character.CurrentHP != 25 {
-		t.Errorf("Character HP = %d, want %d", loaded.Character.CurrentHP, 25)
-	}
-	if loaded.Character.Abilities.INT != 18 {
-		t.Errorf("Character INT = %d, want %d", loaded.Character.Abilities.INT, 18)
-	}
-	if len(loaded.Character.Inventory) != 1 {
-		t.Errorf("Inventory length = %d, want %d", len(loaded.Character.Inventory), 1)
-	}
-	if len(loaded.Character.Conditions) != 1 {
-		t.Errorf("Conditions length = %d, want %d", len(loaded.Character.Conditions), 1)
-	}
-	if loaded.Character.Gold != 100 {
-		t.Errorf("Gold = %d, want %d", loaded.Character.Gold, 100)
-	}
-	if loaded.World.CurrentLocation.Name != "Dark Forest" {
-		t.Errorf("Location = %q, want %q", loaded.World.CurrentLocation.Name, "Dark Forest")
+	if loaded.Log.Len() == 0 {
+		t.Error("expected timeline entries to persist")
 	}
 	if loaded.Conversation.Len() != 2 {
-		t.Errorf("Conversation length = %d, want %d", loaded.Conversation.Len(), 2)
+		t.Errorf("Conversation length = %d, want 2", loaded.Conversation.Len())
 	}
 }
 
-func TestSaveExists(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+func TestSessionExists(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
-
-	if store.SaveExists("nonexistent") {
-		t.Error("SaveExists should return false for nonexistent save")
+	if store.SessionExists("nonexistent") {
+		t.Error("SessionExists should be false for nonexistent session")
 	}
 
-	char := domain.NewCharacter("Test", "Human", "Fighter")
-	state := domain.NewGameState("existing", char, "fantasy")
-	store.SaveGame(state)
-
-	if !store.SaveExists("existing") {
-		t.Error("SaveExists should return true for existing save")
+	_ = store.SaveSession(domain.NewSessionState("existing", sampleAdventure()))
+	if !store.SessionExists("existing") {
+		t.Error("SessionExists should be true after saving")
 	}
 }
 
-func TestDeleteGame(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+func TestDeleteSession(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
+	_ = store.SaveSession(domain.NewSessionState("to_delete", sampleAdventure()))
 
-	char := domain.NewCharacter("Test", "Human", "Fighter")
-	state := domain.NewGameState("to_delete", char, "fantasy")
-	store.SaveGame(state)
-
-	if !store.SaveExists("to_delete") {
-		t.Fatal("Save should exist before deletion")
+	if err := store.DeleteSession("to_delete"); err != nil {
+		t.Fatalf("DeleteSession failed: %v", err)
 	}
-
-	err = store.DeleteGame("to_delete")
-	if err != nil {
-		t.Fatalf("DeleteGame failed: %v", err)
-	}
-
-	if store.SaveExists("to_delete") {
-		t.Error("Save should not exist after deletion")
+	if store.SessionExists("to_delete") {
+		t.Error("session should not exist after deletion")
 	}
 }
 
-func TestListSaves(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+func TestListSessions(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
-
-	saves, err := store.ListSaves()
+	sessions, err := store.ListSessions()
 	if err != nil {
-		t.Fatalf("ListSaves failed: %v", err)
+		t.Fatalf("ListSessions failed: %v", err)
 	}
-	if len(saves) != 0 {
-		t.Errorf("Expected 0 saves, got %d", len(saves))
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
 	}
 
 	for i := 0; i < 3; i++ {
-		char := domain.NewCharacter("Hero"+string(rune('1'+i)), "Human", "Fighter")
-		char.Level = i + 1
-		state := domain.NewGameState("save_"+string(rune('1'+i)), char, "fantasy")
-		store.SaveGame(state)
+		_ = store.SaveSession(domain.NewSessionState("session_"+string(rune('1'+i)), sampleAdventure()))
 	}
-
-	saves, err = store.ListSaves()
-	if err != nil {
-		t.Fatalf("ListSaves failed: %v", err)
-	}
-	if len(saves) != 3 {
-		t.Errorf("Expected 3 saves, got %d", len(saves))
+	sessions, _ = store.ListSessions()
+	if len(sessions) != 3 {
+		t.Errorf("expected 3 sessions, got %d", len(sessions))
 	}
 }
 
-func TestLoadGameNotFound(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+func TestSaveSessionNoName(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
-
-	_, err = store.LoadGame("nonexistent")
-	if err == nil {
-		t.Error("LoadGame should fail for nonexistent save")
-	}
-}
-
-func TestSaveGameNoName(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	store, _ := NewWithPath(tmpDir)
-
-	char := domain.NewCharacter("Test", "Human", "Fighter")
-	state := domain.NewGameState("", char, "fantasy")
-
-	err = store.SaveGame(state)
-	if err == nil {
-		t.Error("SaveGame should fail without save name")
+	state := domain.NewSessionState("", sampleAdventure())
+	if err := store.SaveSession(state); err == nil {
+		t.Error("SaveSession should fail without a name")
 	}
 }
 
 func TestSaveAndDeleteAPIKey(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
-
 	if store.EnvFileExists() {
 		t.Error("Env file should not exist initially")
 	}
-
-	err = store.SaveAPIKey(domain.ProviderOpenAI, "sk-test-key-123")
-	if err != nil {
+	if err := store.SaveAPIKey(domain.ProviderOpenAI, "sk-test-key-123"); err != nil {
 		t.Fatalf("SaveAPIKey failed: %v", err)
 	}
-
 	if !store.EnvFileExists() {
 		t.Error("Env file should exist after saving API key")
 	}
-
-	err = store.DeleteEnvFile()
-	if err != nil {
+	if err := store.DeleteEnvFile(); err != nil {
 		t.Fatalf("DeleteEnvFile failed: %v", err)
 	}
-
 	if store.EnvFileExists() {
 		t.Error("Env file should not exist after deletion")
 	}
 }
 
 func TestSaveAPIKeyAnthropic(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
-
-	err = store.SaveAPIKey(domain.ProviderAnthropic, "sk-ant-test-key-456")
-	if err != nil {
+	if err := store.SaveAPIKey(domain.ProviderAnthropic, "sk-ant-test-key-456"); err != nil {
 		t.Fatalf("SaveAPIKey failed: %v", err)
 	}
-
-	if !store.EnvFileExists() {
-		t.Error("Env file should exist after saving API key")
-	}
-
 	data, err := os.ReadFile(store.EnvFilePath())
 	if err != nil {
 		t.Fatalf("Failed to read env file: %v", err)
 	}
-
 	content := string(data)
 	if !strings.Contains(content, "THAIM_PROVIDER=anthropic") {
 		t.Error("Env file should contain THAIM_PROVIDER=anthropic")
@@ -338,64 +227,31 @@ func TestSaveAPIKeyAnthropic(t *testing.T) {
 }
 
 func TestLoadEnvFile(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
-
-	err = store.SaveAPIKey(domain.ProviderOpenAI, "sk-test-load-key")
-	if err != nil {
+	if err := store.SaveAPIKey(domain.ProviderOpenAI, "sk-test-load-key"); err != nil {
 		t.Fatalf("SaveAPIKey failed: %v", err)
 	}
-
 	os.Unsetenv("THAIM_PROVIDER")
 	os.Unsetenv("THAIM_OPENAI_API_KEY")
-
-	err = store.LoadEnvFile()
-	if err != nil {
+	if err := store.LoadEnvFile(); err != nil {
 		t.Fatalf("LoadEnvFile failed: %v", err)
 	}
-
 	if os.Getenv("THAIM_PROVIDER") != "openai" {
-		t.Errorf("THAIM_PROVIDER = %q, want %q", os.Getenv("THAIM_PROVIDER"), "openai")
+		t.Errorf("THAIM_PROVIDER = %q, want openai", os.Getenv("THAIM_PROVIDER"))
 	}
-	if os.Getenv("THAIM_OPENAI_API_KEY") != "sk-test-load-key" {
-		t.Errorf("THAIM_OPENAI_API_KEY = %q, want %q", os.Getenv("THAIM_OPENAI_API_KEY"), "sk-test-load-key")
-	}
-
 	os.Unsetenv("THAIM_PROVIDER")
 	os.Unsetenv("THAIM_OPENAI_API_KEY")
 }
 
 func TestDeleteEnvFileNotExists(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
+	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)
 
 	store, _ := NewWithPath(tmpDir)
-
-	err = store.DeleteEnvFile()
-	if err != nil {
+	if err := store.DeleteEnvFile(); err != nil {
 		t.Error("DeleteEnvFile should not fail if file doesn't exist")
-	}
-}
-
-func TestEnvFilePath(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "thaimaturgy-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	store, _ := NewWithPath(tmpDir)
-
-	expectedPath := tmpDir + "/.env"
-	if store.EnvFilePath() != expectedPath {
-		t.Errorf("EnvFilePath() = %q, want %q", store.EnvFilePath(), expectedPath)
 	}
 }

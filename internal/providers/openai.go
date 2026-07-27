@@ -37,24 +37,24 @@ func (p *OpenAIProvider) SupportsTools() bool {
 }
 
 type openAIRequest struct {
-	Model       string            `json:"model"`
-	Messages    []openAIMessage   `json:"messages"`
-	Tools       []openAITool      `json:"tools,omitempty"`
-	Temperature float64           `json:"temperature,omitempty"`
-	MaxTokens   int               `json:"max_tokens,omitempty"`
+	Model       string          `json:"model"`
+	Messages    []openAIMessage `json:"messages"`
+	Tools       []openAITool    `json:"tools,omitempty"`
+	Temperature float64         `json:"temperature,omitempty"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
 }
 
 type openAIMessage struct {
-	Role       string            `json:"role"`
-	Content    string            `json:"content,omitempty"`
-	Name       string            `json:"name,omitempty"`
-	ToolCalls  []openAIToolCall  `json:"tool_calls,omitempty"`
-	ToolCallID string            `json:"tool_call_id,omitempty"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content,omitempty"`
+	Name       string           `json:"name,omitempty"`
+	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
 }
 
 type openAITool struct {
-	Type     string           `json:"type"`
-	Function openAIFunction   `json:"function"`
+	Type     string         `json:"type"`
+	Function openAIFunction `json:"function"`
 }
 
 type openAIFunction struct {
