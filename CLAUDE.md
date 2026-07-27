@@ -41,7 +41,9 @@ inline) are thin frontends over the same core. Build/run the GUI with `make buil
 ### Layer Structure
 
 ```
-cmd/thaimaturgy/main.go    Entry point, initializes storage, config, and TUI
+cmd/thaimaturgy/main.go       Entry point (TUI)
+cmd/thaimaturgy-gui/main.go   Entry point (Fyne GUI; inline maps/art)
+cmd/thaimaturgy-edit/         Entry point (module authoring editor; forms → .tar.gz)
 internal/
   domain/                  Core types
     adventure.go           Authored module (immutable): Adventure, Zone, Room, NPC,
@@ -60,6 +62,7 @@ internal/
   storage/
     module.go              Import/extract/validate .tar.gz modules (zip-slip safe),
                            list/load adventures, resolve image paths
+    package.go             PackageModule (dir → .tar.gz) + ExtractModule (used by editor)
     storage.go             Config, env/API keys, session save/load
   platform/open.go         OS image-viewer launcher (open/xdg-open/start)
   tui/

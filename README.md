@@ -119,10 +119,21 @@ Navigation: `TAB` switch panels · `Ctrl+↑/↓` or `PgUp/PgDn` scroll · `ESC`
 
 ## Creating adventures
 
+The quickest way is the **visual module editor** (a separate binary):
+
+```bash
+make run-edit      # form-based editor: build content, import images, package .tar.gz
+```
+
+It edits every field through forms, imports images into the module's `assets/`,
+validates with the same rules the player uses, and exports an importable `.tar.gz`.
+
+Reference and hand-authoring:
+
 - **[docs/adventure-schema.md](docs/adventure-schema.md)** — the full `adventure.json`
   schema.
 - **[docs/authoring-guide.md](docs/authoring-guide.md)** — step-by-step authoring and
-  packaging.
+  packaging (editor and by hand).
 - **`examples/adventures/the-sunken-crypt/`** — a complete example to copy from.
 
 Modules are stored in `~/.thaimaturgy/adventures/`; play sessions in
@@ -141,6 +152,7 @@ make modules      # package every example adventure into dist/modules/
 ```
 cmd/thaimaturgy/        Entry point (TUI)
 cmd/thaimaturgy-gui/    Entry point (Fyne desktop GUI, inline images)
+cmd/thaimaturgy-edit/   Entry point (module authoring editor)
 internal/
   domain/               Core types: adventure.go (module), session.go (play state),
                         character.go, message.go, config.go

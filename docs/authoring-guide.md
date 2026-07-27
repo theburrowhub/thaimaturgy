@@ -23,6 +23,26 @@ In the app: choose **Import module…**, enter the path
 `dist/modules/the-sunken-crypt.tar.gz`, then pick the adventure to start a session.
 (Or, inside a session, type `/import dist/modules/the-sunken-crypt.tar.gz`.)
 
+## The easy way: the visual editor
+
+Instead of hand-writing JSON you can use the bundled **module editor**:
+
+```bash
+make run-edit
+```
+
+- **New / Open folder / Open .tar.gz** — start fresh, edit an unpacked module, or
+  edit an existing package.
+- A navigation tree on the left (Adventure · Zones → Rooms · NPCs · Events · Items) with
+  **+Zone / +Room / +NPC / +Event / +Item / Delete** buttons; forms on the right cover
+  every field, including stat blocks, exits, features, encounters, and event outcomes.
+- **Import…** next to any image field copies the file into the module's `assets/` and
+  fills in the relative path for you.
+- **Validate** runs the same checks the player uses; **Save** writes `adventure.json`;
+  **Package .tar.gz…** produces an importable module.
+
+If you'd rather write JSON by hand, follow the steps below.
+
 ## Create your own — step by step
 
 1. **Make the folder layout:**
