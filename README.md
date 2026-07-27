@@ -32,8 +32,10 @@ resolves quick mechanics, and tracks the running state of your session.
   contextual as the adventure unfolds.
 - **Roleplay & mechanics support** — NPC voice/motivations/secrets, read-aloud text,
   stat blocks, and dice (`/roll`, ability checks).
-- **Images** — `/map` and `/art` open maps and artwork in your system's image viewer.
-  (A GUI with inline images is planned — see Roadmap.)
+- **Images** — in the TUI, `/map` and `/art` open maps and artwork in your system's
+  image viewer; the **desktop GUI** (`make run-gui`) renders them inline.
+- **Two frontends, one core** — a terminal UI (`cmd/thaimaturgy`) and a Fyne desktop GUI
+  (`cmd/thaimaturgy-gui`) over the same `internal/` engine.
 
 ## Session view
 
@@ -61,15 +63,16 @@ resolves quick mechanics, and tracks the running state of your session.
 ## Quick start
 
 ```bash
-# Build and package the bundled example adventure
-make build
+# Package the bundled example adventure
 make example-module            # → dist/modules/the-sunken-crypt.tar.gz
 
-# Run
+# Run the terminal UI …
 make run
+# … or the desktop GUI (maps/art render inline)
+make run-gui
 ```
 
-In the app: **Import module…** → enter `dist/modules/the-sunken-crypt.tar.gz` → pick the
+In the app: **Import module…** → select `dist/modules/the-sunken-crypt.tar.gz` → pick the
 adventure to start a session. Then ask the oracle a question, or use `/help` for commands.
 
 ## Installation
@@ -137,6 +140,7 @@ make modules      # package every example adventure into dist/modules/
 
 ```
 cmd/thaimaturgy/        Entry point (TUI)
+cmd/thaimaturgy-gui/    Entry point (Fyne desktop GUI, inline images)
 internal/
   domain/               Core types: adventure.go (module), session.go (play state),
                         character.go, message.go, config.go
@@ -150,11 +154,6 @@ internal/
 examples/adventures/    Example modules
 docs/                   Schema + authoring guides
 ```
-
-## Roadmap
-
-- **GUI** (`cmd/thaimaturgy-gui`) reusing the same `internal/` core, rendering maps and
-  art **inline** so the DM doesn't need an external viewer.
 
 ## License
 

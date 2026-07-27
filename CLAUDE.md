@@ -34,8 +34,9 @@ that module, while tracking the running session state. (v1 — where the AI *was
 and the human played a character — has been removed and its infrastructure repurposed.)
 
 **Guiding principle:** all logic lives in `internal/` and is UI-agnostic, so the TUI
-(`cmd/thaimaturgy`) and a future GUI (`cmd/thaimaturgy-gui`) are thin frontends over the
-same core.
+(`cmd/thaimaturgy`) and the Fyne desktop GUI (`cmd/thaimaturgy-gui`, renders maps/art
+inline) are thin frontends over the same core. Build/run the GUI with `make build-gui` /
+`make run-gui`.
 
 ### Layer Structure
 
