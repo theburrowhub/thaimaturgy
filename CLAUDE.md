@@ -64,6 +64,8 @@ internal/
                            list/load adventures, resolve image paths
     package.go             PackageModule (dir → .tar.gz) + ExtractModule (used by editor)
     storage.go             Config, env/API keys, session save/load
+  ingest/                  Auto-scaffold a module from a folder of images or a PDF
+                           (FromDirectory / FromPDF); pure-Go PDF text+image extraction
   platform/open.go         OS image-viewer launcher (open/xdg-open/start)
   tui/
     model.go               Bubble Tea model + update logic (screens/state)

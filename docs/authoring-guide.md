@@ -41,6 +41,21 @@ make run-edit
 - **Validate** runs the same checks the player uses; **Save** writes `adventure.json`;
   **Package .tar.gz…** produces an importable module.
 
+### Auto-build a module from source material
+
+Two toolbar buttons scaffold a whole module for you — a fast starting point you then
+refine in the forms:
+
+- **Import images…** — pick a folder of images. Each is copied into `assets/`; files
+  whose name looks like a map (`map`, `mapa`, `plan`, `level`, `dungeon`, …) become the
+  zone map, the rest become rooms, and all are cataloged.
+- **Import PDF…** — pick a PDF. Text is extracted **per page** into a room's read-aloud
+  field, and embedded images are extracted into `assets/` and attached to their page.
+  The first page seeds the summary.
+
+Both run entirely in-process (no external tools). Treat the result as a draft: rename
+zones/rooms, split pages into real locations, and flesh out NPCs and events.
+
 If you'd rather write JSON by hand, follow the steps below.
 
 ## Create your own — step by step

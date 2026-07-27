@@ -6,6 +6,11 @@ bin/
 *.so
 *.dylib
 
+# Stray root binaries from `go build ./cmd/...` without -o
+/thaimaturgy
+/thaimaturgy-gui
+/thaimaturgy-edit
+
 # Test binary
 *.test
 

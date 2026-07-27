@@ -127,6 +127,8 @@ make run-edit      # form-based editor: build content, import images, package .t
 
 It edits every field through forms, imports images into the module's `assets/`,
 validates with the same rules the player uses, and exports an importable `.tar.gz`.
+It can also **auto-scaffold a module** from a folder of images or a PDF (extracting
+text per page and embedded images) as a starting point you then refine.
 
 Reference and hand-authoring:
 

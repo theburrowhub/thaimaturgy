@@ -20,6 +20,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/ingest"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
@@ -53,6 +54,8 @@ func (e *editor) buildUI() fyne.CanvasObject {
 		widget.NewButton("New", e.confirmNew),
 		widget.NewButton("Open folder…", e.openFolder),
 		widget.NewButton("Open .tar.gz…", e.openArchive),
+		widget.NewButton("Import images…", e.ingestFolder),
+		widget.NewButton("Import PDF…", e.ingestPDF),
 		widget.NewButton("Save", func() { _ = e.save() }),
 		widget.NewButton("Validate", e.validate),
 		widget.NewButton("Package .tar.gz…", e.packageModule),
@@ -428,6 +431,89 @@ func (e *editor) openArchive() {
 	}, e.win)
 	d.SetFilter(fynestorage.NewExtensionFileFilter([]string{".gz", ".tgz", ".tar.gz"}))
 	d.Show()
+}
+
+// ingestFolder builds a scaffold module from a directory of images.
+func (e *editor) ingestFolder() {
+	e.confirmReplace(func() {
+		dialog.ShowFolderOpen(func(lu fyne.ListableURI, err error) {
+			if err != nil || lu == nil {
+				return
+			}
+			src := lu.Path()
+			e.runIngest("Importing images…", func(dir string) (*domain.Adventure, error) {
+				return ingest.FromDirectory(src, dir, filepath.Base(src))
+			})
+		}, e.win)
+	})
+}
+
+// ingestPDF builds a scaffold module from a PDF (text per page + images).
+func (e *editor) ingestPDF() {
+	e.confirmReplace(func() {
+		d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) {
+			if err != nil || r == nil {
+				return
+			}
+			src := r.URI().Path()
+			_ = r.Close()
+			title := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+			e.runIngest("Importing PDF…", func(dir string) (*domain.Adventure, error) {
+				return ingest.FromPDF(src, dir, title)
+			})
+		}, e.win)
+		d.SetFilter(fynestorage.NewExtensionFileFilter([]string{".pdf"}))
+		d.Show()
+	})
+}
+
+// runIngest creates a fresh working dir, runs build off the UI goroutine, and
+// swaps in the resulting adventure on success.
+func (e *editor) runIngest(msg string, build func(workingDir string) (*domain.Adventure, error)) {
+	dir, err := os.MkdirTemp("", "thaim-edit-*")
+	if err != nil {
+		e.showErr(err)
+		return
+	}
+	e.setStatus(msg)
+	go func() {
+		adv, err := build(dir)
+		fyne.Do(func() {
+			if err != nil {
+				_ = os.RemoveAll(dir)
+				e.showErr(err)
+				e.setStatus("")
+				return
+			}
+			e.adv = adv
+			e.workingDir = dir
+			e.dirty = true
+			e.reload()
+			e.setStatus(fmt.Sprintf("Imported scaffold: %d zone(s), %d room(s), %d image(s). Review, then Save/Package.",
+				len(adv.Zones), countRooms(adv), len(adv.ImageRefs())))
+		})
+	}()
+}
+
+// confirmReplace runs action, first confirming if there are unsaved changes.
+func (e *editor) confirmReplace(action func()) {
+	if !e.dirty {
+		action()
+		return
+	}
+	dialog.ShowConfirm("Discard changes?", "This will replace the current module. Continue?", func(ok bool) {
+		if ok {
+			action()
+		}
+	}, e.win)
+}
+
+func countRooms(adv *domain.Adventure) int {
+	n := 0
+	for _, z := range adv.Zones {
+		n += len(z.Rooms)
+	}
+	return n
 }
 
 func (e *editor) reload() {
