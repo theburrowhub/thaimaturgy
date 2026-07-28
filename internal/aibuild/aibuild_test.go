@@ -130,16 +130,38 @@ func TestBuildRepairsInvalidJSON(t *testing.T) {
 }
 
 func TestBuildReportsTruncation(t *testing.T) {
+	// The model keeps hitting the output limit; every reply is truncated.
 	stub := &seqProvider{resps: []*providers.ChatResponse{
-		{Content: "{\"id\":\"x\"", FinishReason: "max_tokens"}, // truncated
-		{Content: "still not json", FinishReason: "stop"},      // repair also fails
+		{Content: "{\"id\":\"x\",", FinishReason: "max_tokens"},
 	}}
 	_, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir())
 	if err == nil {
-		t.Fatal("expected an error for truncated + unrepairable output")
+		t.Fatal("expected an error for persistently truncated output")
 	}
-	if !strings.Contains(err.Error(), "max_output_tokens") {
-		t.Errorf("error should mention the token limit, got: %v", err)
+	if !strings.Contains(err.Error(), "output limit") {
+		t.Errorf("error should mention the output limit, got: %v", err)
+	}
+	// It must have attempted continuations rather than giving up after one call.
+	if stub.calls < 2 {
+		t.Errorf("expected continuation attempts, got %d calls", stub.calls)
+	}
+}
+
+func TestBuildContinuesTruncatedJSON(t *testing.T) {
+	// First reply is cut off; the continuation completes the JSON.
+	stub := &seqProvider{resps: []*providers.ChatResponse{
+		{Content: `{"id":"x","title":"X","zones":[`, FinishReason: "max_tokens"},
+		{Content: `{"id":"z","name":"Z"}]}`, FinishReason: "stop"},
+	}}
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir())
+	if err != nil {
+		t.Fatalf("build should stitch continuations: %v", err)
+	}
+	if adv.ID != "x" || len(adv.Zones) != 1 {
+		t.Errorf("unexpected stitched result: %+v", adv)
+	}
+	if stub.calls != 2 {
+		t.Errorf("expected 2 calls (initial + continuation), got %d", stub.calls)
 	}
 }
 

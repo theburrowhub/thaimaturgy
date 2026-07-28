@@ -89,25 +89,17 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 	user := buildUserPrompt(title, docText, assets, lim.maxDocChars)
 	images := loadVisionImages(workingDir, assets, lim.visionMaxImages, lim.maxImageBytes)
 
-	req := providers.ChatRequest{
-		Model:       model,
-		Temperature: 0.4,
-		MaxTokens:   lim.maxOutputTokens,
-		Messages: []providers.Message{
-			{Role: providers.RoleSystem, Content: systemPrompt},
-			{Role: providers.RoleUser, Content: user, Images: images},
-		},
-	}
-
-	resp, err := prov.Chat(ctx, req)
+	// Generate the JSON, continuing across responses when the model runs into
+	// the per-reply output-token limit (adventures easily exceed it).
+	raw, finish, err := generate(ctx, prov, model, systemPrompt, user, images, lim.maxOutputTokens)
 	if err != nil {
 		return nil, fmt.Errorf("AI request failed: %w", err)
 	}
 
-	adv, perr := parseAdventure(resp.Content)
-	if perr != nil {
-		// One repair round: ask the model to return only valid, complete JSON.
-		if fixed, ok := tryRepair(ctx, prov, model, resp.Content, lim.maxOutputTokens); ok {
+	adv, perr := parseAdventure(raw)
+	if perr != nil && !truncated(finish) {
+		// Not a truncation — try one repair round for prose/JSON quirks.
+		if fixed, ok := tryRepair(ctx, prov, model, raw, lim.maxOutputTokens); ok {
 			if a2, e2 := parseAdventure(fixed); e2 == nil {
 				adv, perr = a2, nil
 			}
@@ -115,14 +107,51 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 	}
 	if perr != nil {
 		hint := "Try the import again, or raise import.max_output_tokens in config.yaml."
-		if truncated(resp.FinishReason) {
-			hint = "the model's reply was cut off at the output-token limit — raise import.max_output_tokens in config.yaml, or import a smaller source."
+		if truncated(finish) {
+			hint = "the reply exceeded the output limit even after continuing — raise import.max_output_tokens in config.yaml, or import a smaller source."
 		}
 		return nil, fmt.Errorf("the model did not return usable adventure JSON (%v); %s", perr, hint)
 	}
 
 	sanitize(adv, title, workingDir)
 	return adv, nil
+}
+
+// maxContinuations bounds how many "keep going" round-trips generate() will make.
+const maxContinuations = 6
+
+// generate produces the model's JSON, transparently continuing when a reply is
+// cut off at the output-token limit and concatenating the pieces. It returns
+// the combined text and the finish reason of the last reply.
+func generate(ctx context.Context, prov providers.Provider, model, sys, user string, images []providers.ImageData, maxTokens int) (string, string, error) {
+	messages := []providers.Message{
+		{Role: providers.RoleSystem, Content: sys},
+		{Role: providers.RoleUser, Content: user, Images: images},
+	}
+
+	var full strings.Builder
+	finish := ""
+	for i := 0; i <= maxContinuations; i++ {
+		resp, err := prov.Chat(ctx, providers.ChatRequest{
+			Model:     model,
+			MaxTokens: maxTokens,
+			Messages:  messages,
+		})
+		if err != nil {
+			return full.String(), finish, err
+		}
+		full.WriteString(resp.Content)
+		finish = resp.FinishReason
+		if !truncated(finish) {
+			break
+		}
+		// Ask the model to continue exactly where it stopped.
+		messages = append(messages,
+			providers.Message{Role: providers.RoleAssistant, Content: resp.Content},
+			providers.Message{Role: providers.RoleUser, Content: "Continue the JSON exactly where you left off. Output ONLY the remaining raw characters — do not repeat anything already sent, no prose, no markdown fences."},
+		)
+	}
+	return full.String(), finish, nil
 }
 
 func truncated(finishReason string) bool {
