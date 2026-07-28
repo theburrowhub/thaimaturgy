@@ -56,10 +56,16 @@ into the zones/rooms/NPCs:
 
 Requires an API key (`THAIM_OPENAI_API_KEY` or `THAIM_ANTHROPIC_API_KEY`, same as the
 player) — set it and restart the editor. Extraction is pure-Go; interpretation runs
-through the configured provider using vision when the model supports it. References the
-model invents that don't resolve (dangling IDs, missing images) are stripped
-automatically. Treat the result as a strong first draft: review and refine in the forms,
-then **Validate**, **Save**, and **Package .tar.gz**.
+through the configured provider using vision when the model supports it.
+
+Extracted images are **curated with vision** first: each is classified
+(map / portrait / scene / item / decorative) and captioned, decorative junk (borders,
+logos, textures) is discarded, and the classifications guide how maps and art are
+attached to zones, NPCs and rooms. Very large modules are generated across multiple
+requests (continuation) so the JSON isn't cut off. References the model invents that
+don't resolve (dangling IDs, missing images) are stripped automatically. Treat the
+result as a strong first draft: review and refine in the forms, then **Validate**,
+**Save**, and **Package .tar.gz**.
 
 If you'd rather write JSON by hand, follow the steps below.
 

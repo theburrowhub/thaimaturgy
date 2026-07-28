@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/ingest"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 )
 
@@ -162,6 +163,51 @@ func TestBuildContinuesTruncatedJSON(t *testing.T) {
 	}
 	if stub.calls != 2 {
 		t.Errorf("expected 2 calls (initial + continuation), got %d", stub.calls)
+	}
+}
+
+func TestCurationClassifiesAndDropsDecorative(t *testing.T) {
+	work := t.TempDir()
+	writePNG(t, filepath.Join(work, "assets", "art", "a.png"))
+	writePNG(t, filepath.Join(work, "assets", "art", "b.png"))
+
+	stub := &seqProvider{resps: []*providers.ChatResponse{
+		// 1) curation: classify the two images.
+		{Content: `[{"index":1,"kind":"portrait","title":"Hero","description":"A knight"},
+		            {"index":2,"kind":"decorative","title":"Border","description":"page ornament"}]`, FinishReason: "stop"},
+		// 2) generation: reference the surviving image on an NPC.
+		{Content: `{"id":"x","title":"X","zones":[{"id":"z","name":"Z"}],
+		            "npcs":[{"id":"n","name":"N","image":"assets/art/a.png"}]}`, FinishReason: "stop"},
+	}}
+
+	in := []ingest.Asset{{RelPath: "assets/art/a.png"}, {RelPath: "assets/art/b.png"}}
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", in, work)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	// The decorative image must be dropped and its file deleted.
+	if _, statErr := os.Stat(filepath.Join(work, "assets", "art", "b.png")); statErr == nil {
+		t.Error("decorative image file should have been deleted")
+	}
+	// The portrait survives, is referenced, and is captioned in the catalog.
+	if len(adv.NPCs) != 1 || adv.NPCs[0].Image != "assets/art/a.png" {
+		t.Errorf("expected NPC to keep the portrait image, got %+v", adv.NPCs)
+	}
+	var aRef *domain.ImageRef
+	for i := range adv.Images {
+		if adv.Images[i].Path == "assets/art/a.png" {
+			aRef = &adv.Images[i]
+		}
+		if adv.Images[i].Path == "assets/art/b.png" {
+			t.Error("decorative image should not be in the catalog")
+		}
+	}
+	if aRef == nil {
+		t.Fatal("portrait should be cataloged")
+	}
+	if aRef.Kind != "art" || !strings.Contains(aRef.Description, "Hero") {
+		t.Errorf("catalog entry not enriched: %+v", *aRef)
 	}
 }
 

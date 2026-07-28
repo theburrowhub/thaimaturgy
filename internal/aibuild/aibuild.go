@@ -86,8 +86,12 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 	if cfg != nil {
 		model = cfg.Model
 	}
-	user := buildUserPrompt(title, docText, assets, lim.maxDocChars)
-	images := loadVisionImages(workingDir, assets, lim.visionMaxImages, lim.maxImageBytes)
+	// Curate the extracted images with vision: classify (map/portrait/scene/
+	// item/decorative), caption, and drop decorative junk.
+	curated := curateAssets(ctx, prov, model, workingDir, toAssets(assets), lim.maxImageBytes)
+
+	user := buildUserPrompt(title, docText, curated, lim.maxDocChars)
+	images := loadVisionImages(workingDir, curated, lim.visionMaxImages, lim.maxImageBytes)
 
 	// Generate the JSON, continuing across responses when the model runs into
 	// the per-reply output-token limit (adventures easily exceed it).
@@ -114,6 +118,7 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 	}
 
 	sanitize(adv, title, workingDir)
+	enrichCatalog(adv, curated)
 	return adv, nil
 }
 
@@ -199,29 +204,29 @@ Output ONLY a JSON object (no prose, no markdown fences) with this shape:
 RULES:
 - Ground everything in the provided material; do not invent a different adventure. Preserve names, places, NPCs, and plot.
 - Split the content into coherent zones and rooms. Give NPCs motivations, secrets and voice for roleplay, plus a stat block when the source implies combat.
-- IMAGE REFERENCES: you are given a list of extracted image files with their relative paths and source page. Reference them EXACTLY by those relative paths — use map-like images as a zone "map_image" and character/scene art as a room, NPC, or item "image". Only reference paths from the provided list; never invent paths.
+- IMAGE REFERENCES: you are given a list of extracted image files, each already classified (kind) and captioned by a vision model. Reference them EXACTLY by their relative paths — use kind=map images as a zone "map_image"; use kind=portrait/scene/item as the "image" of the matching NPC, room, or item, guided by the caption. Only reference paths from the provided list; never invent paths.
 - Every id must be unique and kebab-case. Every reference (npc_ids, event_ids, exit "to", default_location) must point to an id you actually define.
 - Return valid JSON only.`
 
-func buildUserPrompt(title, docText string, assets []ingest.Asset, maxDocChars int) string {
+func buildUserPrompt(title, docText string, assets []asset, maxDocChars int) string {
 	var sb strings.Builder
 	if title != "" {
 		fmt.Fprintf(&sb, "Suggested title: %s\n\n", title)
 	}
-	sb.WriteString("EXTRACTED IMAGE FILES (reference these relative paths exactly):\n")
+	sb.WriteString("EXTRACTED IMAGE FILES (classified & captioned — reference these relative paths exactly):\n")
 	if len(assets) == 0 {
 		sb.WriteString("(none)\n")
 	}
 	for _, a := range assets {
-		kind := "art"
-		if a.IsMap {
-			kind = "map (likely)"
+		line := "- " + a.rel
+		if a.page > 0 {
+			line += fmt.Sprintf(" (page %d)", a.page)
 		}
-		if a.Page > 0 {
-			fmt.Fprintf(&sb, "- %s (page %d, %s)\n", a.RelPath, a.Page, kind)
-		} else {
-			fmt.Fprintf(&sb, "- %s (%s)\n", a.RelPath, kind)
+		line += " [kind: " + a.kind + "]"
+		if cap := caption(a); cap != "" {
+			line += " " + cap
 		}
+		sb.WriteString(line + "\n")
 	}
 	if strings.TrimSpace(docText) != "" {
 		sb.WriteString("\nDOCUMENT TEXT:\n")
@@ -235,29 +240,31 @@ func buildUserPrompt(title, docText string, assets []ingest.Asset, maxDocChars i
 
 // loadVisionImages reads up to maxVisionImages image files for the model to see,
 // preferring maps first, skipping oversized files and formats vision APIs reject.
-func loadVisionImages(workingDir string, assets []ingest.Asset, maxImages, maxBytes int) []providers.ImageData {
-	ordered := append([]ingest.Asset{}, assets...)
+func loadVisionImages(workingDir string, assets []asset, maxImages, maxBytes int) []providers.ImageData {
 	// Maps first — they carry the most structural information.
-	maps, rest := []ingest.Asset{}, []ingest.Asset{}
-	for _, a := range ordered {
-		if a.IsMap {
+	maps, rest := []asset{}, []asset{}
+	for _, a := range assets {
+		if a.decorative() {
+			continue
+		}
+		if a.isMap() {
 			maps = append(maps, a)
 		} else {
 			rest = append(rest, a)
 		}
 	}
-	ordered = append(maps, rest...)
+	ordered := append(maps, rest...)
 
 	var out []providers.ImageData
 	for _, a := range ordered {
 		if len(out) >= maxImages {
 			break
 		}
-		mt := mediaType(a.RelPath)
+		mt := mediaType(a.rel)
 		if mt == "" {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(workingDir, filepath.FromSlash(a.RelPath)))
+		data, err := os.ReadFile(filepath.Join(workingDir, filepath.FromSlash(a.rel)))
 		if err != nil || len(data) == 0 || len(data) > maxBytes {
 			continue
 		}

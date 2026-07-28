@@ -70,8 +70,10 @@ internal/
     storage.go             Config, env/API keys, session save/load
   ingest/                  Pure-Go extraction: PDF text+images and folder images
                            (ExtractPDF/CollectDirImages; FromPDF/FromDirectory mechanical)
-  aibuild/                 AI-driven module authoring: hands extracted text+images to an
-                           LLM (with vision) → structured Adventure; sanitizes references
+  aibuild/                 AI-driven module authoring: curates extracted images with
+                           vision (classify/caption, drop decorative), hands text+images
+                           to an LLM (with continuation for large outputs) → structured
+                           Adventure; sanitizes references, enriches the image catalog
   platform/open.go         OS image-viewer launcher (open/xdg-open/start)
   nativeui/                Native OS file/save/folder pickers + message dialogs
                            (wraps ncruces/zenity); used by the GUI and editor
