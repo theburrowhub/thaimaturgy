@@ -127,8 +127,10 @@ make run-edit      # form-based editor: build content, import images, package .t
 
 It edits every field through forms, imports images into the module's `assets/`,
 validates with the same rules the player uses, and exports an importable `.tar.gz`.
-It can also **auto-scaffold a module** from a folder of images or a PDF (extracting
-text per page and embedded images) as a starting point you then refine.
+It can also **AI-build a module** from a PDF or a folder of images: the document's text
+and images are handed to your configured LLM (with vision), which designs the zones,
+NPCs, events, and items and references the extracted maps/art back into them. Requires an
+API key; treat the output as a first draft to refine.
 
 Reference and hand-authoring:
 

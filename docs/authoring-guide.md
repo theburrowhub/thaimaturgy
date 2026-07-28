@@ -41,20 +41,25 @@ make run-edit
 - **Validate** runs the same checks the player uses; **Save** writes `adventure.json`;
   **Package .tar.gz…** produces an importable module.
 
-### Auto-build a module from source material
+### AI-build a module from source material
 
-Two toolbar buttons scaffold a whole module for you — a fast starting point you then
-refine in the forms:
+Two toolbar buttons hand the raw material to an **AI model**, which interprets the whole
+document — text *and* images — and returns a complete adventure (zones, rooms, NPCs with
+motivations and stat blocks, events, items), referencing the extracted maps and art back
+into the zones/rooms/NPCs:
 
-- **Import images…** — pick a folder of images. Each is copied into `assets/`; files
-  whose name looks like a map (`map`, `mapa`, `plan`, `level`, `dungeon`, …) become the
-  zone map, the rest become rooms, and all are cataloged.
-- **Import PDF…** — pick a PDF. Text is extracted **per page** into a room's read-aloud
-  field, and embedded images are extracted into `assets/` and attached to their page.
-  The first page seeds the summary.
+- **Import PDF…** — pick a PDF. Its text and embedded images are extracted, then the
+  model designs the module from them (map-like images become zone maps, character/scene
+  art is attached to rooms and NPCs).
+- **Import images…** — pick a folder of images; the model interprets them visually to
+  build the adventure.
 
-Both run entirely in-process (no external tools). Treat the result as a draft: rename
-zones/rooms, split pages into real locations, and flesh out NPCs and events.
+Requires an API key (`THAIM_OPENAI_API_KEY` or `THAIM_ANTHROPIC_API_KEY`, same as the
+player) — set it and restart the editor. Extraction is pure-Go; interpretation runs
+through the configured provider using vision when the model supports it. References the
+model invents that don't resolve (dangling IDs, missing images) are stripped
+automatically. Treat the result as a strong first draft: review and refine in the forms,
+then **Validate**, **Save**, and **Package .tar.gz**.
 
 If you'd rather write JSON by hand, follow the steps below.
 

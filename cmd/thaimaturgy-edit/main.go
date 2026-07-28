@@ -5,12 +5,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -19,14 +21,19 @@ import (
 	fynestorage "fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/theburrowhub/thaimaturgy/internal/aibuild"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
-	"github.com/theburrowhub/thaimaturgy/internal/ingest"
+	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
 type editor struct {
 	app fyne.App
 	win fyne.Window
+
+	config *domain.Config
+	prov   providers.Provider
+	model  string
 
 	adv        *domain.Adventure
 	workingDir string // holds adventure.json + assets/
@@ -39,12 +46,38 @@ type editor struct {
 }
 
 func main() {
-	e := &editor{app: app.New()}
+	store, err := storage.New()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "storage: %v\n", err)
+		os.Exit(1)
+	}
+	_ = store.LoadEnvFile()
+	config, err := store.LoadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config: %v\n", err)
+		os.Exit(1)
+	}
+
+	e := &editor{app: app.New(), config: config, prov: newProvider(config), model: config.Model}
 	e.win = e.app.NewWindow("thAImaturgy — Module Editor")
 	e.win.Resize(fyne.NewSize(1180, 820))
 	e.newAdventure() // start with a template
 	e.win.SetContent(e.buildUI())
 	e.win.ShowAndRun()
+}
+
+func newProvider(c *domain.Config) providers.Provider {
+	switch c.Provider {
+	case domain.ProviderOpenAI:
+		if c.OpenAIAPIKey != "" {
+			return providers.NewOpenAIProvider(c.OpenAIAPIKey)
+		}
+	case domain.ProviderAnthropic:
+		if c.AnthropicAPIKey != "" {
+			return providers.NewAnthropicProvider(c.AnthropicAPIKey)
+		}
+	}
+	return nil
 }
 
 // --- UI scaffold ---------------------------------------------------------
@@ -433,23 +466,31 @@ func (e *editor) openArchive() {
 	d.Show()
 }
 
-// ingestFolder builds a scaffold module from a directory of images.
+// ingestFolder builds a module from a folder of images, interpreted by the AI.
 func (e *editor) ingestFolder() {
+	if !e.requireProvider() {
+		return
+	}
 	e.confirmReplace(func() {
 		dialog.ShowFolderOpen(func(lu fyne.ListableURI, err error) {
 			if err != nil || lu == nil {
 				return
 			}
 			src := lu.Path()
-			e.runIngest("Importing images…", func(dir string) (*domain.Adventure, error) {
-				return ingest.FromDirectory(src, dir, filepath.Base(src))
+			e.runIngest("Interpreting images with AI…", func(dir string) (*domain.Adventure, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				defer cancel()
+				return aibuild.FromImages(ctx, e.prov, e.model, src, dir, filepath.Base(src))
 			})
 		}, e.win)
 	})
 }
 
-// ingestPDF builds a scaffold module from a PDF (text per page + images).
+// ingestPDF builds a module from a PDF: text and images are interpreted by the AI.
 func (e *editor) ingestPDF() {
+	if !e.requireProvider() {
+		return
+	}
 	e.confirmReplace(func() {
 		d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) {
 			if err != nil || r == nil {
@@ -458,13 +499,24 @@ func (e *editor) ingestPDF() {
 			src := r.URI().Path()
 			_ = r.Close()
 			title := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
-			e.runIngest("Importing PDF…", func(dir string) (*domain.Adventure, error) {
-				return ingest.FromPDF(src, dir, title)
+			e.runIngest("Interpreting PDF with AI…", func(dir string) (*domain.Adventure, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				defer cancel()
+				return aibuild.FromPDF(ctx, e.prov, e.model, src, dir, title)
 			})
 		}, e.win)
 		d.SetFilter(fynestorage.NewExtensionFileFilter([]string{".pdf"}))
 		d.Show()
 	})
+}
+
+// requireProvider ensures an AI provider is configured before an AI import.
+func (e *editor) requireProvider() bool {
+	if e.prov != nil {
+		return true
+	}
+	e.showErr(fmt.Errorf("AI import needs an API key. Set THAIM_OPENAI_API_KEY or THAIM_ANTHROPIC_API_KEY (or configure it in the player) and restart the editor"))
+	return false
 }
 
 // runIngest creates a fresh working dir, runs build off the UI goroutine, and

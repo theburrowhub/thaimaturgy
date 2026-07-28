@@ -3,6 +3,7 @@ package providers
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,10 +47,20 @@ type openAIRequest struct {
 
 type openAIMessage struct {
 	Role       string           `json:"role"`
-	Content    string           `json:"content,omitempty"`
+	Content    any              `json:"content,omitempty"` // string or []openAIPart (for images)
 	Name       string           `json:"name,omitempty"`
 	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string           `json:"tool_call_id,omitempty"`
+}
+
+type openAIPart struct {
+	Type     string          `json:"type"`
+	Text     string          `json:"text,omitempty"`
+	ImageURL *openAIImageURL `json:"image_url,omitempty"`
+}
+
+type openAIImageURL struct {
+	URL string `json:"url"`
 }
 
 type openAITool struct {
@@ -158,6 +169,18 @@ func (p *OpenAIProvider) convertRequest(req ChatRequest) openAIRequest {
 			Content:    msg.Content,
 			Name:       msg.Name,
 			ToolCallID: msg.ToolCallID,
+		}
+
+		if len(msg.Images) > 0 {
+			parts := []openAIPart{}
+			if msg.Content != "" {
+				parts = append(parts, openAIPart{Type: "text", Text: msg.Content})
+			}
+			for _, img := range msg.Images {
+				url := "data:" + img.MediaType + ";base64," + base64.StdEncoding.EncodeToString(img.Data)
+				parts = append(parts, openAIPart{Type: "image_url", ImageURL: &openAIImageURL{URL: url}})
+			}
+			messages[i].Content = parts
 		}
 
 		if len(msg.ToolCalls) > 0 {

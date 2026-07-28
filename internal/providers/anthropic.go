@@ -3,6 +3,7 @@ package providers
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,13 +53,20 @@ type anthropicMessage struct {
 }
 
 type anthropicContentBlock struct {
-	Type      string          `json:"type"`
-	Text      string          `json:"text,omitempty"`
-	ID        string          `json:"id,omitempty"`
-	Name      string          `json:"name,omitempty"`
-	Input     json.RawMessage `json:"input,omitempty"`
-	ToolUseID string          `json:"tool_use_id,omitempty"`
-	Content   string          `json:"content,omitempty"`
+	Type      string                `json:"type"`
+	Text      string                `json:"text,omitempty"`
+	ID        string                `json:"id,omitempty"`
+	Name      string                `json:"name,omitempty"`
+	Input     json.RawMessage       `json:"input,omitempty"`
+	ToolUseID string                `json:"tool_use_id,omitempty"`
+	Content   string                `json:"content,omitempty"`
+	Source    *anthropicImageSource `json:"source,omitempty"`
+}
+
+type anthropicImageSource struct {
+	Type      string `json:"type"` // "base64"
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 type anthropicTool struct {
@@ -183,6 +191,22 @@ func (p *AnthropicProvider) convertRequest(req ChatRequest) anthropicRequest {
 					Name:  tc.Function.Name,
 					Input: input,
 				})
+			}
+			content, _ = json.Marshal(blocks)
+		} else if len(msg.Images) > 0 {
+			var blocks []anthropicContentBlock
+			for _, img := range msg.Images {
+				blocks = append(blocks, anthropicContentBlock{
+					Type: "image",
+					Source: &anthropicImageSource{
+						Type:      "base64",
+						MediaType: img.MediaType,
+						Data:      base64.StdEncoding.EncodeToString(img.Data),
+					},
+				})
+			}
+			if msg.Content != "" {
+				blocks = append(blocks, anthropicContentBlock{Type: "text", Text: msg.Content})
 			}
 			content, _ = json.Marshal(blocks)
 		} else {

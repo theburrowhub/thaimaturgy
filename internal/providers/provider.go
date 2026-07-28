@@ -22,6 +22,15 @@ type Message struct {
 	Name       string         `json:"name,omitempty"`
 	ToolCalls  []ToolCallInfo `json:"tool_calls,omitempty"`
 	ToolCallID string         `json:"tool_call_id,omitempty"`
+	// Images attaches inline image inputs to a user message for multimodal
+	// (vision) models. Encoded per-provider at request time.
+	Images []ImageData `json:"-"`
+}
+
+// ImageData is an inline image attached to a message for vision models.
+type ImageData struct {
+	MediaType string // e.g. "image/png", "image/jpeg"
+	Data      []byte
 }
 
 type ToolCallInfo struct {

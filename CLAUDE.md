@@ -58,14 +58,17 @@ internal/
     commands.go            DM command parser/handler (/goto, /npc, /map, /note, …)
     format.go              Renders adventure content to text (shared by tools/commands/TUI)
     dice.go                Dice rolling engine (unchanged from v1)
-  providers/               LLM provider interface + OpenAI/Anthropic
+  providers/               LLM provider interface + OpenAI/Anthropic (text + vision:
+                           Message.Images attaches inline images for multimodal models)
   storage/
     module.go              Import/extract/validate .tar.gz modules (zip-slip safe),
                            list/load adventures, resolve image paths
     package.go             PackageModule (dir → .tar.gz) + ExtractModule (used by editor)
     storage.go             Config, env/API keys, session save/load
-  ingest/                  Auto-scaffold a module from a folder of images or a PDF
-                           (FromDirectory / FromPDF); pure-Go PDF text+image extraction
+  ingest/                  Pure-Go extraction: PDF text+images and folder images
+                           (ExtractPDF/CollectDirImages; FromPDF/FromDirectory mechanical)
+  aibuild/                 AI-driven module authoring: hands extracted text+images to an
+                           LLM (with vision) → structured Adventure; sanitizes references
   platform/open.go         OS image-viewer launcher (open/xdg-open/start)
   tui/
     model.go               Bubble Tea model + update logic (screens/state)

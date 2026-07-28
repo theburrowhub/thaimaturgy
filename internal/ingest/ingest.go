@@ -25,6 +25,98 @@ import (
 // or folder can't produce an unwieldy module.
 const maxImages = 300
 
+// Asset is an extracted image copied into a module working directory.
+type Asset struct {
+	RelPath string // module-relative slash path, e.g. "assets/pdf/img_1_0.png"
+	Page    int    // source PDF page (0 when unknown / from a folder)
+	IsMap   bool   // filename heuristic suggests a map
+}
+
+// ExtractPDF extracts the PDF's text (with page markers) and its embedded images
+// into workingDir/assets/, returning the combined text and the image assets.
+// Used by the AI builder to interpret a document. Errors only if nothing at all
+// could be read.
+func ExtractPDF(pdfPath, workingDir string) (string, []Asset, error) {
+	pageText := extractPDFText(pdfPath)
+	byPage, catalog := extractPDFImages(pdfPath, workingDir)
+
+	maxPage := 0
+	for p := range pageText {
+		if p > maxPage {
+			maxPage = p
+		}
+	}
+	for p := range byPage {
+		if p > maxPage {
+			maxPage = p
+		}
+	}
+	if n, err := api.PageCountFile(pdfPath); err == nil && n > maxPage {
+		maxPage = n
+	}
+
+	var sb strings.Builder
+	for p := 1; p <= maxPage; p++ {
+		t := strings.TrimSpace(pageText[p])
+		if t == "" {
+			continue
+		}
+		fmt.Fprintf(&sb, "\n=== Page %d ===\n%s\n", p, t)
+	}
+
+	var assets []Asset
+	for p := 1; p <= maxPage; p++ {
+		for _, rel := range byPage[p] {
+			assets = append(assets, Asset{RelPath: rel, Page: p})
+		}
+	}
+	for _, c := range catalog {
+		assets = append(assets, Asset{RelPath: c.Path})
+	}
+
+	if strings.TrimSpace(sb.String()) == "" && len(assets) == 0 {
+		return "", nil, fmt.Errorf("could not extract text or images from the PDF")
+	}
+	return sb.String(), assets, nil
+}
+
+// CollectDirImages copies every image in srcDir into workingDir/assets/ (maps vs
+// art by filename heuristic) and returns them as assets, for the AI builder.
+func CollectDirImages(srcDir, workingDir string) ([]Asset, error) {
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && isImage(e.Name()) {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no image files found in %s", srcDir)
+	}
+	if len(names) > maxImages {
+		names = names[:maxImages]
+	}
+
+	var assets []Asset
+	for _, name := range names {
+		isMap := looksLikeMap(name)
+		kind := "art"
+		if isMap {
+			kind = "maps"
+		}
+		rel, err := copyImage(filepath.Join(srcDir, name), workingDir, kind)
+		if err != nil {
+			return nil, err
+		}
+		assets = append(assets, Asset{RelPath: rel, IsMap: isMap})
+	}
+	return assets, nil
+}
+
 var imageExts = map[string]bool{
 	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".bmp": true, ".tiff": true,
 }
