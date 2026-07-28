@@ -46,7 +46,7 @@ func toAssets(in []ingest.Asset) []asset {
 // portrait / scene / item / decorative) and caption it, then drops decorative
 // junk (and deletes those files). It degrades gracefully: any failure leaves the
 // assets with their filename-based defaults and drops nothing.
-func curateAssets(ctx context.Context, prov providers.Provider, model, workingDir string, assets []asset, maxBytes int) []asset {
+func curateAssets(ctx context.Context, prov providers.Provider, model, workingDir string, assets []asset, maxBytes int, progress Progress) []asset {
 	if prov == nil || len(assets) == 0 {
 		return assets
 	}
@@ -70,6 +70,7 @@ func curateAssets(ctx context.Context, prov providers.Provider, model, workingDi
 			classified++
 		}
 		if len(imgs) > 0 {
+			report(progress, "Classifying images %d–%d of %d…", start+1, start+len(imgs), len(assets))
 			classifyBatch(ctx, prov, model, imgs, targets)
 		}
 	}

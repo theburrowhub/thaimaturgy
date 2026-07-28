@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,6 +19,21 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/ingest"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 )
+
+// Progress receives human-readable status lines as the import proceeds. It may
+// be nil.
+type Progress func(stage string)
+
+var importLog = log.New(os.Stderr, "[import] ", log.LstdFlags)
+
+// report logs a stage to stderr and forwards it to the progress callback.
+func report(p Progress, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	importLog.Println(msg)
+	if p != nil {
+		p(msg)
+	}
+}
 
 // Default import caps, used when the config leaves them unset.
 const (
@@ -56,31 +72,35 @@ func limitsFrom(cfg *domain.Config) limits {
 }
 
 // FromPDF extracts a PDF and asks the model to build an adventure from it.
-func FromPDF(ctx context.Context, prov providers.Provider, cfg *domain.Config, pdfPath, workingDir, title string) (*domain.Adventure, error) {
+func FromPDF(ctx context.Context, prov providers.Provider, cfg *domain.Config, pdfPath, workingDir, title string, progress Progress) (*domain.Adventure, error) {
 	if prov == nil {
 		return nil, fmt.Errorf("no AI provider configured; set an API key first")
 	}
+	report(progress, "Extracting text and images from the PDF…")
 	text, assets, err := ingest.ExtractPDF(pdfPath, workingDir)
 	if err != nil {
 		return nil, err
 	}
-	return build(ctx, prov, cfg, title, text, assets, workingDir)
+	report(progress, "Extracted %d image(s) and %d characters of text.", len(assets), len(text))
+	return build(ctx, prov, cfg, title, text, assets, workingDir, progress)
 }
 
 // FromImages copies a folder of images and asks the model to build an adventure
 // by interpreting them visually.
-func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config, srcDir, workingDir, title string) (*domain.Adventure, error) {
+func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config, srcDir, workingDir, title string, progress Progress) (*domain.Adventure, error) {
 	if prov == nil {
 		return nil, fmt.Errorf("no AI provider configured; set an API key first")
 	}
+	report(progress, "Reading images from the folder…")
 	assets, err := ingest.CollectDirImages(srcDir, workingDir)
 	if err != nil {
 		return nil, err
 	}
-	return build(ctx, prov, cfg, title, "", assets, workingDir)
+	report(progress, "Found %d image(s).", len(assets))
+	return build(ctx, prov, cfg, title, "", assets, workingDir, progress)
 }
 
-func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, title, docText string, assets []ingest.Asset, workingDir string) (*domain.Adventure, error) {
+func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, title, docText string, assets []ingest.Asset, workingDir string, progress Progress) (*domain.Adventure, error) {
 	lim := limitsFrom(cfg)
 	model := ""
 	if cfg != nil {
@@ -88,21 +108,30 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 	}
 	// Curate the extracted images with vision: classify (map/portrait/scene/
 	// item/decorative), caption, and drop decorative junk.
-	curated := curateAssets(ctx, prov, model, workingDir, toAssets(assets), lim.maxImageBytes)
+	if len(assets) > 0 {
+		report(progress, "Curating %d image(s) with vision…", len(assets))
+	}
+	curated := curateAssets(ctx, prov, model, workingDir, toAssets(assets), lim.maxImageBytes, progress)
+	if len(assets) > 0 {
+		report(progress, "Kept %d image(s) after curation.", len(curated))
+	}
 
 	user := buildUserPrompt(title, docText, curated, lim.maxDocChars)
 	images := loadVisionImages(workingDir, curated, lim.visionMaxImages, lim.maxImageBytes)
 
 	// Generate the JSON, continuing across responses when the model runs into
 	// the per-reply output-token limit (adventures easily exceed it).
-	raw, finish, err := generate(ctx, prov, model, systemPrompt, user, images, lim.maxOutputTokens)
+	report(progress, "Generating the adventure…")
+	raw, finish, err := generate(ctx, prov, model, systemPrompt, user, images, lim.maxOutputTokens, progress)
 	if err != nil {
 		return nil, fmt.Errorf("AI request failed: %w", err)
 	}
 
+	report(progress, "Parsing the generated JSON…")
 	adv, perr := parseAdventure(raw)
 	if perr != nil && !truncated(finish) {
 		// Not a truncation — try one repair round for prose/JSON quirks.
+		report(progress, "Output wasn't valid JSON; asking the model to repair it…")
 		if fixed, ok := tryRepair(ctx, prov, model, raw, lim.maxOutputTokens); ok {
 			if a2, e2 := parseAdventure(fixed); e2 == nil {
 				adv, perr = a2, nil
@@ -119,7 +148,17 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 
 	sanitize(adv, title, workingDir)
 	enrichCatalog(adv, curated)
+	report(progress, "Done: %d zone(s), %d room(s), %d NPC(s), %d event(s), %d image(s).",
+		len(adv.Zones), countRooms(adv), len(adv.NPCs), len(adv.Events), len(adv.ImageRefs()))
 	return adv, nil
+}
+
+func countRooms(adv *domain.Adventure) int {
+	n := 0
+	for _, z := range adv.Zones {
+		n += len(z.Rooms)
+	}
+	return n
 }
 
 // maxContinuations bounds how many "keep going" round-trips generate() will make.
@@ -128,7 +167,7 @@ const maxContinuations = 6
 // generate produces the model's JSON, transparently continuing when a reply is
 // cut off at the output-token limit and concatenating the pieces. It returns
 // the combined text and the finish reason of the last reply.
-func generate(ctx context.Context, prov providers.Provider, model, sys, user string, images []providers.ImageData, maxTokens int) (string, string, error) {
+func generate(ctx context.Context, prov providers.Provider, model, sys, user string, images []providers.ImageData, maxTokens int, progress Progress) (string, string, error) {
 	messages := []providers.Message{
 		{Role: providers.RoleSystem, Content: sys},
 		{Role: providers.RoleUser, Content: user, Images: images},
@@ -137,6 +176,9 @@ func generate(ctx context.Context, prov providers.Provider, model, sys, user str
 	var full strings.Builder
 	finish := ""
 	for i := 0; i <= maxContinuations; i++ {
+		if i > 0 {
+			report(progress, "Reply reached the token limit; continuing (%d/%d)…", i, maxContinuations)
+		}
 		resp, err := prov.Chat(ctx, providers.ChatRequest{
 			Model:     model,
 			MaxTokens: maxTokens,

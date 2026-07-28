@@ -484,7 +484,7 @@ func (e *editor) ingestFolder() {
 		e.runIngest("Interpreting images with AI…", func(dir string) (*domain.Adventure, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 			defer cancel()
-			return aibuild.FromImages(ctx, e.prov, e.config, src, dir, filepath.Base(src))
+			return aibuild.FromImages(ctx, e.prov, e.config, src, dir, filepath.Base(src), e.progress())
 		})
 	}()
 }
@@ -506,9 +506,14 @@ func (e *editor) ingestPDF() {
 		e.runIngest("Interpreting PDF with AI…", func(dir string) (*domain.Adventure, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 			defer cancel()
-			return aibuild.FromPDF(ctx, e.prov, e.config, src, dir, title)
+			return aibuild.FromPDF(ctx, e.prov, e.config, src, dir, title, e.progress())
 		})
 	}()
+}
+
+// progress returns a callback that mirrors import progress into the status bar.
+func (e *editor) progress() aibuild.Progress {
+	return func(s string) { fyne.Do(func() { e.setStatus(s) }) }
 }
 
 // requireProvider ensures an AI provider is configured before an AI import.
