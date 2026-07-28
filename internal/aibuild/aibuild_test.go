@@ -7,6 +7,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -91,6 +92,65 @@ func TestFromImagesBuildsAndSanitizes(t *testing.T) {
 func TestFromImagesRequiresProvider(t *testing.T) {
 	if _, err := FromImages(context.Background(), nil, nil, t.TempDir(), t.TempDir(), "x"); err == nil {
 		t.Fatal("expected an error when no provider is configured")
+	}
+}
+
+// seqProvider returns a queued sequence of responses (last one repeats).
+type seqProvider struct {
+	resps []*providers.ChatResponse
+	calls int
+}
+
+func (s *seqProvider) Name() string        { return "seq" }
+func (s *seqProvider) SupportsTools() bool { return false }
+func (s *seqProvider) Chat(_ context.Context, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+	i := s.calls
+	if i >= len(s.resps) {
+		i = len(s.resps) - 1
+	}
+	s.calls++
+	return s.resps[i], nil
+}
+
+func TestBuildRepairsInvalidJSON(t *testing.T) {
+	stub := &seqProvider{resps: []*providers.ChatResponse{
+		{Content: "Here is your module: {\"id\":\"x\"", FinishReason: "stop"}, // unparseable
+		{Content: `{"id":"x","title":"X","zones":[{"id":"z","name":"Z"}]}`, FinishReason: "stop"},
+	}}
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir())
+	if err != nil {
+		t.Fatalf("build should recover via repair: %v", err)
+	}
+	if adv.ID != "x" {
+		t.Errorf("ID = %q, want x", adv.ID)
+	}
+	if stub.calls != 2 {
+		t.Errorf("expected a repair call (2 total), got %d", stub.calls)
+	}
+}
+
+func TestBuildReportsTruncation(t *testing.T) {
+	stub := &seqProvider{resps: []*providers.ChatResponse{
+		{Content: "{\"id\":\"x\"", FinishReason: "max_tokens"}, // truncated
+		{Content: "still not json", FinishReason: "stop"},      // repair also fails
+	}}
+	_, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir())
+	if err == nil {
+		t.Fatal("expected an error for truncated + unrepairable output")
+	}
+	if !strings.Contains(err.Error(), "max_output_tokens") {
+		t.Errorf("error should mention the token limit, got: %v", err)
+	}
+}
+
+func TestParseAdventureToleratesTrailingCommas(t *testing.T) {
+	in := `{"id":"a","title":"A","zones":[{"id":"z","name":"Z"},],}`
+	adv, err := parseAdventure(in)
+	if err != nil {
+		t.Fatalf("trailing commas should be tolerated: %v", err)
+	}
+	if adv.ID != "a" || len(adv.Zones) != 1 {
+		t.Errorf("unexpected parse result: %+v", adv)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -23,7 +24,7 @@ const (
 	defVisionMaxImages  = 10
 	defVisionMaxImageMB = 4
 	defMaxDocChars      = 90_000
-	defMaxOutputTokens  = 8000
+	defMaxOutputTokens  = 16000
 )
 
 // limits resolves the effective import caps from config, applying defaults.
@@ -102,12 +103,47 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 	if err != nil {
 		return nil, fmt.Errorf("AI request failed: %w", err)
 	}
-	adv, err := parseAdventure(resp.Content)
-	if err != nil {
-		return nil, fmt.Errorf("the model did not return a usable adventure: %w", err)
+
+	adv, perr := parseAdventure(resp.Content)
+	if perr != nil {
+		// One repair round: ask the model to return only valid, complete JSON.
+		if fixed, ok := tryRepair(ctx, prov, model, resp.Content, lim.maxOutputTokens); ok {
+			if a2, e2 := parseAdventure(fixed); e2 == nil {
+				adv, perr = a2, nil
+			}
+		}
 	}
+	if perr != nil {
+		hint := "Try the import again, or raise import.max_output_tokens in config.yaml."
+		if truncated(resp.FinishReason) {
+			hint = "the model's reply was cut off at the output-token limit — raise import.max_output_tokens in config.yaml, or import a smaller source."
+		}
+		return nil, fmt.Errorf("the model did not return usable adventure JSON (%v); %s", perr, hint)
+	}
+
 	sanitize(adv, title, workingDir)
 	return adv, nil
+}
+
+func truncated(finishReason string) bool {
+	return finishReason == "max_tokens" || finishReason == "length"
+}
+
+// tryRepair asks the model to turn a malformed/truncated reply into a single
+// valid JSON object. Returns the repaired text and whether the call succeeded.
+func tryRepair(ctx context.Context, prov providers.Provider, model, raw string, maxTokens int) (string, bool) {
+	resp, err := prov.Chat(ctx, providers.ChatRequest{
+		Model:     model,
+		MaxTokens: maxTokens,
+		Messages: []providers.Message{
+			{Role: providers.RoleSystem, Content: "You repair malformed or truncated JSON. Output ONLY one complete, valid JSON object — no prose, no markdown fences."},
+			{Role: providers.RoleUser, Content: "Repair and complete this into a single valid JSON object for a D&D adventure module, preserving all of its content:\n\n" + raw},
+		},
+	})
+	if err != nil {
+		return "", false
+	}
+	return resp.Content, true
 }
 
 const systemPrompt = `You are an expert tabletop RPG (D&D 5e) module designer. You receive the raw text and images extracted from a source document (an adventure PDF or a set of images). Interpret ALL of it and produce a single, complete adventure module as JSON.
@@ -231,12 +267,18 @@ func parseAdventure(content string) (*domain.Adventure, error) {
 	if start < 0 || end <= start {
 		return nil, fmt.Errorf("no JSON object found in the response")
 	}
+	candidate := trailingCommaRe.ReplaceAllString(s[start:end+1], "$1")
+
 	var adv domain.Adventure
-	if err := json.Unmarshal([]byte(s[start:end+1]), &adv); err != nil {
+	if err := json.Unmarshal([]byte(candidate), &adv); err != nil {
 		return nil, err
 	}
 	return &adv, nil
 }
+
+// trailingCommaRe matches a comma before a closing brace/bracket — a common
+// LLM JSON slip that strict parsers reject.
+var trailingCommaRe = regexp.MustCompile(`,(\s*[}\]])`)
 
 // sanitize fixes up the model's output so it validates: fills required scalars,
 // drops dangling references, and removes image paths that aren't on disk.
