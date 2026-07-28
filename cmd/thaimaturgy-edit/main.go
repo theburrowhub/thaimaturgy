@@ -482,7 +482,7 @@ func (e *editor) ingestFolder() {
 			return
 		}
 		e.runIngest("Interpreting images with AI…", func(dir string) (*domain.Adventure, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 			defer cancel()
 			return aibuild.FromImages(ctx, e.prov, e.config, src, dir, filepath.Base(src))
 		})
@@ -504,7 +504,7 @@ func (e *editor) ingestPDF() {
 		}
 		title := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
 		e.runIngest("Interpreting PDF with AI…", func(dir string) (*domain.Adventure, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 			defer cancel()
 			return aibuild.FromPDF(ctx, e.prov, e.config, src, dir, title)
 		})

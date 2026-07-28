@@ -22,10 +22,8 @@ type OpenAIProvider struct {
 
 func NewOpenAIProvider(apiKey string) *OpenAIProvider {
 	return &OpenAIProvider{
-		apiKey: apiKey,
-		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
-		},
+		apiKey:     apiKey,
+		httpClient: newHTTPClient(),
 	}
 }
 

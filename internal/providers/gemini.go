@@ -24,12 +24,12 @@ type GeminiProvider struct {
 }
 
 func NewGeminiProvider(apiKey string) *GeminiProvider {
-	return &GeminiProvider{apiKey: apiKey, httpClient: &http.Client{Timeout: 120 * time.Second}}
+	return &GeminiProvider{apiKey: apiKey, httpClient: newHTTPClient()}
 }
 
 // NewGeminiOAuthProvider authenticates with an OAuth access token.
 func NewGeminiOAuthProvider(token string) *GeminiProvider {
-	return &GeminiProvider{oauthToken: token, httpClient: &http.Client{Timeout: 120 * time.Second}}
+	return &GeminiProvider{oauthToken: token, httpClient: newHTTPClient()}
 }
 
 func (p *GeminiProvider) Name() string        { return "gemini" }

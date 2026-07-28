@@ -36,7 +36,7 @@ func NewAnthropicProvider(apiKey string) *AnthropicProvider {
 	return &AnthropicProvider{
 		apiKey:        apiKey,
 		fallbackModel: anthropicFallbackModel,
-		httpClient:    &http.Client{Timeout: 120 * time.Second},
+		httpClient:    newHTTPClient(),
 	}
 }
 
@@ -46,7 +46,7 @@ func NewAnthropicOAuthProvider(token string) *AnthropicProvider {
 	return &AnthropicProvider{
 		oauthToken:    token,
 		fallbackModel: anthropicFallbackModel,
-		httpClient:    &http.Client{Timeout: 120 * time.Second},
+		httpClient:    newHTTPClient(),
 	}
 }
 

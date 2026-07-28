@@ -13,6 +13,16 @@ import (
 // request that fails with a transient network error.
 const maxHTTPAttempts = 4
 
+// newHTTPClient returns the client used by all providers. It has NO overall
+// timeout on purpose: LLM replies — especially large generations — can take
+// several minutes, and a fixed Client.Timeout would abort them mid-flight
+// ("Client.Timeout exceeded while awaiting headers"). Connection setup is still
+// bounded by the default transport (dial/TLS timeouts); the total request time
+// is bounded by the caller's context deadline.
+func newHTTPClient() *http.Client {
+	return &http.Client{}
+}
+
 // doWithRetry runs an HTTP request built by build, retrying transient network
 // failures (connection resets, EOFs, timeouts) with exponential backoff. build
 // must produce a fresh *http.Request on each call because the body is consumed.
