@@ -61,6 +61,9 @@ func main() {
 	}
 
 	authMsg := auth.AutoConfigure(config)
+	if !store.ConfigExists() {
+		_ = store.SaveConfig(config) // generate config.yaml on first run
+	}
 
 	e := &editor{app: app.New(), config: config, prov: providers.New(config), model: config.Model, authMsg: authMsg}
 	e.win = e.app.NewWindow("thAImaturgy — Module Editor")
@@ -473,7 +476,7 @@ func (e *editor) ingestFolder() {
 			e.runIngest("Interpreting images with AI…", func(dir string) (*domain.Adventure, error) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 				defer cancel()
-				return aibuild.FromImages(ctx, e.prov, e.model, src, dir, filepath.Base(src))
+				return aibuild.FromImages(ctx, e.prov, e.config, src, dir, filepath.Base(src))
 			})
 		}, e.win)
 	})
@@ -495,7 +498,7 @@ func (e *editor) ingestPDF() {
 			e.runIngest("Interpreting PDF with AI…", func(dir string) (*domain.Adventure, error) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 				defer cancel()
-				return aibuild.FromPDF(ctx, e.prov, e.model, src, dir, title)
+				return aibuild.FromPDF(ctx, e.prov, e.config, src, dir, title)
 			})
 		}, e.win)
 		d.SetFilter(fynestorage.NewExtensionFileFilter([]string{".pdf"}))

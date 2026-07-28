@@ -11,14 +11,17 @@ import (
 )
 
 const (
-	AppDir      = ".thaimaturgy"
-	ConfigFile  = "config.json"
-	SessionsDir = "sessions"
-	EnvFile     = ".env"
+	AppDir         = ".thaimaturgy"
+	ConfigFile     = "config.json" // legacy; migrated to YAML on first load
+	ConfigFileYAML = "config.yaml"
+	ConfigAppName  = "thaimaturgy"
+	SessionsDir    = "sessions"
+	EnvFile        = ".env"
 )
 
 type Storage struct {
-	basePath string
+	basePath   string // data: adventures, sessions, .env
+	configPath string // the YAML config file
 }
 
 func New() (*Storage, error) {
@@ -28,17 +31,22 @@ func New() (*Storage, error) {
 	}
 
 	basePath := filepath.Join(home, AppDir)
-	s := &Storage{basePath: basePath}
+	// Prefer the OS config directory for the config file; fall back to the data
+	// dir if it can't be determined.
+	configPath := filepath.Join(basePath, ConfigFileYAML)
+	if cfgDir, err := os.UserConfigDir(); err == nil {
+		configPath = filepath.Join(cfgDir, ConfigAppName, ConfigFileYAML)
+	}
 
+	s := &Storage{basePath: basePath, configPath: configPath}
 	if err := s.ensureDirectories(); err != nil {
 		return nil, err
 	}
-
 	return s, nil
 }
 
 func NewWithPath(basePath string) (*Storage, error) {
-	s := &Storage{basePath: basePath}
+	s := &Storage{basePath: basePath, configPath: filepath.Join(basePath, ConfigFileYAML)}
 	if err := s.ensureDirectories(); err != nil {
 		return nil, err
 	}
@@ -49,6 +57,7 @@ func (s *Storage) ensureDirectories() error {
 	dirs := []string{
 		s.basePath,
 		filepath.Join(s.basePath, SessionsDir),
+		filepath.Dir(s.configPath),
 	}
 
 	for _, dir := range dirs {
@@ -60,29 +69,42 @@ func (s *Storage) ensureDirectories() error {
 	return nil
 }
 
-func (s *Storage) BasePath() string {
-	return s.basePath
+func (s *Storage) BasePath() string { return s.basePath }
+
+// ConfigPath returns the path of the YAML configuration file.
+func (s *Storage) ConfigPath() string { return s.configPath }
+
+// ConfigExists reports whether the YAML config file has been written yet.
+func (s *Storage) ConfigExists() bool {
+	_, err := os.Stat(s.configPath)
+	return err == nil
 }
 
+// LoadConfig reads the YAML config, migrating a legacy JSON config if present,
+// and merges any environment overrides.
 func (s *Storage) LoadConfig() (*domain.Config, error) {
-	configPath := filepath.Join(s.basePath, ConfigFile)
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return s.loadConfigFromEnv(), nil
+	if data, err := os.ReadFile(s.configPath); err == nil {
+		config := domain.DefaultConfig()
+		if err := applyYAML(data, config); err != nil {
+			return nil, fmt.Errorf("failed to parse %s: %w", s.configPath, err)
 		}
+		s.mergeEnvConfig(config)
+		return config, nil
+	} else if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	var config domain.Config
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
+	// Migrate a legacy JSON config from the data dir, if any.
+	if data, err := os.ReadFile(filepath.Join(s.basePath, ConfigFile)); err == nil {
+		config := domain.DefaultConfig()
+		if jerr := json.Unmarshal(data, config); jerr == nil {
+			_ = s.SaveConfig(config) // rewrite as YAML at the new location
+			s.mergeEnvConfig(config)
+			return config, nil
+		}
 	}
 
-	s.mergeEnvConfig(&config)
-
-	return &config, nil
+	return s.loadConfigFromEnv(), nil
 }
 
 func (s *Storage) loadConfigFromEnv() *domain.Config {
@@ -121,23 +143,19 @@ func (s *Storage) mergeEnvConfig(config *domain.Config) {
 	}
 }
 
+// SaveConfig writes the config as organized YAML (secrets stripped) to the
+// system config path.
 func (s *Storage) SaveConfig(config *domain.Config) error {
-	configPath := filepath.Join(s.basePath, ConfigFile)
-
-	configToSave := *config
-	configToSave.OpenAIAPIKey = ""
-	configToSave.AnthropicAPIKey = ""
-	configToSave.GeminiAPIKey = ""
-
-	data, err := json.MarshalIndent(configToSave, "", "  ")
+	data, err := marshalYAML(config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.configPath), 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+	if err := os.WriteFile(s.configPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
-
 	return nil
 }
 

@@ -69,6 +69,9 @@ func main() {
 		config: config,
 	}
 	g.authMsg = auth.AutoConfigure(config)
+	if !store.ConfigExists() {
+		_ = store.SaveConfig(config) // generate config.yaml on first run
+	}
 	g.prov = providers.New(config)
 	g.win = g.app.NewWindow("thAImaturgy — DM Oracle")
 	g.win.Resize(fyne.NewSize(1200, 780))
@@ -280,8 +283,12 @@ func (g *gui) ask(input string) {
 		return
 	}
 	g.appendTranscript("_Consulting the oracle…_")
+	timeout := time.Duration(g.config.RequestTimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 90 * time.Second
+	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		resp := g.oracle.Ask(ctx, input)
 		fyne.Do(func() {

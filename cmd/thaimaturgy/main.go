@@ -31,6 +31,14 @@ func main() {
 
 	model := tui.NewModel(store, config)
 
+	// Generate the YAML config on first run (auto-detected credentials applied
+	// inside NewModel are already reflected in config).
+	if !store.ConfigExists() {
+		if err := store.SaveConfig(config); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to write config: %v\n", err)
+		}
+	}
+
 	cleanup := func() {
 		if err := model.Cleanup(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to cleanup: %v\n", err)

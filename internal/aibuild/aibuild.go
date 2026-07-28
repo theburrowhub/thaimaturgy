@@ -18,15 +18,44 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 )
 
+// Default import caps, used when the config leaves them unset.
 const (
-	maxVisionImages = 10      // cap images sent for visual interpretation
-	maxImageBytes   = 4 << 20 // skip individual images larger than 4 MiB
-	maxDocChars     = 90_000  // cap document text sent to the model
-	maxOutputTokens = 8000    // room for a sizable adventure JSON
+	defVisionMaxImages  = 10
+	defVisionMaxImageMB = 4
+	defMaxDocChars      = 90_000
+	defMaxOutputTokens  = 8000
 )
 
+// limits resolves the effective import caps from config, applying defaults.
+type limits struct {
+	visionMaxImages int
+	maxImageBytes   int
+	maxDocChars     int
+	maxOutputTokens int
+}
+
+func limitsFrom(cfg *domain.Config) limits {
+	l := limits{defVisionMaxImages, defVisionMaxImageMB << 20, defMaxDocChars, defMaxOutputTokens}
+	if cfg == nil {
+		return l
+	}
+	if cfg.ImportVisionMaxImages > 0 {
+		l.visionMaxImages = cfg.ImportVisionMaxImages
+	}
+	if cfg.ImportVisionMaxImageMB > 0 {
+		l.maxImageBytes = cfg.ImportVisionMaxImageMB << 20
+	}
+	if cfg.ImportMaxDocChars > 0 {
+		l.maxDocChars = cfg.ImportMaxDocChars
+	}
+	if cfg.ImportMaxOutputTokens > 0 {
+		l.maxOutputTokens = cfg.ImportMaxOutputTokens
+	}
+	return l
+}
+
 // FromPDF extracts a PDF and asks the model to build an adventure from it.
-func FromPDF(ctx context.Context, prov providers.Provider, model, pdfPath, workingDir, title string) (*domain.Adventure, error) {
+func FromPDF(ctx context.Context, prov providers.Provider, cfg *domain.Config, pdfPath, workingDir, title string) (*domain.Adventure, error) {
 	if prov == nil {
 		return nil, fmt.Errorf("no AI provider configured; set an API key first")
 	}
@@ -34,12 +63,12 @@ func FromPDF(ctx context.Context, prov providers.Provider, model, pdfPath, worki
 	if err != nil {
 		return nil, err
 	}
-	return build(ctx, prov, model, title, text, assets, workingDir)
+	return build(ctx, prov, cfg, title, text, assets, workingDir)
 }
 
 // FromImages copies a folder of images and asks the model to build an adventure
 // by interpreting them visually.
-func FromImages(ctx context.Context, prov providers.Provider, model, srcDir, workingDir, title string) (*domain.Adventure, error) {
+func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config, srcDir, workingDir, title string) (*domain.Adventure, error) {
 	if prov == nil {
 		return nil, fmt.Errorf("no AI provider configured; set an API key first")
 	}
@@ -47,17 +76,22 @@ func FromImages(ctx context.Context, prov providers.Provider, model, srcDir, wor
 	if err != nil {
 		return nil, err
 	}
-	return build(ctx, prov, model, title, "", assets, workingDir)
+	return build(ctx, prov, cfg, title, "", assets, workingDir)
 }
 
-func build(ctx context.Context, prov providers.Provider, model, title, docText string, assets []ingest.Asset, workingDir string) (*domain.Adventure, error) {
-	user := buildUserPrompt(title, docText, assets)
-	images := loadVisionImages(workingDir, assets)
+func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, title, docText string, assets []ingest.Asset, workingDir string) (*domain.Adventure, error) {
+	lim := limitsFrom(cfg)
+	model := ""
+	if cfg != nil {
+		model = cfg.Model
+	}
+	user := buildUserPrompt(title, docText, assets, lim.maxDocChars)
+	images := loadVisionImages(workingDir, assets, lim.visionMaxImages, lim.maxImageBytes)
 
 	req := providers.ChatRequest{
 		Model:       model,
 		Temperature: 0.4,
-		MaxTokens:   maxOutputTokens,
+		MaxTokens:   lim.maxOutputTokens,
 		Messages: []providers.Message{
 			{Role: providers.RoleSystem, Content: systemPrompt},
 			{Role: providers.RoleUser, Content: user, Images: images},
@@ -104,7 +138,7 @@ RULES:
 - Every id must be unique and kebab-case. Every reference (npc_ids, event_ids, exit "to", default_location) must point to an id you actually define.
 - Return valid JSON only.`
 
-func buildUserPrompt(title, docText string, assets []ingest.Asset) string {
+func buildUserPrompt(title, docText string, assets []ingest.Asset, maxDocChars int) string {
 	var sb strings.Builder
 	if title != "" {
 		fmt.Fprintf(&sb, "Suggested title: %s\n\n", title)
@@ -136,7 +170,7 @@ func buildUserPrompt(title, docText string, assets []ingest.Asset) string {
 
 // loadVisionImages reads up to maxVisionImages image files for the model to see,
 // preferring maps first, skipping oversized files and formats vision APIs reject.
-func loadVisionImages(workingDir string, assets []ingest.Asset) []providers.ImageData {
+func loadVisionImages(workingDir string, assets []ingest.Asset, maxImages, maxBytes int) []providers.ImageData {
 	ordered := append([]ingest.Asset{}, assets...)
 	// Maps first — they carry the most structural information.
 	maps, rest := []ingest.Asset{}, []ingest.Asset{}
@@ -151,7 +185,7 @@ func loadVisionImages(workingDir string, assets []ingest.Asset) []providers.Imag
 
 	var out []providers.ImageData
 	for _, a := range ordered {
-		if len(out) >= maxVisionImages {
+		if len(out) >= maxImages {
 			break
 		}
 		mt := mediaType(a.RelPath)
@@ -159,7 +193,7 @@ func loadVisionImages(workingDir string, assets []ingest.Asset) []providers.Imag
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(workingDir, filepath.FromSlash(a.RelPath)))
-		if err != nil || len(data) == 0 || len(data) > maxImageBytes {
+		if err != nil || len(data) == 0 || len(data) > maxBytes {
 			continue
 		}
 		out = append(out, providers.ImageData{MediaType: mt, Data: data})

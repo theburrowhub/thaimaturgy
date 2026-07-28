@@ -10,7 +10,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 )
 
-const maxToolIterations = 6
+const defaultMaxToolIterations = 6
 
 // Oracle drives the DM's dialogue with the LLM, grounding every reply in the
 // loaded adventure module and the running session state.
@@ -61,7 +61,11 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 	var totalLatency int64
 	var totalTokens int
 
-	for iteration := 0; iteration < maxToolIterations; iteration++ {
+	maxIter := o.session.Config.OracleMaxToolIterations
+	if maxIter <= 0 {
+		maxIter = defaultMaxToolIterations
+	}
+	for iteration := 0; iteration < maxIter; iteration++ {
 		chat, err := o.provider.Chat(ctx, req)
 		if err != nil {
 			resp.Error = fmt.Errorf("AI request failed: %w", err)
@@ -206,7 +210,11 @@ func (o *Oracle) buildSystemPrompt() string {
 		sb.WriteString("\n")
 	}
 
-	recent := st.Log.GetLast(15)
+	recentN := o.session.Config.OracleRecentTimeline
+	if recentN <= 0 {
+		recentN = 15
+	}
+	recent := st.Log.GetLast(recentN)
 	if len(recent) > 0 {
 		sb.WriteString("\n=== RECENT TIMELINE ===\n")
 		for _, e := range recent {
@@ -227,7 +235,11 @@ func writeSection(sb *strings.Builder, label, value string) {
 // UpdateSummary asks the model to summarize the session log when it grows long,
 // keeping the always-on context bounded.
 func (o *Oracle) UpdateSummary(ctx context.Context) error {
-	if o.session.State.Log.Len() < 20 {
+	threshold := o.session.Config.OracleSummarizeAfter
+	if threshold <= 0 {
+		threshold = 20
+	}
+	if o.session.State.Log.Len() < threshold {
 		return nil
 	}
 

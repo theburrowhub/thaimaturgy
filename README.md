@@ -107,8 +107,27 @@ this order, **auto-configuring itself** and telling you which it picked up:
 
 On startup the app prints a message like *"Auto-detected Anthropic (Claude) via Claude
 Code login (Keychain) — configured automatically."* If nothing is found, a first-run
-wizard collects a provider and API key. Config lives in `~/.thaimaturgy/config.json`
-(API keys and OAuth tokens are never persisted there).
+wizard collects a provider and API key.
+
+### The config file
+
+Settings live in a single, organized **`config.yaml`** in your OS config directory
+(`~/Library/Application Support/thaimaturgy/` on macOS, `~/.config/thaimaturgy/` on
+Linux, `%AppData%\thaimaturgy\` on Windows), shared by the TUI, GUI and editor. It is
+**auto-generated on first run** from what was detected and can then be edited by hand.
+Secrets are never written to it. Sections:
+
+```yaml
+provider:   # name (openai|anthropic|gemini), model, temperature, max_tokens, *_api_key
+ui:         # language (en|es), show_scanlines, border_style
+session:    # auto_save, auto_save_interval, default_setting
+oracle:     # max_tool_iterations, recent_timeline, summarize_after, request_timeout_seconds
+import:      # vision_max_images, vision_max_image_mb, max_doc_chars, max_output_tokens
+tts:        # enabled, voice, model, speed
+```
+
+Data (adventures, sessions) stays under `~/.thaimaturgy/`. A legacy
+`~/.thaimaturgy/config.json` is migrated to YAML automatically.
 
 ## DM commands
 

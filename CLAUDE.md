@@ -126,5 +126,9 @@ THAIM_MODEL              # Model ID
 #    Gemini CLI (~/.gemini/oauth_creds.json) — used as OAuth bearer tokens.
 ```
 
-Config stored in `~/.thaimaturgy/config.json` (no secrets); adventures in
+Config is an organized **`config.yaml`** in the OS config dir
+(`os.UserConfigDir()/thaimaturgy/config.yaml`), shared by all frontends,
+auto-generated on first run and migrated from any legacy `config.json` (no secrets
+written). Sections: provider, ui, session, oracle, import, tts. The nested YAML maps
+to/from the flat `domain.Config` in `storage/config_yaml.go`. Adventures live in
 `~/.thaimaturgy/adventures/`, sessions in `~/.thaimaturgy/sessions/`.

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 )
 
@@ -52,7 +53,7 @@ func TestFromImagesBuildsAndSanitizes(t *testing.T) {
 	  "npcs":[{"id":"villain","name":"Villain","default_location":"badroom"}]
 	}` + "\n```"}
 
-	adv, err := FromImages(context.Background(), stub, "gpt-4o", src, work, "Fallback Title")
+	adv, err := FromImages(context.Background(), stub, &domain.Config{Model: "gpt-4o"}, src, work, "Fallback Title")
 	if err != nil {
 		t.Fatalf("FromImages: %v", err)
 	}
@@ -88,7 +89,7 @@ func TestFromImagesBuildsAndSanitizes(t *testing.T) {
 }
 
 func TestFromImagesRequiresProvider(t *testing.T) {
-	if _, err := FromImages(context.Background(), nil, "m", t.TempDir(), t.TempDir(), "x"); err == nil {
+	if _, err := FromImages(context.Background(), nil, nil, t.TempDir(), t.TempDir(), "x"); err == nil {
 		t.Fatal("expected an error when no provider is configured")
 	}
 }

@@ -61,6 +61,18 @@ type Config struct {
 	AutoSave         bool   `json:"auto_save"`
 	AutoSaveInterval int    `json:"auto_save_interval"`
 
+	// Oracle tunables.
+	OracleMaxToolIterations int `json:"oracle_max_tool_iterations"`
+	OracleRecentTimeline    int `json:"oracle_recent_timeline"`
+	OracleSummarizeAfter    int `json:"oracle_summarize_after"`
+	RequestTimeoutSeconds   int `json:"request_timeout_seconds"`
+
+	// AI import tunables (PDF / images → module).
+	ImportVisionMaxImages  int `json:"import_vision_max_images"`
+	ImportVisionMaxImageMB int `json:"import_vision_max_image_mb"`
+	ImportMaxDocChars      int `json:"import_max_doc_chars"`
+	ImportMaxOutputTokens  int `json:"import_max_output_tokens"`
+
 	TTS TTSConfig `json:"tts"`
 }
 
@@ -76,6 +88,17 @@ func DefaultConfig() *Config {
 		DefaultSetting:   "fantasy",
 		AutoSave:         true,
 		AutoSaveInterval: 300,
+
+		OracleMaxToolIterations: 6,
+		OracleRecentTimeline:    15,
+		OracleSummarizeAfter:    20,
+		RequestTimeoutSeconds:   90,
+
+		ImportVisionMaxImages:  10,
+		ImportVisionMaxImageMB: 4,
+		ImportMaxDocChars:      90000,
+		ImportMaxOutputTokens:  8000,
+
 		TTS: TTSConfig{
 			Enabled: false,
 			Voice:   TTSVoiceOnyx, // Deep, dramatic voice for DM

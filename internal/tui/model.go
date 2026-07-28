@@ -670,8 +670,12 @@ func (m *Model) askOracle(input string) tea.Cmd {
 	}
 	m.loading = true
 	m.statusMsg = m.t("thinking")
+	timeout := time.Duration(m.config.RequestTimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 90 * time.Second
+	}
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		return oracleResponseMsg{resp: m.oracle.Ask(ctx, input)}
 	}
