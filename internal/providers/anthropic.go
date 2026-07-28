@@ -14,7 +14,9 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/types"
 )
 
-const anthropicBaseURL = "https://api.anthropic.com/v1"
+// anthropicBaseURL is a var (not const) so tests can point it at a stub server.
+var anthropicBaseURL = "https://api.anthropic.com/v1"
+
 const anthropicAPIVersion = "2023-06-01"
 
 // anthropicFallbackModel is retried when the requested model is unavailable or
@@ -26,6 +28,7 @@ type AnthropicProvider struct {
 	apiKey        string
 	oauthToken    string // reused from a local Claude Code login (OAuth bearer)
 	fallbackModel string
+	omitTemp      bool // set once a model reports temperature as deprecated
 	httpClient    *http.Client
 }
 
@@ -60,7 +63,7 @@ type anthropicRequest struct {
 	Messages    []anthropicMessage `json:"messages"`
 	System      string             `json:"system,omitempty"`
 	MaxTokens   int                `json:"max_tokens"`
-	Temperature float64            `json:"temperature,omitempty"`
+	Temperature *float64           `json:"temperature,omitempty"` // omitted when nil (some models deprecate it)
 	Tools       []anthropicTool    `json:"tools,omitempty"`
 }
 
@@ -120,16 +123,31 @@ type anthropicResponse struct {
 // retries once with the fallback model so subscription logins keep working.
 func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	resp, err := p.chatOnce(ctx, req)
+
+	// Some newer models reject an explicit temperature ("deprecated"). Drop it
+	// for the rest of this session and retry.
+	if err != nil && !p.omitTemp && temperatureDeprecated(err) {
+		p.omitTemp = true
+		resp, err = p.chatOnce(ctx, req)
+	}
+
+	// If the chosen model is unavailable or throttled, retry with the fallback.
 	if err != nil && p.fallbackModel != "" && req.Model != p.fallbackModel && anthropicRetryable(err) {
 		req.Model = p.fallbackModel
-		return p.chatOnce(ctx, req)
+		resp, err = p.chatOnce(ctx, req)
 	}
+
 	return resp, err
 }
 
 func anthropicRetryable(err error) bool {
 	s := err.Error()
 	return strings.Contains(s, "rate_limit_error") || strings.Contains(s, "not_found_error")
+}
+
+func temperatureDeprecated(err error) bool {
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "temperature") && strings.Contains(s, "deprecated")
 }
 
 func (p *AnthropicProvider) chatOnce(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
@@ -273,11 +291,14 @@ func (p *AnthropicProvider) convertRequest(req ChatRequest) anthropicRequest {
 	}
 
 	anthropicReq := anthropicRequest{
-		Model:       req.Model,
-		Messages:    messages,
-		System:      systemPrompt,
-		MaxTokens:   maxTokens,
-		Temperature: req.Temperature,
+		Model:     req.Model,
+		Messages:  messages,
+		System:    systemPrompt,
+		MaxTokens: maxTokens,
+	}
+	if !p.omitTemp {
+		t := req.Temperature
+		anthropicReq.Temperature = &t
 	}
 
 	if len(tools) > 0 {
