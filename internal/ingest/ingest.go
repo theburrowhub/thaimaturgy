@@ -7,6 +7,7 @@ package ingest
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,6 +21,8 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
+
+var ingestLog = log.New(os.Stderr, "[ingest] ", log.LstdFlags)
 
 // maxImages caps how many images a single ingest will scaffold, so a huge PDF
 // or folder can't produce an unwieldy module.
@@ -118,7 +121,8 @@ func CollectDirImages(srcDir, workingDir string) ([]Asset, error) {
 }
 
 var imageExts = map[string]bool{
-	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".bmp": true, ".tiff": true,
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true,
+	".bmp": true, ".tiff": true, ".tif": true,
 }
 
 func isImage(name string) bool { return imageExts[strings.ToLower(filepath.Ext(name))] }
@@ -217,7 +221,9 @@ func FromDirectory(srcDir, workingDir, title string) (*domain.Adventure, error) 
 	return adv, nil
 }
 
-var pageImgRe = regexp.MustCompile(`_(\d+)_`)
+// pageImgRe captures the page number from pdfcpu's "<base>_<page>_<obj>.<ext>"
+// output names, anchored to the end so digits in <base> can't hijack the match.
+var pageImgRe = regexp.MustCompile(`_(\d+)_[^_]*\.[A-Za-z0-9]+$`)
 
 // FromPDF scaffolds a module from a PDF: text is extracted per page into rooms,
 // and embedded images are extracted into workingDir/assets/ and attached to the
@@ -316,19 +322,26 @@ func extractPDFImages(pdfPath, workingDir string) (map[int][]string, []domain.Im
 	}
 	conf := pdfmodel.NewDefaultConfiguration()
 	if err := api.ExtractImagesFile(pdfPath, outDir, nil, conf); err != nil {
+		ingestLog.Printf("pdfcpu image extraction failed: %v", err)
 		return byPage, catalog
 	}
 
 	entries, _ := os.ReadDir(outDir)
-	count := 0
+	total, kept, skipped := 0, 0, 0
 	for _, e := range entries {
-		if e.IsDir() || !isImage(e.Name()) {
+		if e.IsDir() {
 			continue
 		}
-		count++
-		if count > maxImages {
-			break
+		total++
+		if !isImage(e.Name()) {
+			skipped++
+			ingestLog.Printf("skipping non-image extracted file: %s", e.Name())
+			continue
 		}
+		if kept >= maxImages {
+			continue
+		}
+		kept++
 		rel := filepath.ToSlash(filepath.Join(relDir, e.Name()))
 		if m := pageImgRe.FindStringSubmatch(e.Name()); m != nil {
 			if pg, err := strconv.Atoi(m[1]); err == nil {
@@ -339,6 +352,10 @@ func extractPDFImages(pdfPath, workingDir string) (map[int][]string, []domain.Im
 		catalog = append(catalog, domain.ImageRef{
 			ID: slug(strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))), Path: rel, Kind: "art",
 		})
+	}
+	ingestLog.Printf("pdfcpu wrote %d file(s): %d image(s) kept, %d skipped", total, kept, skipped)
+	if total == 0 {
+		ingestLog.Printf("no embedded images found — the PDF likely uses vector art, inline images, or full-page scans that pdfcpu cannot extract as image streams")
 	}
 	return byPage, catalog
 }

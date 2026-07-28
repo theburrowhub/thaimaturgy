@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -122,3 +123,24 @@ func TestFromPDF(t *testing.T) {
 		}
 	}
 }
+
+func TestPageImgRe(t *testing.T) {
+	cases := map[string]int{
+		"doc_1_Im0.png":               1,
+		"My_Adventure_2024_3_Im2.jpg": 3, // digits in the base name must not win
+		"crypt_12_Im5.png":            12,
+		"no_page_here.png":            -1, // no match
+	}
+	for name, want := range cases {
+		m := pageImgRe.FindStringSubmatch(name)
+		got := -1
+		if m != nil {
+			got = mustAtoi(m[1])
+		}
+		if got != want {
+			t.Errorf("pageImgRe(%q) = %d, want %d", name, got, want)
+		}
+	}
+}
+
+func mustAtoi(s string) int { n, _ := strconv.Atoi(s); return n }

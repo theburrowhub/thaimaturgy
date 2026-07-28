@@ -82,6 +82,9 @@ func FromPDF(ctx context.Context, prov providers.Provider, cfg *domain.Config, p
 		return nil, err
 	}
 	report(progress, "Extracted %d image(s) and %d characters of text.", len(assets), len(text))
+	if len(assets) == 0 {
+		report(progress, "No embedded images could be extracted (the PDF may use vector art or full-page scans). Proceeding with text only.")
+	}
 	return build(ctx, prov, cfg, title, text, assets, workingDir, progress)
 }
 
