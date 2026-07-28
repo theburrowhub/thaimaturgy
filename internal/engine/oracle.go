@@ -95,6 +95,7 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 				Role:       providers.RoleTool,
 				Content:    content,
 				ToolCallID: tc.ID,
+				Name:       tc.Function.Name, // needed by Gemini's functionResponse mapping
 			})
 		}
 	}

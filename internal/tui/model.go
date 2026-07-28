@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/platform"
@@ -204,21 +205,13 @@ func NewModel(store *storage.Storage, config *domain.Config) *Model {
 		logVP:       viewport.New(30, 15),
 		focusPanel:  FocusInput,
 	}
+	m.statusMsg = auth.AutoConfigure(m.config)
 	m.initProvider()
 	return m
 }
 
 func (m *Model) initProvider() {
-	switch m.config.Provider {
-	case domain.ProviderOpenAI:
-		if m.config.OpenAIAPIKey != "" {
-			m.provider = providers.NewOpenAIProvider(m.config.OpenAIAPIKey)
-		}
-	case domain.ProviderAnthropic:
-		if m.config.AnthropicAPIKey != "" {
-			m.provider = providers.NewAnthropicProvider(m.config.AnthropicAPIKey)
-		}
-	}
+	m.provider = providers.New(m.config)
 	m.initTTS()
 }
 
@@ -816,16 +809,21 @@ func (m *Model) updateConfig(msg tea.KeyMsg) tea.Cmd {
 		}
 	case ConfigStepProvider:
 		switch msg.Type {
-		case tea.KeyUp, tea.KeyDown:
-			m.configProvider = (m.configProvider + 1) % 2
+		case tea.KeyUp:
+			m.configProvider = (m.configProvider + 2) % 3
+		case tea.KeyDown:
+			m.configProvider = (m.configProvider + 1) % 3
 		case tea.KeyEnter:
 			m.configStep = ConfigStepAPIKey
 			m.apiKeyInput.Focus()
 			m.apiKeyInput.SetValue("")
-			if m.configProvider == 0 {
+			switch m.configProvider {
+			case 0:
 				m.apiKeyInput.Placeholder = "sk-... (OpenAI API Key)"
-			} else {
+			case 1:
 				m.apiKeyInput.Placeholder = "sk-ant-... (Anthropic API Key)"
+			default:
+				m.apiKeyInput.Placeholder = "AIza... (Gemini API Key)"
 			}
 		case tea.KeyEsc:
 			m.configStep = ConfigStepLanguage
@@ -838,17 +836,21 @@ func (m *Model) updateConfig(msg tea.KeyMsg) tea.Cmd {
 				return nil
 			}
 			var provider domain.ProviderType
-			if m.configProvider == 0 {
+			switch m.configProvider {
+			case 0:
 				provider = domain.ProviderOpenAI
 				m.config.Provider = domain.ProviderOpenAI
 				m.config.OpenAIAPIKey = apiKey
-				m.config.Model = "gpt-4o"
-			} else {
+			case 1:
 				provider = domain.ProviderAnthropic
 				m.config.Provider = domain.ProviderAnthropic
 				m.config.AnthropicAPIKey = apiKey
-				m.config.Model = "claude-sonnet-4-20250514"
+			default:
+				provider = domain.ProviderGemini
+				m.config.Provider = domain.ProviderGemini
+				m.config.GeminiAPIKey = apiKey
 			}
+			m.config.Model = domain.DefaultModel(provider)
 			if err := m.storage.SaveAPIKey(provider, apiKey); err != nil {
 				m.errorMsg = m.t("configErrorSaveKey") + err.Error()
 				return nil

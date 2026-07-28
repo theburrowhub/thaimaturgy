@@ -58,8 +58,11 @@ internal/
     commands.go            DM command parser/handler (/goto, /npc, /map, /note, …)
     format.go              Renders adventure content to text (shared by tools/commands/TUI)
     dice.go                Dice rolling engine (unchanged from v1)
-  providers/               LLM provider interface + OpenAI/Anthropic (text + vision:
-                           Message.Images attaches inline images for multimodal models)
+  providers/               LLM provider interface + OpenAI/Anthropic/Gemini (text +
+                           vision via Message.Images); providers.New(config) factory.
+                           Anthropic/Gemini support OAuth tokens (reused local logins)
+  auth/                    Detect local credentials (env keys, Claude Code login via
+                           Keychain/file, Gemini CLI login) + AutoConfigure(config)
   storage/
     module.go              Import/extract/validate .tar.gz modules (zip-slip safe),
                            list/load adventures, resolve image paths
@@ -109,12 +112,19 @@ Defined in `tui/model.go`:
 
 ### Provider Configuration
 
-Set via environment variables:
+Providers: `openai`, `anthropic`, `gemini`. Credentials are auto-detected at startup
+(`auth.AutoConfigure`) and the chosen source is reported to the user. Sources, in order:
+
 ```bash
-THAIM_OPENAI_API_KEY    # or OPENAI_API_KEY
-THAIM_ANTHROPIC_API_KEY # or ANTHROPIC_API_KEY
-THAIM_PROVIDER          # openai or anthropic
-THAIM_MODEL             # Model ID
+# 1) Environment API keys (never persisted)
+THAIM_OPENAI_API_KEY     # or OPENAI_API_KEY
+THAIM_ANTHROPIC_API_KEY  # or ANTHROPIC_API_KEY
+THAIM_GEMINI_API_KEY     # or GEMINI_API_KEY / GOOGLE_API_KEY
+THAIM_PROVIDER           # openai | anthropic | gemini
+THAIM_MODEL              # Model ID
+# 2) Reused local logins: Claude Code (Keychain / ~/.claude/.credentials.json),
+#    Gemini CLI (~/.gemini/oauth_creds.json) — used as OAuth bearer tokens.
 ```
 
-Config stored in `~/.thaimaturgy/config.json`, saves in `~/.thaimaturgy/saves/`.
+Config stored in `~/.thaimaturgy/config.json` (no secrets); adventures in
+`~/.thaimaturgy/adventures/`, sessions in `~/.thaimaturgy/sessions/`.

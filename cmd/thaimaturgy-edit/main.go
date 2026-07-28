@@ -22,6 +22,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/aibuild"
+	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
@@ -31,9 +32,10 @@ type editor struct {
 	app fyne.App
 	win fyne.Window
 
-	config *domain.Config
-	prov   providers.Provider
-	model  string
+	config  *domain.Config
+	prov    providers.Provider
+	model   string
+	authMsg string
 
 	adv        *domain.Adventure
 	workingDir string // holds adventure.json + assets/
@@ -58,26 +60,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	e := &editor{app: app.New(), config: config, prov: newProvider(config), model: config.Model}
+	authMsg := auth.AutoConfigure(config)
+
+	e := &editor{app: app.New(), config: config, prov: providers.New(config), model: config.Model, authMsg: authMsg}
 	e.win = e.app.NewWindow("thAImaturgy — Module Editor")
 	e.win.Resize(fyne.NewSize(1180, 820))
 	e.newAdventure() // start with a template
 	e.win.SetContent(e.buildUI())
-	e.win.ShowAndRun()
-}
-
-func newProvider(c *domain.Config) providers.Provider {
-	switch c.Provider {
-	case domain.ProviderOpenAI:
-		if c.OpenAIAPIKey != "" {
-			return providers.NewOpenAIProvider(c.OpenAIAPIKey)
-		}
-	case domain.ProviderAnthropic:
-		if c.AnthropicAPIKey != "" {
-			return providers.NewAnthropicProvider(c.AnthropicAPIKey)
-		}
+	if authMsg != "" {
+		e.setStatus(authMsg)
 	}
-	return nil
+	e.win.ShowAndRun()
 }
 
 // --- UI scaffold ---------------------------------------------------------

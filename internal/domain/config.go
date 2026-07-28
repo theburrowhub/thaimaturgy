@@ -6,6 +6,7 @@ type Language string
 const (
 	ProviderOpenAI    ProviderType = "openai"
 	ProviderAnthropic ProviderType = "anthropic"
+	ProviderGemini    ProviderType = "gemini"
 )
 
 const (
@@ -39,6 +40,16 @@ type Config struct {
 
 	OpenAIAPIKey    string `json:"openai_api_key,omitempty"`
 	AnthropicAPIKey string `json:"anthropic_api_key,omitempty"`
+	GeminiAPIKey    string `json:"gemini_api_key,omitempty"`
+
+	// OAuth tokens reused from local logins (Claude Code, Gemini CLI). Never
+	// persisted to disk.
+	AnthropicOAuthToken string `json:"-"`
+	GeminiOAuthToken    string `json:"-"`
+
+	// AuthSource is a human description of how the active credential was
+	// obtained (e.g. "Claude Code login"). Not persisted.
+	AuthSource string `json:"-"`
 
 	SystemPrompt string `json:"system_prompt,omitempty"`
 
@@ -80,12 +91,37 @@ func (c *Config) GetActiveAPIKey() string {
 		return c.OpenAIAPIKey
 	case ProviderAnthropic:
 		return c.AnthropicAPIKey
+	case ProviderGemini:
+		return c.GeminiAPIKey
 	}
 	return ""
 }
 
+// IsConfigured reports whether the active provider has a usable credential,
+// either an API key or a reused local OAuth token.
 func (c *Config) IsConfigured() bool {
-	return c.GetActiveAPIKey() != ""
+	switch c.Provider {
+	case ProviderOpenAI:
+		return c.OpenAIAPIKey != ""
+	case ProviderAnthropic:
+		return c.AnthropicAPIKey != "" || c.AnthropicOAuthToken != ""
+	case ProviderGemini:
+		return c.GeminiAPIKey != "" || c.GeminiOAuthToken != ""
+	}
+	return false
+}
+
+// DefaultModel returns a sensible default model id for a provider.
+func DefaultModel(p ProviderType) string {
+	switch p {
+	case ProviderOpenAI:
+		return "gpt-4o"
+	case ProviderAnthropic:
+		return "claude-sonnet-4-20250514"
+	case ProviderGemini:
+		return "gemini-2.5-flash"
+	}
+	return ""
 }
 
 func (c *Config) GetSystemPrompt() string {

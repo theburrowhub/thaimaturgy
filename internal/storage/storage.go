@@ -110,6 +110,15 @@ func (s *Storage) mergeEnvConfig(config *domain.Config) {
 	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" && config.AnthropicAPIKey == "" {
 		config.AnthropicAPIKey = apiKey
 	}
+	if apiKey := os.Getenv("THAIM_GEMINI_API_KEY"); apiKey != "" {
+		config.GeminiAPIKey = apiKey
+	}
+	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" && config.GeminiAPIKey == "" {
+		config.GeminiAPIKey = apiKey
+	}
+	if apiKey := os.Getenv("GOOGLE_API_KEY"); apiKey != "" && config.GeminiAPIKey == "" {
+		config.GeminiAPIKey = apiKey
+	}
 }
 
 func (s *Storage) SaveConfig(config *domain.Config) error {
@@ -118,6 +127,7 @@ func (s *Storage) SaveConfig(config *domain.Config) error {
 	configToSave := *config
 	configToSave.OpenAIAPIKey = ""
 	configToSave.AnthropicAPIKey = ""
+	configToSave.GeminiAPIKey = ""
 
 	data, err := json.MarshalIndent(configToSave, "", "  ")
 	if err != nil {
@@ -249,6 +259,8 @@ func (s *Storage) SaveAPIKey(provider domain.ProviderType, apiKey string) error 
 		envContent = fmt.Sprintf("THAIM_PROVIDER=openai\nTHAIM_OPENAI_API_KEY=%s\n", apiKey)
 	case domain.ProviderAnthropic:
 		envContent = fmt.Sprintf("THAIM_PROVIDER=anthropic\nTHAIM_ANTHROPIC_API_KEY=%s\n", apiKey)
+	case domain.ProviderGemini:
+		envContent = fmt.Sprintf("THAIM_PROVIDER=gemini\nTHAIM_GEMINI_API_KEY=%s\n", apiKey)
 	default:
 		return fmt.Errorf("unknown provider: %s", provider)
 	}

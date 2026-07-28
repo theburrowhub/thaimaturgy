@@ -54,16 +54,13 @@ func (m *Model) viewConfig() string {
 	case ConfigStepProvider:
 		sb.WriteString(m.styles.WizardTitle.Render(m.t("configTitle")) + "\n\n")
 		sb.WriteString(m.t("configNoKey") + "\n\n")
-		for i, p := range []string{"OpenAI (GPT-4o)", "Anthropic (Claude)"} {
+		for i, p := range []string{"OpenAI (GPT-4o)", "Anthropic (Claude)", "Google (Gemini)"} {
 			sb.WriteString(m.renderOption(p, i == m.configProvider))
 		}
 		sb.WriteString("\n" + m.styles.Hint.Render(m.t("configHintArrows")))
 	case ConfigStepAPIKey:
 		sb.WriteString(m.styles.WizardTitle.Render(m.t("configTitle")) + "\n\n")
-		providerName := "OpenAI"
-		if m.configProvider == 1 {
-			providerName = "Anthropic"
-		}
+		providerName := []string{"OpenAI", "Anthropic", "Gemini"}[m.configProvider]
 		sb.WriteString(fmt.Sprintf(m.t("configEnterKey")+"\n\n", providerName))
 		sb.WriteString(m.apiKeyInput.View() + "\n\n")
 		sb.WriteString(m.styles.Hint.Render(m.t("configKeyTemp")) + "\n")
@@ -71,10 +68,8 @@ func (m *Model) viewConfig() string {
 	case ConfigStepConfirm:
 		sb.WriteString(m.styles.WizardTitle.Render(m.t("configTitle")) + "\n\n")
 		sb.WriteString(m.styles.Success.Render(m.t("configSuccess")) + "\n\n")
-		providerName, model := "OpenAI", "gpt-4o"
-		if m.configProvider == 1 {
-			providerName, model = "Anthropic", "claude-sonnet-4-20250514"
-		}
+		providerName := []string{"OpenAI", "Anthropic", "Gemini"}[m.configProvider]
+		model := []string{"gpt-4o", "claude-sonnet-4-20250514", "gemini-2.5-flash"}[m.configProvider]
 		sb.WriteString(fmt.Sprintf("%s: %s\n", m.t("provider"), m.styles.StatValue.Render(providerName)))
 		sb.WriteString(fmt.Sprintf("%s: %s\n\n", m.t("model"), m.styles.StatValue.Render(model)))
 		sb.WriteString(m.styles.Hint.Render(m.t("configHintEnter")))

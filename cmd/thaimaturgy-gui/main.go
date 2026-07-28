@@ -19,6 +19,7 @@ import (
 	fynestorage "fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
@@ -26,11 +27,12 @@ import (
 )
 
 type gui struct {
-	app    fyne.App
-	win    fyne.Window
-	store  *storage.Storage
-	config *domain.Config
-	prov   providers.Provider
+	app     fyne.App
+	win     fyne.Window
+	store   *storage.Storage
+	config  *domain.Config
+	prov    providers.Provider
+	authMsg string
 
 	// Active session (nil on the library screen).
 	session *domain.Session
@@ -66,25 +68,12 @@ func main() {
 		store:  store,
 		config: config,
 	}
-	g.prov = newProvider(config)
+	g.authMsg = auth.AutoConfigure(config)
+	g.prov = providers.New(config)
 	g.win = g.app.NewWindow("thAImaturgy — DM Oracle")
 	g.win.Resize(fyne.NewSize(1200, 780))
 	g.showLibrary()
 	g.win.ShowAndRun()
-}
-
-func newProvider(c *domain.Config) providers.Provider {
-	switch c.Provider {
-	case domain.ProviderOpenAI:
-		if c.OpenAIAPIKey != "" {
-			return providers.NewOpenAIProvider(c.OpenAIAPIKey)
-		}
-	case domain.ProviderAnthropic:
-		if c.AnthropicAPIKey != "" {
-			return providers.NewAnthropicProvider(c.AnthropicAPIKey)
-		}
-	}
-	return nil
 }
 
 // --- Library screen ------------------------------------------------------
@@ -122,14 +111,17 @@ func (g *gui) showLibrary() {
 		list.Add(widget.NewLabel("No adventures yet. Import a module to begin."))
 	}
 
-	warn := widget.NewLabel("")
+	bottom := container.NewVBox()
+	if g.authMsg != "" {
+		bottom.Add(widget.NewLabelWithStyle("✓ "+g.authMsg, fyne.TextAlignCenter, fyne.TextStyle{Italic: true}))
+	}
 	if !g.config.IsConfigured() {
-		warn = widget.NewLabelWithStyle("⚠ No API key configured — the oracle is disabled (you can still browse).",
-			fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
+		bottom.Add(widget.NewLabelWithStyle("⚠ No credentials found — the oracle is disabled (you can still browse). Set an API key or log in with Claude Code / Gemini.",
+			fyne.TextAlignCenter, fyne.TextStyle{Italic: true}))
 	}
 
 	top := container.NewVBox(title, importBtn, widget.NewSeparator())
-	content := container.NewBorder(top, warn, nil, nil, container.NewVScroll(list))
+	content := container.NewBorder(top, bottom, nil, nil, container.NewVScroll(list))
 	g.win.SetContent(content)
 }
 

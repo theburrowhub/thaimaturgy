@@ -84,19 +84,31 @@ go build -o thaimaturgy ./cmd/thaimaturgy
 ./thaimaturgy
 ```
 
-## Configuration
+## Configuration & credentials
 
-Set your API key via environment variables (keys are never written to the config file):
+thAImaturgy supports **OpenAI, Anthropic, and Google Gemini**, and finds credentials in
+this order, **auto-configuring itself** and telling you which it picked up:
 
-```bash
-export THAIM_OPENAI_API_KEY=sk-your-api-key       # or OPENAI_API_KEY
-export THAIM_ANTHROPIC_API_KEY=sk-ant-your-key    # or ANTHROPIC_API_KEY
-export THAIM_PROVIDER=anthropic                    # openai | anthropic
-export THAIM_MODEL=claude-sonnet-4-20250514
-```
+1. **Environment API keys** (never written to disk):
 
-Config lives in `~/.thaimaturgy/config.json`. On first run a wizard collects your
-language, provider, and API key.
+   ```bash
+   export THAIM_OPENAI_API_KEY=sk-...        # or OPENAI_API_KEY
+   export THAIM_ANTHROPIC_API_KEY=sk-ant-... # or ANTHROPIC_API_KEY
+   export THAIM_GEMINI_API_KEY=AIza...       # or GEMINI_API_KEY / GOOGLE_API_KEY
+   export THAIM_PROVIDER=anthropic           # openai | anthropic | gemini
+   export THAIM_MODEL=claude-sonnet-4-20250514
+   ```
+
+2. **Reused local logins** — if you're already signed in with another tool, it's picked
+   up automatically:
+   - **Claude Code** — the OAuth login from the macOS Keychain (`Claude Code-credentials`)
+     or `~/.claude/.credentials.json`.
+   - **Gemini CLI** — the OAuth login in `~/.gemini/oauth_creds.json`.
+
+On startup the app prints a message like *"Auto-detected Anthropic (Claude) via Claude
+Code login (Keychain) — configured automatically."* If nothing is found, a first-run
+wizard collects a provider and API key. Config lives in `~/.thaimaturgy/config.json`
+(API keys and OAuth tokens are never persisted there).
 
 ## DM commands
 

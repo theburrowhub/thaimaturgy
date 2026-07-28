@@ -18,12 +18,24 @@ const anthropicAPIVersion = "2023-06-01"
 
 type AnthropicProvider struct {
 	apiKey     string
+	oauthToken string // reused from a local Claude Code login (OAuth bearer)
 	httpClient *http.Client
 }
 
 func NewAnthropicProvider(apiKey string) *AnthropicProvider {
 	return &AnthropicProvider{
 		apiKey: apiKey,
+		httpClient: &http.Client{
+			Timeout: 120 * time.Second,
+		},
+	}
+}
+
+// NewAnthropicOAuthProvider authenticates with an OAuth access token reused from
+// a local Claude Code login instead of an API key.
+func NewAnthropicOAuthProvider(token string) *AnthropicProvider {
+	return &AnthropicProvider{
+		oauthToken: token,
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -115,8 +127,14 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", p.apiKey)
 	httpReq.Header.Set("anthropic-version", anthropicAPIVersion)
+	if p.oauthToken != "" {
+		// Reused Claude Code login: authenticate as an OAuth bearer.
+		httpReq.Header.Set("Authorization", "Bearer "+p.oauthToken)
+		httpReq.Header.Set("anthropic-beta", "oauth-2025-04-20")
+	} else {
+		httpReq.Header.Set("x-api-key", p.apiKey)
+	}
 
 	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
