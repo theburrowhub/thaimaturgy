@@ -15,13 +15,12 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
-	fynestorage "fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
+	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
@@ -129,30 +128,31 @@ func (g *gui) showLibrary() {
 }
 
 func (g *gui) importDialog() {
-	d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) {
-		if err != nil || r == nil {
+	go func() {
+		path, ok := nativeui.OpenFile("Import adventure module",
+			nativeui.Filter{Name: "Adventure module", Patterns: []string{"*.tar.gz", "*.tgz", "*.gz"}})
+		if !ok {
 			return
 		}
-		path := r.URI().Path()
-		_ = r.Close()
 		adv, err := g.store.ImportModule(path)
 		if err != nil {
-			dialog.ShowError(err, g.win)
+			nativeui.Error("Import failed", err.Error())
 			return
 		}
-		dialog.ShowInformation("Imported", "Imported: "+adv.Title, g.win)
-		g.showLibrary()
-	}, g.win)
-	d.SetFilter(fynestorage.NewExtensionFileFilter([]string{".gz", ".tgz", ".tar.gz"}))
-	d.Show()
+		nativeui.Info("Imported", "Imported: "+adv.Title)
+		fyne.Do(func() { g.showLibrary() })
+	}()
 }
+
+func (g *gui) showErr(err error)          { go nativeui.Error("thAImaturgy", err.Error()) }
+func (g *gui) showInfo(title, msg string) { go nativeui.Info(title, msg) }
 
 // --- Session screen ------------------------------------------------------
 
 func (g *gui) startSession(advID string) {
 	adv, err := g.store.LoadAdventure(advID)
 	if err != nil {
-		dialog.ShowError(err, g.win)
+		g.showErr(err)
 		return
 	}
 	name := advID
@@ -165,12 +165,12 @@ func (g *gui) startSession(advID string) {
 func (g *gui) resumeSession(name string) {
 	state, err := g.store.LoadSession(name)
 	if err != nil {
-		dialog.ShowError(err, g.win)
+		g.showErr(err)
 		return
 	}
 	adv, err := g.store.LoadAdventure(state.AdventureID)
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("adventure %q not found; import it first", state.AdventureID), g.win)
+		g.showErr(fmt.Errorf("adventure %q not found; import it first", state.AdventureID))
 		return
 	}
 	g.openSession(state, adv)
@@ -267,7 +267,7 @@ func (g *gui) submit(raw string) {
 		}
 	} else if result.Message != "" {
 		if !result.Success {
-			dialog.ShowError(fmt.Errorf("%s", result.Message), g.win)
+			g.showErr(fmt.Errorf("%s", result.Message))
 		} else {
 			g.appendTranscript("_" + result.Message + "_")
 		}
@@ -279,7 +279,7 @@ func (g *gui) submit(raw string) {
 
 func (g *gui) ask(input string) {
 	if g.oracle == nil || g.prov == nil {
-		dialog.ShowError(fmt.Errorf("no AI provider configured; set an API key"), g.win)
+		g.showErr(fmt.Errorf("no AI provider configured; set an API key"))
 		return
 	}
 	g.appendTranscript("_Consulting the oracle…_")
@@ -293,7 +293,7 @@ func (g *gui) ask(input string) {
 		resp := g.oracle.Ask(ctx, input)
 		fyne.Do(func() {
 			if resp.Error != nil {
-				dialog.ShowError(resp.Error, g.win)
+				g.showErr(resp.Error)
 				return
 			}
 			g.appendTranscript(resp.Answer)
@@ -311,7 +311,7 @@ func (g *gui) save() {
 		return
 	}
 	if err := g.store.SaveSession(g.session.State); err != nil {
-		dialog.ShowError(err, g.win)
+		g.showErr(err)
 		return
 	}
 	g.appendTranscript("_Session saved._")
@@ -380,7 +380,7 @@ func (g *gui) showImage(relPath string) {
 	}
 	abs, err := g.store.ResolveImagePath(g.session.Adventure.ID, relPath)
 	if err != nil {
-		dialog.ShowError(err, g.win)
+		g.showErr(err)
 		return
 	}
 	img := canvas.NewImageFromFile(abs)
@@ -396,7 +396,7 @@ func (g *gui) openZoneMap() {
 	}
 	z := g.session.Adventure.Zone(g.session.State.CurrentZone)
 	if z == nil || z.MapImage == "" {
-		dialog.ShowInformation("No map", "This zone has no map image.", g.win)
+		g.showInfo("No map", "This zone has no map image.")
 		return
 	}
 	g.showImage(z.MapImage)

@@ -73,6 +73,8 @@ internal/
   aibuild/                 AI-driven module authoring: hands extracted text+images to an
                            LLM (with vision) → structured Adventure; sanitizes references
   platform/open.go         OS image-viewer launcher (open/xdg-open/start)
+  nativeui/                Native OS file/save/folder pickers + message dialogs
+                           (wraps ncruces/zenity); used by the GUI and editor
   tui/
     model.go               Bubble Tea model + update logic (screens/state)
     views.go               View rendering for each screen

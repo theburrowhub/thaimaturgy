@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/lipgloss v0.10.0
 	github.com/gopxl/beep/v2 v2.1.1
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
+	github.com/ncruces/zenity v0.10.14
 	github.com/pdfcpu/pdfcpu v0.13.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -16,13 +17,14 @@ require (
 require (
 	fyne.io/systray v1.12.2 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
-	github.com/FyshOS/fancyfs v0.0.1 // indirect
+	github.com/akavel/rsrc v0.10.2 // indirect
 	github.com/anthonynsimon/bild v0.14.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/containerd/console v1.0.4-0.20230313162750-1ae8d489ac81 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dchest/jsmin v0.0.0-20220218165748-59f39799265f // indirect
 	github.com/ebitengine/oto/v3 v3.3.2 // indirect
 	github.com/ebitengine/purego v0.8.0 // indirect
 	github.com/fredbi/uri v1.1.1 // indirect
@@ -43,7 +45,9 @@ require (
 	github.com/hhrutter/pkcs7 v0.2.2 // indirect
 	github.com/hhrutter/tiff v1.0.3 // indirect
 	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade // indirect
+	github.com/josephspurrier/goversioninfo v1.7.0 // indirect
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.18 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
@@ -56,6 +60,7 @@ require (
 	github.com/nicksnyder/go-i18n/v2 v2.5.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rymdport/portal v0.4.2 // indirect
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect

@@ -17,13 +17,12 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
-	fynestorage "fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/aibuild"
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
@@ -315,17 +314,20 @@ func (e *editor) deleteSelected() {
 		e.info("Select a zone, room, NPC, event, or item to delete.")
 		return
 	}
-	dialog.ShowConfirm("Delete", "Delete "+e.nodeLabel(uid)+"?", func(ok bool) {
-		if !ok {
+	label := e.nodeLabel(uid)
+	go func() {
+		if !nativeui.Confirm("Delete", "Delete "+label+"?") {
 			return
 		}
-		e.removeByUID(uid)
-		e.dirty = true
-		e.currentUID = ""
-		e.refreshTree()
-		e.formHost.Objects = []fyne.CanvasObject{widget.NewLabel("Deleted.")}
-		e.formHost.Refresh()
-	}, e.win)
+		fyne.Do(func() {
+			e.removeByUID(uid)
+			e.dirty = true
+			e.currentUID = ""
+			e.refreshTree()
+			e.formHost.Objects = []fyne.CanvasObject{widget.NewLabel("Deleted.")}
+			e.formHost.Refresh()
+		})
+	}()
 }
 
 func (e *editor) removeByUID(uid string) {
@@ -372,12 +374,14 @@ func (e *editor) confirmNew() {
 		e.reload()
 		return
 	}
-	dialog.ShowConfirm("New adventure", "Discard unsaved changes?", func(ok bool) {
-		if ok {
-			e.newAdventure()
-			e.reload()
+	go func() {
+		if nativeui.Confirm("New adventure", "Discard unsaved changes?") {
+			fyne.Do(func() {
+				e.newAdventure()
+				e.reload()
+			})
 		}
-	}, e.win)
+	}()
 }
 
 func (e *editor) newAdventure() {
@@ -403,63 +407,65 @@ func (e *editor) newAdventure() {
 }
 
 func (e *editor) openFolder() {
-	dialog.ShowFolderOpen(func(lu fyne.ListableURI, err error) {
-		if err != nil || lu == nil {
+	go func() {
+		dir, ok := nativeui.OpenFolder("Open module folder")
+		if !ok {
 			return
 		}
-		dir := lu.Path()
 		data, rerr := os.ReadFile(filepath.Join(dir, storage.AdventureFile))
 		if rerr != nil {
-			e.showErr(fmt.Errorf("no %s in that folder: %w", storage.AdventureFile, rerr))
+			nativeui.Error("Open folder", fmt.Sprintf("No %s in that folder.", storage.AdventureFile))
 			return
 		}
 		var adv domain.Adventure
 		if jerr := json.Unmarshal(data, &adv); jerr != nil {
-			e.showErr(fmt.Errorf("invalid adventure.json: %w", jerr))
+			nativeui.Error("Open folder", "Invalid adventure.json: "+jerr.Error())
 			return
 		}
-		e.adv = &adv
-		e.workingDir = dir
-		e.dirty = false
-		e.reload()
-		e.setStatus("Opened folder: " + dir)
-	}, e.win)
+		fyne.Do(func() {
+			e.adv = &adv
+			e.workingDir = dir
+			e.dirty = false
+			e.reload()
+			e.setStatus("Opened folder: " + dir)
+		})
+	}()
 }
 
 func (e *editor) openArchive() {
-	d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) {
-		if err != nil || r == nil {
+	go func() {
+		src, ok := nativeui.OpenFile("Open .tar.gz module",
+			nativeui.Filter{Name: "Adventure module", Patterns: []string{"*.tar.gz", "*.tgz", "*.gz"}})
+		if !ok {
 			return
 		}
-		src := r.URI().Path()
-		_ = r.Close()
 		dir, merr := os.MkdirTemp("", "thaim-edit-*")
 		if merr != nil {
-			e.showErr(merr)
+			nativeui.Error("Open module", merr.Error())
 			return
 		}
 		if xerr := storage.ExtractModule(src, dir); xerr != nil {
-			e.showErr(xerr)
+			nativeui.Error("Open module", xerr.Error())
 			return
 		}
 		data, rerr := os.ReadFile(filepath.Join(dir, storage.AdventureFile))
 		if rerr != nil {
-			e.showErr(fmt.Errorf("archive has no %s", storage.AdventureFile))
+			nativeui.Error("Open module", fmt.Sprintf("Archive has no %s.", storage.AdventureFile))
 			return
 		}
 		var adv domain.Adventure
 		if jerr := json.Unmarshal(data, &adv); jerr != nil {
-			e.showErr(fmt.Errorf("invalid adventure.json: %w", jerr))
+			nativeui.Error("Open module", "Invalid adventure.json: "+jerr.Error())
 			return
 		}
-		e.adv = &adv
-		e.workingDir = dir
-		e.dirty = false
-		e.reload()
-		e.setStatus("Opened archive: " + src)
-	}, e.win)
-	d.SetFilter(fynestorage.NewExtensionFileFilter([]string{".gz", ".tgz", ".tar.gz"}))
-	d.Show()
+		fyne.Do(func() {
+			e.adv = &adv
+			e.workingDir = dir
+			e.dirty = false
+			e.reload()
+			e.setStatus("Opened archive: " + src)
+		})
+	}()
 }
 
 // ingestFolder builds a module from a folder of images, interpreted by the AI.
@@ -467,19 +473,20 @@ func (e *editor) ingestFolder() {
 	if !e.requireProvider() {
 		return
 	}
-	e.confirmReplace(func() {
-		dialog.ShowFolderOpen(func(lu fyne.ListableURI, err error) {
-			if err != nil || lu == nil {
-				return
-			}
-			src := lu.Path()
-			e.runIngest("Interpreting images with AI…", func(dir string) (*domain.Adventure, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				defer cancel()
-				return aibuild.FromImages(ctx, e.prov, e.config, src, dir, filepath.Base(src))
-			})
-		}, e.win)
-	})
+	go func() {
+		if !e.confirmReplaceNative() {
+			return
+		}
+		src, ok := nativeui.OpenFolder("Choose a folder of images")
+		if !ok {
+			return
+		}
+		e.runIngest("Interpreting images with AI…", func(dir string) (*domain.Adventure, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			return aibuild.FromImages(ctx, e.prov, e.config, src, dir, filepath.Base(src))
+		})
+	}()
 }
 
 // ingestPDF builds a module from a PDF: text and images are interpreted by the AI.
@@ -487,23 +494,21 @@ func (e *editor) ingestPDF() {
 	if !e.requireProvider() {
 		return
 	}
-	e.confirmReplace(func() {
-		d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) {
-			if err != nil || r == nil {
-				return
-			}
-			src := r.URI().Path()
-			_ = r.Close()
-			title := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
-			e.runIngest("Interpreting PDF with AI…", func(dir string) (*domain.Adventure, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				defer cancel()
-				return aibuild.FromPDF(ctx, e.prov, e.config, src, dir, title)
-			})
-		}, e.win)
-		d.SetFilter(fynestorage.NewExtensionFileFilter([]string{".pdf"}))
-		d.Show()
-	})
+	go func() {
+		if !e.confirmReplaceNative() {
+			return
+		}
+		src, ok := nativeui.OpenFile("Choose a PDF", nativeui.Filter{Name: "PDF", Patterns: []string{"*.pdf"}})
+		if !ok {
+			return
+		}
+		title := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+		e.runIngest("Interpreting PDF with AI…", func(dir string) (*domain.Adventure, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			return aibuild.FromPDF(ctx, e.prov, e.config, src, dir, title)
+		})
+	}()
 }
 
 // requireProvider ensures an AI provider is configured before an AI import.
@@ -523,7 +528,7 @@ func (e *editor) runIngest(msg string, build func(workingDir string) (*domain.Ad
 		e.showErr(err)
 		return
 	}
-	e.setStatus(msg)
+	fyne.Do(func() { e.setStatus(msg) })
 	go func() {
 		adv, err := build(dir)
 		fyne.Do(func() {
@@ -543,17 +548,13 @@ func (e *editor) runIngest(msg string, build func(workingDir string) (*domain.Ad
 	}()
 }
 
-// confirmReplace runs action, first confirming if there are unsaved changes.
-func (e *editor) confirmReplace(action func()) {
+// confirmReplaceNative asks (natively) to discard unsaved changes. Must be
+// called off the UI goroutine. Returns true to proceed.
+func (e *editor) confirmReplaceNative() bool {
 	if !e.dirty {
-		action()
-		return
+		return true
 	}
-	dialog.ShowConfirm("Discard changes?", "This will replace the current module. Continue?", func(ok bool) {
-		if ok {
-			action()
-		}
-	}, e.win)
+	return nativeui.Confirm("Discard changes?", "This will replace the current module. Continue?")
 }
 
 func countRooms(adv *domain.Adventure) int {
@@ -601,7 +602,7 @@ func (e *editor) validate() {
 	}
 	errs := domain.ValidateAdventure(e.adv, imageExists)
 	if len(errs) == 0 {
-		dialog.ShowInformation("Validation", "✓ The adventure is valid.", e.win)
+		go nativeui.Info("Validation", "✓ The adventure is valid.")
 		return
 	}
 	var sb strings.Builder
@@ -609,29 +610,28 @@ func (e *editor) validate() {
 	for _, er := range errs {
 		sb.WriteString("• " + er.Error() + "\n")
 	}
-	dialog.ShowInformation("Validation", sb.String(), e.win)
+	go nativeui.Info("Validation", sb.String())
 }
 
 func (e *editor) packageModule() {
 	if err := e.save(); err != nil {
 		return
 	}
-	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
-		if err != nil || w == nil {
+	work, advID := e.workingDir, e.adv.ID
+	go func() {
+		dest, ok := nativeui.SaveFile("Package module", advID+".tar.gz",
+			nativeui.Filter{Name: "Adventure module", Patterns: []string{"*.tar.gz"}})
+		if !ok {
 			return
 		}
-		dest := w.URI().Path()
-		_ = w.Close()
 		_ = os.Remove(dest) // PackageModule recreates it
-		if perr := storage.PackageModule(e.workingDir, dest); perr != nil {
-			e.showErr(perr)
+		if perr := storage.PackageModule(work, dest); perr != nil {
+			nativeui.Error("Package failed", perr.Error())
 			return
 		}
-		e.setStatus("Packaged: " + dest)
-		dialog.ShowInformation("Packaged", "Module written to:\n"+dest, e.win)
-	}, e.win)
-	d.SetFileName(e.adv.ID + ".tar.gz")
-	d.Show()
+		nativeui.Info("Packaged", "Module written to:\n"+dest)
+		fyne.Do(func() { e.setStatus("Packaged: " + dest) })
+	}()
 }
 
 // importImage copies a chosen file into workingDir/assets/<kind>/ and calls set
@@ -641,33 +641,43 @@ func (e *editor) importImage(kind string, set func(string)) {
 		e.showErr(fmt.Errorf("save or create a module first"))
 		return
 	}
-	dialog.ShowFileOpen(func(r fyne.URIReadCloser, err error) {
-		if err != nil || r == nil {
+	work := e.workingDir
+	go func() {
+		src, ok := nativeui.OpenFile("Import image",
+			nativeui.Filter{Name: "Images", Patterns: []string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp"}})
+		if !ok {
 			return
 		}
-		defer r.Close()
-		name := filepath.Base(r.URI().Path())
+		name := filepath.Base(src)
 		relDir := filepath.Join("assets", kind)
-		destDir := filepath.Join(e.workingDir, relDir)
+		destDir := filepath.Join(work, relDir)
 		if mkErr := os.MkdirAll(destDir, 0755); mkErr != nil {
-			e.showErr(mkErr)
+			nativeui.Error("Import image", mkErr.Error())
 			return
 		}
+		in, oerr := os.Open(src)
+		if oerr != nil {
+			nativeui.Error("Import image", oerr.Error())
+			return
+		}
+		defer in.Close()
 		out, cerr := os.Create(filepath.Join(destDir, name))
 		if cerr != nil {
-			e.showErr(cerr)
+			nativeui.Error("Import image", cerr.Error())
 			return
 		}
 		defer out.Close()
-		if _, werr := io.Copy(out, r); werr != nil {
-			e.showErr(werr)
+		if _, werr := io.Copy(out, in); werr != nil {
+			nativeui.Error("Import image", werr.Error())
 			return
 		}
 		rel := filepath.ToSlash(filepath.Join(relDir, name))
-		set(rel)
-		e.dirty = true
-		e.setStatus("Imported image: " + rel)
-	}, e.win)
+		fyne.Do(func() {
+			set(rel)
+			e.dirty = true
+			e.setStatus("Imported image: " + rel)
+		})
+	}()
 }
 
 // --- helpers -------------------------------------------------------------
@@ -677,8 +687,8 @@ func (e *editor) setStatus(s string) {
 		e.status.SetText(s)
 	}
 }
-func (e *editor) info(s string)     { dialog.ShowInformation("Editor", s, e.win) }
-func (e *editor) showErr(err error) { dialog.ShowError(err, e.win) }
+func (e *editor) info(s string)     { go nativeui.Info("Editor", s) }
+func (e *editor) showErr(err error) { go nativeui.Error("Editor", err.Error()) }
 
 func labelOrID(name, id string) string {
 	if strings.TrimSpace(name) != "" {

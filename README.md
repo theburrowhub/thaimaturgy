@@ -35,7 +35,8 @@ resolves quick mechanics, and tracks the running state of your session.
 - **Images** — in the TUI, `/map` and `/art` open maps and artwork in your system's
   image viewer; the **desktop GUI** (`make run-gui`) renders them inline.
 - **Two frontends, one core** — a terminal UI (`cmd/thaimaturgy`) and a Fyne desktop GUI
-  (`cmd/thaimaturgy-gui`) over the same `internal/` engine.
+  (`cmd/thaimaturgy-gui`) over the same `internal/` engine. The GUI and the module editor
+  use the operating system's **native** file/save/folder pickers and message dialogs.
 
 ## Session view
 
