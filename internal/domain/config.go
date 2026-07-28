@@ -117,7 +117,7 @@ func DefaultModel(p ProviderType) string {
 	case ProviderOpenAI:
 		return "gpt-4o"
 	case ProviderAnthropic:
-		return "claude-sonnet-4-20250514"
+		return "claude-sonnet-5"
 	case ProviderGemini:
 		return "gemini-2.5-flash"
 	}

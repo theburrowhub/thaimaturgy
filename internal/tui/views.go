@@ -69,7 +69,7 @@ func (m *Model) viewConfig() string {
 		sb.WriteString(m.styles.WizardTitle.Render(m.t("configTitle")) + "\n\n")
 		sb.WriteString(m.styles.Success.Render(m.t("configSuccess")) + "\n\n")
 		providerName := []string{"OpenAI", "Anthropic", "Gemini"}[m.configProvider]
-		model := []string{"gpt-4o", "claude-sonnet-4-20250514", "gemini-2.5-flash"}[m.configProvider]
+		model := []string{"gpt-4o", "claude-sonnet-5", "gemini-2.5-flash"}[m.configProvider]
 		sb.WriteString(fmt.Sprintf("%s: %s\n", m.t("provider"), m.styles.StatValue.Render(providerName)))
 		sb.WriteString(fmt.Sprintf("%s: %s\n\n", m.t("model"), m.styles.StatValue.Render(model)))
 		sb.WriteString(m.styles.Hint.Render(m.t("configHintEnter")))

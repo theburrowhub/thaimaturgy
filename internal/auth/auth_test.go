@@ -100,8 +100,9 @@ func TestAutoConfigureAppliesOAuth(t *testing.T) {
 	if !c.IsConfigured() {
 		t.Error("config should be configured after auto-config")
 	}
-	if c.Model != domain.DefaultModel(domain.ProviderAnthropic) {
-		t.Errorf("model = %q, want default anthropic model", c.Model)
+	// A Claude Code subscription login defaults to Haiku (reliably available).
+	if c.Model != "claude-haiku-4-5-20251001" {
+		t.Errorf("model = %q, want claude-haiku-4-5-20251001 for OAuth login", c.Model)
 	}
 }
 

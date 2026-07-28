@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/types"
@@ -16,18 +17,23 @@ import (
 const anthropicBaseURL = "https://api.anthropic.com/v1"
 const anthropicAPIVersion = "2023-06-01"
 
+// anthropicFallbackModel is retried when the requested model is unavailable or
+// rate-limited — common with Claude Code subscription logins, where premium
+// models are throttled but Haiku stays available.
+const anthropicFallbackModel = "claude-haiku-4-5-20251001"
+
 type AnthropicProvider struct {
-	apiKey     string
-	oauthToken string // reused from a local Claude Code login (OAuth bearer)
-	httpClient *http.Client
+	apiKey        string
+	oauthToken    string // reused from a local Claude Code login (OAuth bearer)
+	fallbackModel string
+	httpClient    *http.Client
 }
 
 func NewAnthropicProvider(apiKey string) *AnthropicProvider {
 	return &AnthropicProvider{
-		apiKey: apiKey,
-		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
-		},
+		apiKey:        apiKey,
+		fallbackModel: anthropicFallbackModel,
+		httpClient:    &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -35,10 +41,9 @@ func NewAnthropicProvider(apiKey string) *AnthropicProvider {
 // a local Claude Code login instead of an API key.
 func NewAnthropicOAuthProvider(token string) *AnthropicProvider {
 	return &AnthropicProvider{
-		oauthToken: token,
-		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
-		},
+		oauthToken:    token,
+		fallbackModel: anthropicFallbackModel,
+		httpClient:    &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -111,7 +116,23 @@ type anthropicResponse struct {
 	} `json:"error,omitempty"`
 }
 
+// Chat sends the request and, if the chosen model is unavailable or throttled,
+// retries once with the fallback model so subscription logins keep working.
 func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	resp, err := p.chatOnce(ctx, req)
+	if err != nil && p.fallbackModel != "" && req.Model != p.fallbackModel && anthropicRetryable(err) {
+		req.Model = p.fallbackModel
+		return p.chatOnce(ctx, req)
+	}
+	return resp, err
+}
+
+func anthropicRetryable(err error) bool {
+	s := err.Error()
+	return strings.Contains(s, "rate_limit_error") || strings.Contains(s, "not_found_error")
+}
+
+func (p *AnthropicProvider) chatOnce(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	startTime := time.Now()
 
 	anthropicReq := p.convertRequest(req)
