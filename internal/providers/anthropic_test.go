@@ -59,6 +59,46 @@ func TestAnthropicTemperatureSelfHeal(t *testing.T) {
 	}
 }
 
+// TestAnthropicRetriesTransientError verifies that an abruptly reset connection
+// is retried and the request eventually succeeds.
+func TestAnthropicRetriesTransientError(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			// Abruptly drop the connection so the client sees a transient error.
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Fatal("ResponseWriter is not a Hijacker")
+			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				t.Fatalf("hijack: %v", err)
+			}
+			_ = conn.Close()
+			return
+		}
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"OK"}],"stop_reason":"end_turn","usage":{}}`))
+	}))
+	defer srv.Close()
+
+	orig := anthropicBaseURL
+	anthropicBaseURL = srv.URL
+	defer func() { anthropicBaseURL = orig }()
+
+	p := NewAnthropicProvider("sk-test")
+	resp, err := p.Chat(context.Background(), ChatRequest{Model: "m", MaxTokens: 16})
+	if err != nil {
+		t.Fatalf("expected retry to recover, got: %v", err)
+	}
+	if resp.Content != "OK" {
+		t.Errorf("content = %q, want OK", resp.Content)
+	}
+	if attempts != 3 {
+		t.Errorf("expected 3 attempts (2 resets + success), got %d", attempts)
+	}
+}
+
 // TestAnthropicModelFallback verifies the model fallback on rate_limit_error.
 func TestAnthropicModelFallback(t *testing.T) {
 	var models []string

@@ -160,22 +160,22 @@ func (p *AnthropicProvider) chatOnce(ctx context.Context, req ChatRequest) (*Cha
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", anthropicBaseURL+"/messages", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("anthropic-version", anthropicAPIVersion)
-	if p.oauthToken != "" {
-		// Reused Claude Code login: authenticate as an OAuth bearer.
-		httpReq.Header.Set("Authorization", "Bearer "+p.oauthToken)
-		httpReq.Header.Set("anthropic-beta", "oauth-2025-04-20")
-	} else {
-		httpReq.Header.Set("x-api-key", p.apiKey)
-	}
-
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := doWithRetry(ctx, p.httpClient, func() (*http.Request, error) {
+		r, err := http.NewRequestWithContext(ctx, "POST", anthropicBaseURL+"/messages", bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("anthropic-version", anthropicAPIVersion)
+		if p.oauthToken != "" {
+			// Reused Claude Code login: authenticate as an OAuth bearer.
+			r.Header.Set("Authorization", "Bearer "+p.oauthToken)
+			r.Header.Set("anthropic-beta", "oauth-2025-04-20")
+		} else {
+			r.Header.Set("x-api-key", p.apiKey)
+		}
+		return r, nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

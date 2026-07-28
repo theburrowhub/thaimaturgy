@@ -118,16 +118,17 @@ func (p *GeminiProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 	if p.apiKey != "" {
 		url += "?key=" + p.apiKey
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if p.oauthToken != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+p.oauthToken)
-	}
-
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := doWithRetry(ctx, p.httpClient, func() (*http.Request, error) {
+		r, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		r.Header.Set("Content-Type", "application/json")
+		if p.oauthToken != "" {
+			r.Header.Set("Authorization", "Bearer "+p.oauthToken)
+		}
+		return r, nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
