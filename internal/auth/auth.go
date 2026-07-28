@@ -82,6 +82,7 @@ func pick(creds []Credential, prefer domain.ProviderType) Credential {
 }
 
 func apply(c *domain.Config, cr Credential) {
+	switchedProvider := c.Provider != cr.Provider
 	c.Provider = cr.Provider
 	switch cr.Provider {
 	case domain.ProviderOpenAI:
@@ -99,7 +100,11 @@ func apply(c *domain.Config, cr Credential) {
 			c.GeminiAPIKey = cr.APIKey
 		}
 	}
-	c.Model = domain.DefaultModel(cr.Provider)
+	// Keep a model the user configured for this provider; only set a default
+	// when switching provider or when none is set.
+	if switchedProvider || c.Model == "" {
+		c.Model = domain.DefaultModel(cr.Provider)
+	}
 	c.AuthSource = cr.Source
 }
 
