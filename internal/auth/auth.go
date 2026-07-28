@@ -99,19 +99,8 @@ func apply(c *domain.Config, cr Credential) {
 			c.GeminiAPIKey = cr.APIKey
 		}
 	}
-	c.Model = defaultModelFor(cr)
+	c.Model = domain.DefaultModel(cr.Provider)
 	c.AuthSource = cr.Source
-}
-
-// defaultModelFor picks a starting model for a detected credential. Anthropic
-// via a Claude Code subscription login (OAuth) defaults to Haiku, which those
-// subscriptions reliably allow; the provider still falls back automatically if
-// a heavier model is chosen and throttled.
-func defaultModelFor(cr Credential) string {
-	if cr.Provider == domain.ProviderAnthropic && cr.Method == MethodOAuth {
-		return "claude-haiku-4-5-20251001"
-	}
-	return domain.DefaultModel(cr.Provider)
 }
 
 func label(p domain.ProviderType) string {
