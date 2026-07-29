@@ -71,7 +71,7 @@ func main() {
 	}
 
 	g := &gui{
-		app:    app.New(),
+		app:    app.NewWithID("dev.theburrowhub.thaimaturgy"),
 		store:  store,
 		config: config,
 	}

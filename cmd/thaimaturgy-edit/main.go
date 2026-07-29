@@ -65,7 +65,7 @@ func main() {
 		_ = store.SaveConfig(config) // generate config.yaml on first run
 	}
 
-	e := &editor{app: app.New(), config: config, prov: providers.New(config), model: config.Model, authMsg: authMsg}
+	e := &editor{app: app.NewWithID("dev.theburrowhub.thaimaturgy.editor"), config: config, prov: providers.New(config), model: config.Model, authMsg: authMsg}
 	e.app.Settings().SetTheme(guitheme.New())
 	e.win = e.app.NewWindow("thAImaturgy — Module Editor")
 	e.win.Resize(fyne.NewSize(1180, 820))
