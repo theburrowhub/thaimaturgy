@@ -43,10 +43,16 @@ type gui struct {
 	transScroll  *container.Scroll
 	logText      *widget.RichText
 	logScroll    *container.Scroll
-	location     *widget.RichText
-	imageBox     *fyne.Container
 	entry        *widget.Entry
 	transcriptMD string
+
+	// Adventure browser + detail pane.
+	navTree       *widget.Tree
+	detailText    *widget.RichText
+	detailImage   *fyne.Container
+	detailActions *fyne.Container
+	locLabel      *widget.Label
+	currentUID    string
 }
 
 func main() {
@@ -144,8 +150,7 @@ func (g *gui) importDialog() {
 	}()
 }
 
-func (g *gui) showErr(err error)          { go nativeui.Error("thAImaturgy", err.Error()) }
-func (g *gui) showInfo(title, msg string) { go nativeui.Info(title, msg) }
+func (g *gui) showErr(err error) { go nativeui.Error("thAImaturgy", err.Error()) }
 
 // --- Session screen ------------------------------------------------------
 
@@ -191,43 +196,279 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.logText.Wrapping = fyne.TextWrapWord
 	g.logScroll = container.NewVScroll(g.logText)
 
-	g.location = widget.NewRichTextFromMarkdown("")
-	g.location.Wrapping = fyne.TextWrapWord
-	g.imageBox = container.NewStack()
+	g.detailText = widget.NewRichTextFromMarkdown("")
+	g.detailText.Wrapping = fyne.TextWrapWord
+	g.detailImage = container.NewStack()
+	g.detailActions = container.NewHBox()
+	g.navTree = g.buildAdvTree()
 
 	g.entry = widget.NewEntry()
 	g.entry.SetPlaceHolder("Ask the oracle, or type a /command…")
 	g.entry.OnSubmitted = func(s string) { g.submit(s) }
 	sendBtn := widget.NewButton("Send", func() { g.submit(g.entry.Text) })
 
-	// Left column: location + inline image.
-	leftTop := container.NewVScroll(g.location)
-	left := container.NewVSplit(leftTop, container.NewVScroll(g.imageBox))
-	left.SetOffset(0.45)
+	// Left column: adventure browser (top) + session log (bottom).
+	navHeader := widget.NewLabelWithStyle("ADVENTURE", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	logHeader := widget.NewLabelWithStyle("SESSION LOG", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	left := container.NewVSplit(
+		container.NewBorder(navHeader, nil, nil, nil, g.navTree),
+		container.NewBorder(logHeader, nil, nil, nil, g.logScroll),
+	)
+	left.SetOffset(0.62)
 
-	// Center: transcript + input.
+	// Center: oracle transcript + input.
 	inputRow := container.NewBorder(nil, nil, nil, sendBtn, g.entry)
 	center := container.NewBorder(nil, inputRow, nil, nil, g.transScroll)
 
-	// Right: session log.
-	right := container.NewBorder(
-		widget.NewLabelWithStyle("Session Log", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
-		nil, nil, nil, g.logScroll)
+	// Right: detail of the selected zone/room/NPC/event/item + inline image.
+	detailHeader := widget.NewLabelWithStyle("DETAIL", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	detailBody := container.NewVSplit(container.NewVScroll(g.detailText), container.NewVScroll(g.detailImage))
+	detailBody.SetOffset(0.6)
+	right := container.NewBorder(container.NewVBox(detailHeader, g.detailActions), nil, nil, nil, detailBody)
 
 	body := container.NewHSplit(left, container.NewHSplit(center, right))
 	body.SetOffset(0.24)
 
+	g.locLabel = widget.NewLabel("")
 	toolbar := container.NewHBox(
 		widget.NewButton("← Library", g.showLibrary),
 		widget.NewButton("Save", g.save),
-		widget.NewButton("Map", func() { g.openZoneMap() }),
-		widget.NewLabel(adv.Title),
+		widget.NewLabel(adv.Title+"  |"),
+		g.locLabel,
 	)
 
 	g.win.SetContent(container.NewBorder(toolbar, nil, nil, nil, body))
-	g.refreshLocation()
-	g.refreshLog()
+	g.refreshState()
+	// Show the current room in the detail pane to start.
+	if g.session.State.CurrentRoom != "" {
+		g.showDetail("room:" + g.session.State.CurrentZone + "::" + g.session.State.CurrentRoom)
+	}
 	g.win.Canvas().Focus(g.entry)
+}
+
+// --- Adventure browser ---------------------------------------------------
+
+func (g *gui) buildAdvTree() *widget.Tree {
+	t := widget.NewTree(
+		func(uid widget.TreeNodeID) []widget.TreeNodeID { return g.treeChildren(uid) },
+		func(uid widget.TreeNodeID) bool { return g.treeIsBranch(uid) },
+		func(bool) fyne.CanvasObject { return widget.NewLabel("template") },
+		func(uid widget.TreeNodeID, _ bool, o fyne.CanvasObject) {
+			o.(*widget.Label).SetText(g.treeLabel(uid))
+		},
+	)
+	t.OnSelected = func(uid widget.TreeNodeID) { g.showDetail(uid) }
+	t.OpenAllBranches()
+	return t
+}
+
+func (g *gui) treeChildren(uid widget.TreeNodeID) []widget.TreeNodeID {
+	adv := g.session.Adventure
+	switch {
+	case uid == "":
+		return []widget.TreeNodeID{"zones", "npcs", "events", "items"}
+	case uid == "zones":
+		out := []widget.TreeNodeID{}
+		for _, z := range adv.Zones {
+			out = append(out, "zone:"+z.ID)
+		}
+		return out
+	case uid == "npcs":
+		out := []widget.TreeNodeID{}
+		for _, n := range adv.NPCs {
+			out = append(out, "npc:"+n.ID)
+		}
+		return out
+	case uid == "events":
+		out := []widget.TreeNodeID{}
+		for _, e := range adv.Events {
+			out = append(out, "event:"+e.ID)
+		}
+		return out
+	case uid == "items":
+		out := []widget.TreeNodeID{}
+		for _, it := range adv.Items {
+			out = append(out, "item:"+it.ID)
+		}
+		return out
+	case strings.HasPrefix(uid, "zone:"):
+		z := adv.Zone(strings.TrimPrefix(uid, "zone:"))
+		out := []widget.TreeNodeID{}
+		if z != nil {
+			for _, r := range z.Rooms {
+				out = append(out, "room:"+z.ID+"::"+r.ID)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func (g *gui) treeIsBranch(uid widget.TreeNodeID) bool {
+	switch uid {
+	case "", "zones", "npcs", "events", "items":
+		return true
+	}
+	return strings.HasPrefix(uid, "zone:")
+}
+
+func (g *gui) treeLabel(uid widget.TreeNodeID) string {
+	adv, st := g.session.Adventure, g.session.State
+	switch uid {
+	case "zones":
+		return "🗺 Zones"
+	case "npcs":
+		return "🧑 NPCs"
+	case "events":
+		return "⚡ Events"
+	case "items":
+		return "💎 Items"
+	}
+	switch {
+	case strings.HasPrefix(uid, "zone:"):
+		if z := adv.Zone(strings.TrimPrefix(uid, "zone:")); z != nil {
+			return "▸ " + labelOrID(z.Name, z.ID)
+		}
+	case strings.HasPrefix(uid, "room:"):
+		_, rid := splitRoomUID(uid)
+		if r, _ := adv.Room(rid); r != nil {
+			marker := "·"
+			if st.CurrentRoom == rid {
+				marker = "▶"
+			} else if st.VisitedRooms[rid] {
+				marker = "✓"
+			}
+			return marker + " " + labelOrID(r.Name, r.ID)
+		}
+	case strings.HasPrefix(uid, "npc:"):
+		if n := adv.NPC(strings.TrimPrefix(uid, "npc:")); n != nil {
+			name := labelOrID(n.Name, n.ID)
+			if s := st.KnownNPCs[n.ID]; s != nil && s.Met {
+				name = "✓ " + name
+			}
+			return name
+		}
+	case strings.HasPrefix(uid, "event:"):
+		if e := adv.Event(strings.TrimPrefix(uid, "event:")); e != nil {
+			name := labelOrID(e.Name, e.ID)
+			if st.TriggeredEvents[e.ID] {
+				name = "✓ " + name
+			}
+			return name
+		}
+	case strings.HasPrefix(uid, "item:"):
+		if it := adv.Item(strings.TrimPrefix(uid, "item:")); it != nil {
+			return labelOrID(it.Name, it.ID)
+		}
+	}
+	return uid
+}
+
+// --- Detail pane ---------------------------------------------------------
+
+func (g *gui) showDetail(uid widget.TreeNodeID) {
+	g.currentUID = uid
+	adv := g.session.Adventure
+	var text string
+	var actions []fyne.CanvasObject
+	image := ""
+
+	switch {
+	case strings.HasPrefix(uid, "zone:"):
+		if z := adv.Zone(strings.TrimPrefix(uid, "zone:")); z != nil {
+			text = engine.FormatZone(z)
+			image = z.MapImage
+			if z.MapImage != "" {
+				actions = append(actions, widget.NewButton("Show map", func() { g.showInline(z.MapImage) }))
+			}
+		}
+	case strings.HasPrefix(uid, "room:"):
+		_, rid := splitRoomUID(uid)
+		if r, _ := adv.Room(rid); r != nil {
+			text = engine.FormatRoom(adv, r)
+			image = r.Image
+			id := r.ID
+			actions = append(actions, widget.NewButton("▶ Move party here", func() { g.movePartyHere(id) }))
+			if r.Image != "" {
+				actions = append(actions, widget.NewButton("Show art", func() { g.showInline(r.Image) }))
+			}
+		}
+	case strings.HasPrefix(uid, "npc:"):
+		if n := adv.NPC(strings.TrimPrefix(uid, "npc:")); n != nil {
+			text = engine.FormatNPC(n)
+			image = n.Image
+			id, name := n.ID, n.Name
+			actions = append(actions, widget.NewButton("Mark as met", func() { g.markNPCMet(id, name) }))
+			if n.Image != "" {
+				actions = append(actions, widget.NewButton("Show art", func() { g.showInline(n.Image) }))
+			}
+		}
+	case strings.HasPrefix(uid, "event:"):
+		if e := adv.Event(strings.TrimPrefix(uid, "event:")); e != nil {
+			text = engine.FormatEvent(e)
+			id, name := e.ID, e.Name
+			actions = append(actions, widget.NewButton("Mark triggered", func() { g.triggerEvent(id, name) }))
+		}
+	case strings.HasPrefix(uid, "item:"):
+		if it := adv.Item(strings.TrimPrefix(uid, "item:")); it != nil {
+			text = engine.FormatItem(it)
+			image = it.Image
+			if it.Image != "" {
+				actions = append(actions, widget.NewButton("Show art", func() { g.showInline(it.Image) }))
+			}
+		}
+	default:
+		text = "Select a zone, room, NPC, event, or item on the left to view it."
+	}
+
+	g.detailText.ParseMarkdown("```\n" + text + "\n```")
+	g.detailActions.Objects = actions
+	g.detailActions.Refresh()
+	if image != "" {
+		g.showInline(image)
+	} else {
+		g.detailImage.Objects = nil
+		g.detailImage.Refresh()
+	}
+}
+
+func (g *gui) movePartyHere(roomID string) {
+	res := g.cmd.Execute(engine.ParseCommand("/goto " + roomID))
+	if !res.Success && res.Message != "" {
+		g.showErr(fmt.Errorf("%s", res.Message))
+		return
+	}
+	g.appendTranscript("_" + res.Message + "_")
+	g.refreshState()
+	g.autosave()
+}
+
+func (g *gui) markNPCMet(id, name string) {
+	g.session.State.MeetNPC(id, name)
+	g.session.MarkModified()
+	g.refreshState()
+	g.autosave()
+}
+
+func (g *gui) triggerEvent(id, name string) {
+	g.session.State.TriggerEvent(id, name)
+	g.session.MarkModified()
+	g.refreshState()
+	g.autosave()
+}
+
+func (g *gui) autosave() {
+	if g.config.AutoSave && g.session != nil {
+		go func() { _ = g.store.SaveSession(g.session.State) }()
+	}
+}
+
+func splitRoomUID(uid string) (zoneID, roomID string) {
+	body := strings.TrimPrefix(uid, "room:")
+	if i := strings.Index(body, "::"); i >= 0 {
+		return body[:i], body[i+2:]
+	}
+	return "", body
 }
 
 func (g *gui) submit(raw string) {
@@ -259,7 +500,7 @@ func (g *gui) submit(raw string) {
 		case "save":
 			g.save()
 		case "image":
-			g.showImage(result.UIArg)
+			g.showInline(result.UIArg)
 		case "import":
 			g.importDialog()
 		case "load":
@@ -273,7 +514,7 @@ func (g *gui) submit(raw string) {
 		}
 	}
 
-	g.refreshLocation()
+	g.refreshState()
 	g.refreshLog()
 }
 
@@ -297,7 +538,7 @@ func (g *gui) ask(input string) {
 				return
 			}
 			g.appendTranscript(resp.Answer)
-			g.refreshLocation()
+			g.refreshState()
 			g.refreshLog()
 			if g.config.AutoSave {
 				go func() { _ = g.store.SaveSession(g.session.State) }()
@@ -323,42 +564,36 @@ func (g *gui) appendTranscript(md string) {
 	g.transScroll.ScrollToBottom()
 }
 
-func (g *gui) refreshLocation() {
+// refreshState re-renders the browser tree, the current-location label, the log
+// and (if something is selected) the detail pane after state changes.
+func (g *gui) refreshState() {
 	if g.session == nil {
 		return
 	}
+	if g.navTree != nil {
+		g.navTree.Refresh()
+	}
+	g.refreshCurrentLabel()
+	g.refreshLog()
+	if g.currentUID != "" {
+		g.showDetail(g.currentUID)
+	}
+}
+
+func (g *gui) refreshCurrentLabel() {
+	if g.locLabel == nil {
+		return
+	}
 	adv, st := g.session.Adventure, g.session.State
-	var sb strings.Builder
 	room, zone := adv.Room(st.CurrentRoom)
-	if zone != nil {
-		fmt.Fprintf(&sb, "## %s\n\n", zone.Name)
-	}
+	loc := "no room set"
 	if room != nil {
-		fmt.Fprintf(&sb, "### %s\n\n", room.Name)
-		if room.ReadAloud != "" {
-			fmt.Fprintf(&sb, "> %s\n\n", room.ReadAloud)
+		loc = room.Name
+		if zone != nil {
+			loc = zone.Name + " / " + room.Name
 		}
-		if len(room.Exits) > 0 {
-			sb.WriteString("**Exits:** ")
-			outs := make([]string, 0, len(room.Exits))
-			for _, e := range room.Exits {
-				outs = append(outs, e.To)
-			}
-			sb.WriteString(strings.Join(outs, ", ") + "\n\n")
-		}
-		if len(room.NPCIDs) > 0 {
-			sb.WriteString("**NPCs here:**\n\n")
-			for _, nid := range room.NPCIDs {
-				if n := adv.NPC(nid); n != nil {
-					fmt.Fprintf(&sb, "- %s `%s`\n", n.Name, n.ID)
-				}
-			}
-			sb.WriteString("\n")
-		}
-	} else {
-		sb.WriteString("_No current room. Use /goto <room_id>._")
 	}
-	g.location.ParseMarkdown(sb.String())
+	g.locLabel.SetText("📍 " + loc)
 }
 
 func (g *gui) refreshLog() {
@@ -373,8 +608,8 @@ func (g *gui) refreshLog() {
 	g.logScroll.ScrollToBottom()
 }
 
-// showImage loads a module-relative image inline in the left image pane.
-func (g *gui) showImage(relPath string) {
+// showInline renders a module-relative image inline in the detail image pane.
+func (g *gui) showInline(relPath string) {
 	if g.session == nil {
 		return
 	}
@@ -385,19 +620,14 @@ func (g *gui) showImage(relPath string) {
 	}
 	img := canvas.NewImageFromFile(abs)
 	img.FillMode = canvas.ImageFillContain
-	img.SetMinSize(fyne.NewSize(240, 240))
-	g.imageBox.Objects = []fyne.CanvasObject{img}
-	g.imageBox.Refresh()
+	img.SetMinSize(fyne.NewSize(280, 280))
+	g.detailImage.Objects = []fyne.CanvasObject{img}
+	g.detailImage.Refresh()
 }
 
-func (g *gui) openZoneMap() {
-	if g.session == nil {
-		return
+func labelOrID(name, id string) string {
+	if strings.TrimSpace(name) != "" {
+		return name
 	}
-	z := g.session.Adventure.Zone(g.session.State.CurrentZone)
-	if z == nil || z.MapImage == "" {
-		g.showInfo("No map", "This zone has no map image.")
-		return
-	}
-	g.showImage(z.MapImage)
+	return id
 }

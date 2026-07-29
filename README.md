@@ -34,6 +34,9 @@ resolves quick mechanics, and tracks the running state of your session.
   stat blocks, and dice (`/roll`, ability checks).
 - **Images** — in the TUI, `/map` and `/art` open maps and artwork in your system's
   image viewer; the **desktop GUI** (`make run-gui`) renders them inline.
+- **Adventure browser (GUI)** — a live tree of zones/rooms, NPCs, events and items;
+  click any entry to view its full detail (with inline art) and act on it — move the
+  party to a room, mark an NPC met or an event triggered — right beside the oracle chat.
 - **Two frontends, one core** — a terminal UI (`cmd/thaimaturgy`) and a Fyne desktop GUI
   (`cmd/thaimaturgy-gui`) over the same `internal/` engine. The GUI and the module editor
   use the operating system's **native** file/save/folder pickers and message dialogs.
