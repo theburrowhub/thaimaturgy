@@ -211,6 +211,36 @@ func TestCurationClassifiesAndDropsDecorative(t *testing.T) {
 	}
 }
 
+func TestCurationBuildsImageIDReferences(t *testing.T) {
+	work := t.TempDir()
+	writePNG(t, filepath.Join(work, "assets", "art", "a.png")) // curated id = "a"
+
+	stub := &seqProvider{resps: []*providers.ChatResponse{
+		{Content: `[{"index":1,"kind":"portrait","title":"Hero","description":"A knight"}]`, FinishReason: "stop"},
+		// The model references the real image id plus an invented one.
+		{Content: `{"id":"x","title":"X","zones":[{"id":"z","name":"Z"}],
+		            "npcs":[{"id":"n","name":"N","image_ids":["a","invented"]}]}`, FinishReason: "stop"},
+	}}
+
+	in := []ingest.Asset{{RelPath: "assets/art/a.png"}}
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", in, work, nil)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	// The catalog gained the curated image under id "a".
+	if adv.ImageByID("a") == nil {
+		t.Fatal("catalog should contain image id \"a\"")
+	}
+	// The NPC keeps only the valid image id; the invented one is dropped.
+	if len(adv.NPCs) != 1 || len(adv.NPCs[0].ImageIDs) != 1 || adv.NPCs[0].ImageIDs[0] != "a" {
+		t.Errorf("expected npc image_ids [a], got %v", adv.NPCs[0].ImageIDs)
+	}
+	// And it resolves to the real path.
+	if imgs := adv.NPCImages(&adv.NPCs[0]); len(imgs) != 1 || imgs[0] != "assets/art/a.png" {
+		t.Errorf("NPCImages = %v, want [assets/art/a.png]", imgs)
+	}
+}
+
 func TestParseAdventureToleratesTrailingCommas(t *testing.T) {
 	in := `{"id":"a","title":"A","zones":[{"id":"z","name":"Z"},],}`
 	adv, err := parseAdventure(in)

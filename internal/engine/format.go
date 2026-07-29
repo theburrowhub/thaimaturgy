@@ -89,14 +89,12 @@ func FormatRoom(adv *domain.Adventure, r *domain.Room) string {
 			sb.WriteString(line + "\n")
 		}
 	}
-	if r.Image != "" {
-		sb.WriteString("\n[art: " + r.Image + "]\n")
-	}
+	writeImageLines(&sb, adv.RoomImages(r))
 	return strings.TrimRight(sb.String(), "\n")
 }
 
 // FormatNPC renders an NPC dossier: roleplay guidance and mechanics.
-func FormatNPC(n *domain.NPC) string {
+func FormatNPC(adv *domain.Adventure, n *domain.NPC) string {
 	if n == nil {
 		return "(unknown NPC)"
 	}
@@ -127,10 +125,15 @@ func FormatNPC(n *domain.NPC) string {
 	if n.StatBlock != nil {
 		sb.WriteString(formatStatBlock(n.StatBlock))
 	}
-	if n.Image != "" {
-		sb.WriteString("[art: " + n.Image + "]\n")
-	}
+	writeImageLines(&sb, adv.NPCImages(n))
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+// writeImageLines appends an "[art: <path>]" line for each image path.
+func writeImageLines(sb *strings.Builder, paths []string) {
+	for _, p := range paths {
+		sb.WriteString("[art: " + p + "]\n")
+	}
 }
 
 func formatStatBlock(sb2 *domain.StatBlock) string {
@@ -183,7 +186,7 @@ func formatStatBlock(sb2 *domain.StatBlock) string {
 }
 
 // FormatZone renders a zone overview and its room list.
-func FormatZone(z *domain.Zone) string {
+func FormatZone(adv *domain.Adventure, z *domain.Zone) string {
 	if z == nil {
 		return "(unknown zone)"
 	}
@@ -197,8 +200,8 @@ func FormatZone(z *domain.Zone) string {
 			sb.WriteString(fmt.Sprintf("  - %s [%s]\n", r.Name, r.ID))
 		}
 	}
-	if z.MapImage != "" {
-		sb.WriteString("[map: " + z.MapImage + "]\n")
+	if m := adv.ZoneMap(z); m != "" {
+		sb.WriteString("[map: " + m + "]\n")
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
@@ -224,7 +227,7 @@ func FormatEvent(e *domain.Event) string {
 }
 
 // FormatItem renders an item entry.
-func FormatItem(it *domain.Item) string {
+func FormatItem(adv *domain.Adventure, it *domain.Item) string {
 	if it == nil {
 		return "(unknown item)"
 	}
@@ -233,6 +236,7 @@ func FormatItem(it *domain.Item) string {
 	writeField(&sb, "Rarity", it.Rarity)
 	writeField(&sb, "Description", it.Description)
 	writeField(&sb, "Mechanics", it.Mechanics)
+	writeImageLines(&sb, adv.ItemImages(it))
 	return strings.TrimRight(sb.String(), "\n")
 }
 

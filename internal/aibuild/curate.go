@@ -18,8 +18,10 @@ const (
 	maxCurationImages = 30 // overall cap on images to classify
 )
 
-// asset is an extracted image plus the AI's classification of it.
+// asset is an extracted image plus the AI's classification of it. id is a stable
+// catalog id (referenced from entities via image_ids).
 type asset struct {
+	id    string
 	rel   string
 	page  int
 	kind  string // map | portrait | scene | item | decorative
@@ -32,12 +34,22 @@ func (a asset) decorative() bool { return a.kind == "decorative" }
 
 func toAssets(in []ingest.Asset) []asset {
 	out := make([]asset, len(in))
+	seen := make(map[string]bool)
 	for i, a := range in {
 		kind := "scene"
 		if a.IsMap {
 			kind = "map"
 		}
-		out[i] = asset{rel: a.RelPath, page: a.Page, kind: kind}
+		base := slug(strings.TrimSuffix(filepath.Base(a.RelPath), filepath.Ext(a.RelPath)))
+		if base == "" {
+			base = "image"
+		}
+		id := base
+		for n := 2; seen[id]; n++ {
+			id = fmt.Sprintf("%s-%d", base, n)
+		}
+		seen[id] = true
+		out[i] = asset{id: id, rel: a.RelPath, page: a.Page, kind: kind}
 	}
 	return out
 }
@@ -179,6 +191,9 @@ func enrichCatalog(adv *domain.Adventure, assets []asset) {
 	seen := make(map[string]bool)
 	for i := range adv.Images {
 		if a, ok := byPath[adv.Images[i].Path]; ok {
+			if adv.Images[i].ID == "" {
+				adv.Images[i].ID = a.id
+			}
 			adv.Images[i].Kind = catalogKind(a)
 			if d := caption(a); d != "" {
 				adv.Images[i].Description = d
@@ -192,11 +207,41 @@ func enrichCatalog(adv *domain.Adventure, assets []asset) {
 			continue
 		}
 		adv.Images = append(adv.Images, domain.ImageRef{
-			ID:          slug(strings.TrimSuffix(filepath.Base(a.rel), filepath.Ext(a.rel))),
+			ID:          a.id,
 			Path:        a.rel,
 			Kind:        catalogKind(a),
 			Description: caption(a),
 		})
+	}
+}
+
+// dropUnknownImageIDs removes any image_ids the model invented that don't match
+// a catalog image, keeping referential integrity.
+func dropUnknownImageIDs(adv *domain.Adventure) {
+	valid := make(map[string]bool, len(adv.Images))
+	for _, img := range adv.Images {
+		valid[img.ID] = true
+	}
+	keep := func(ids []string) []string {
+		var out []string
+		for _, id := range ids {
+			if valid[id] {
+				out = append(out, id)
+			}
+		}
+		return out
+	}
+	for zi := range adv.Zones {
+		adv.Zones[zi].ImageIDs = keep(adv.Zones[zi].ImageIDs)
+		for ri := range adv.Zones[zi].Rooms {
+			adv.Zones[zi].Rooms[ri].ImageIDs = keep(adv.Zones[zi].Rooms[ri].ImageIDs)
+		}
+	}
+	for ni := range adv.NPCs {
+		adv.NPCs[ni].ImageIDs = keep(adv.NPCs[ni].ImageIDs)
+	}
+	for ii := range adv.Items {
+		adv.Items[ii].ImageIDs = keep(adv.Items[ii].ImageIDs)
 	}
 }
 

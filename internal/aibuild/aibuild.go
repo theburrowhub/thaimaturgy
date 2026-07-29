@@ -151,6 +151,7 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 
 	sanitize(adv, title, workingDir)
 	enrichCatalog(adv, curated)
+	dropUnknownImageIDs(adv)
 	report(progress, "Done: %d zone(s), %d room(s), %d NPC(s), %d event(s), %d image(s).",
 		len(adv.Zones), countRooms(adv), len(adv.NPCs), len(adv.Events), len(adv.ImageRefs()))
 	return adv, nil
@@ -231,26 +232,27 @@ Output ONLY a JSON object (no prose, no markdown fences) with this shape:
 {
   "schema_version":"1.0","id":"kebab-case-id","title":"...","author":"","system":"D&D 5e","language":"en",
   "summary":"...","background":"hidden DM lore","introduction":"how it starts","conclusion":"possible endings","hooks":["..."],
-  "zones":[{"id":"...","name":"...","overview":"DM summary","description":"...","map_image":"assets/....png","connections":["zoneId"],
-    "rooms":[{"id":"...","name":"...","read_aloud":"boxed text for players","dm_notes":"secrets/what happens","image":"assets/....png",
+  "images":[{"id":"<image_id>","kind":"map|art","description":"..."}],
+  "zones":[{"id":"...","name":"...","overview":"DM summary","description":"...","image_ids":["<image_id>"],"connections":["zoneId"],
+    "rooms":[{"id":"...","name":"...","read_aloud":"boxed text for players","dm_notes":"secrets/what happens","image_ids":["<image_id>"],
       "npc_ids":["..."],"event_ids":["..."],"treasure":["..."],
       "exits":[{"to":"roomOrZoneId","direction":"north","description":"...","locked":false}],
       "features":[{"name":"...","description":"...","skill":"Perception","dc":13,"success":"...","failure":"..."}],
       "encounters":[{"name":"...","description":"...","creatures":["..."],"difficulty":"medium","tactics":"..."}]}]}],
   "npcs":[{"id":"...","name":"...","role":"...","appearance":"...","personality":"...","motivations":"...","secrets":"...","voice":"...",
-    "disposition":"...","default_location":"roomId","image":"assets/....png","knowledge":["..."],"sample_dialogue":["..."],
+    "disposition":"...","default_location":"roomId","image_ids":["<image_id>"],"knowledge":["..."],"sample_dialogue":["..."],
     "stat_block":{"ac":13,"max_hp":22,"speed":"30 ft","cr":"1","abilities":{"str":10,"dex":10,"con":10,"int":10,"wis":10,"cha":10},
       "skills":["..."],"traits":["..."],"actions":[{"name":"...","to_hit":"+4","damage":"1d8+2 slashing","description":"..."}]}}],
   "events":[{"id":"...","name":"...","trigger":"...","description":"...","read_aloud":"...","dm_notes":"...","consequences":"...",
     "outcomes":[{"condition":"...","result":"..."}]}],
-  "items":[{"id":"...","name":"...","description":"...","rarity":"...","mechanics":"...","image":"assets/....png"}]
+  "items":[{"id":"...","name":"...","description":"...","rarity":"...","mechanics":"...","image_ids":["<image_id>"]}]
 }
 
 RULES:
 - Ground everything in the provided material; do not invent a different adventure. Preserve names, places, NPCs, and plot.
 - Split the content into coherent zones and rooms. Give NPCs motivations, secrets and voice for roleplay, plus a stat block when the source implies combat.
-- IMAGE REFERENCES: you are given a list of extracted image files, each already classified (kind) and captioned by a vision model. Reference them EXACTLY by their relative paths — use kind=map images as a zone "map_image"; use kind=portrait/scene/item as the "image" of the matching NPC, room, or item, guided by the caption. Only reference paths from the provided list; never invent paths.
-- Every id must be unique and kebab-case. Every reference (npc_ids, event_ids, exit "to", default_location) must point to an id you actually define.
+- IMAGES: you are given a list of extracted images, each with an image_id, a kind, and a caption. Reference them by id in the "image_ids" arrays: put kind=map images in the matching zone's image_ids; put kind=portrait/scene/item in the matching NPC, room, or item's image_ids, guided by the caption. Use ONLY image_ids from the provided list — never invent ids or file paths. You do not need to output the top-level "images" catalog; it is filled in automatically.
+- Every id must be unique and kebab-case. Every reference (npc_ids, event_ids, exit "to", default_location, image_ids) must point to an id that exists.
 - Return valid JSON only.`
 
 func buildUserPrompt(title, docText string, assets []asset, maxDocChars int) string {
@@ -258,18 +260,17 @@ func buildUserPrompt(title, docText string, assets []asset, maxDocChars int) str
 	if title != "" {
 		fmt.Fprintf(&sb, "Suggested title: %s\n\n", title)
 	}
-	sb.WriteString("EXTRACTED IMAGE FILES (classified & captioned — reference these relative paths exactly):\n")
+	sb.WriteString("EXTRACTED IMAGES (classified & captioned — reference them by image_id):\n")
 	if len(assets) == 0 {
 		sb.WriteString("(none)\n")
 	}
 	for _, a := range assets {
-		line := "- " + a.rel
+		line := fmt.Sprintf("- image_id %q [kind: %s]", a.id, a.kind)
 		if a.page > 0 {
 			line += fmt.Sprintf(" (page %d)", a.page)
 		}
-		line += " [kind: " + a.kind + "]"
 		if cap := caption(a); cap != "" {
-			line += " " + cap
+			line += " — " + cap
 		}
 		sb.WriteString(line + "\n")
 	}

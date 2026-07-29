@@ -165,7 +165,7 @@ func (o *Oracle) buildSystemPrompt() string {
 			sb.WriteString("\n--- Present NPCs ---\n")
 			for _, nid := range room.NPCIDs {
 				if n := adv.NPC(nid); n != nil {
-					sb.WriteString(FormatNPC(n))
+					sb.WriteString(FormatNPC(adv, n))
 					sb.WriteString("\n\n")
 				}
 			}

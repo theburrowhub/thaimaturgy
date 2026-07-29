@@ -21,6 +21,7 @@
       "overview": "A fog-bound marsh village. Daytime is safe; after dusk the wraith may appear on the green. Use Mistmoor to deliver the hook, let the party gather rumors, and buy supplies.",
       "description": "Sagging timber houses on stilts, connected by boardwalks over black water. A single well, a shrine to a forgotten saint, and the Drowned Duck tavern.",
       "map_image": "assets/maps/mistmoor.png",
+      "image_ids": ["map-mistmoor"],
       "connections": ["crypt"],
       "rooms": [
         {
@@ -53,6 +54,7 @@
       "overview": "A partially flooded three-chamber tomb. Water is knee-to-waist deep in the outer hall. Grask lurks in the antechamber; the wraith and Sorrowmourn wait in the sepulchre.",
       "description": "Cold worked stone slick with algae. Carvings of a kneeling knight repeat along the walls, his face chiseled away.",
       "map_image": "assets/maps/crypt.png",
+      "image_ids": ["map-crypt"],
       "connections": ["mistmoor"],
       "rooms": [
         {
@@ -148,6 +150,7 @@
       "disposition": "wary",
       "default_location": "crypt-antechamber",
       "image": "assets/art/grask.png",
+      "image_ids": ["art-grask"],
       "stat_block": {
         "ac": 15,
         "max_hp": 7,
@@ -182,6 +185,7 @@
       "disposition": "hostile",
       "default_location": "crypt-sepulchre",
       "image": "assets/art/sir-alden.png",
+      "image_ids": ["art-alden"],
       "stat_block": {
         "ac": 13,
         "max_hp": 45,

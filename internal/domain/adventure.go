@@ -50,7 +50,8 @@ type Zone struct {
 	Name        string   `json:"name"`
 	Overview    string   `json:"overview,omitempty"` // DM-facing summary of the zone
 	Description string   `json:"description,omitempty"`
-	MapImage    string   `json:"map_image,omitempty"` // relative asset path
+	MapImage    string   `json:"map_image,omitempty"` // relative asset path (legacy/direct)
+	ImageIDs    []string `json:"image_ids,omitempty"` // references into Adventure.Images
 	Rooms       []Room   `json:"rooms,omitempty"`
 	Connections []string `json:"connections,omitempty"` // other zone IDs reachable
 }
@@ -65,7 +66,8 @@ type Room struct {
 	// DMNotes is hidden information: what should happen here, secrets, tactics.
 	DMNotes string `json:"dm_notes,omitempty"`
 
-	Image      string      `json:"image,omitempty"` // relative asset path
+	Image      string      `json:"image,omitempty"`     // relative asset path (legacy/direct)
+	ImageIDs   []string    `json:"image_ids,omitempty"` // references into Adventure.Images
 	NPCIDs     []string    `json:"npc_ids,omitempty"`
 	EventIDs   []string    `json:"event_ids,omitempty"`
 	Exits      []Exit      `json:"exits,omitempty"`
@@ -121,8 +123,9 @@ type NPC struct {
 	// Mechanics.
 	StatBlock *StatBlock `json:"stat_block,omitempty"`
 
-	Image           string `json:"image,omitempty"`
-	DefaultLocation string `json:"default_location,omitempty"` // room ID
+	Image           string   `json:"image,omitempty"`            // relative asset path (legacy/direct)
+	ImageIDs        []string `json:"image_ids,omitempty"`        // references into Adventure.Images
+	DefaultLocation string   `json:"default_location,omitempty"` // room ID
 }
 
 // StatBlock holds the mechanical combat statistics of an NPC or creature.
@@ -165,12 +168,13 @@ type Outcome struct {
 
 // Item is a notable object, treasure, or magic item in the adventure.
 type Item struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Rarity      string `json:"rarity,omitempty"`
-	Mechanics   string `json:"mechanics,omitempty"`
-	Image       string `json:"image,omitempty"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Rarity      string   `json:"rarity,omitempty"`
+	Mechanics   string   `json:"mechanics,omitempty"`
+	Image       string   `json:"image,omitempty"`     // relative asset path (legacy/direct)
+	ImageIDs    []string `json:"image_ids,omitempty"` // references into Adventure.Images
 }
 
 // Faction is an organization or group with goals in the adventure.
@@ -249,6 +253,72 @@ func (a *Adventure) Item(id string) *Item {
 	}
 	return nil
 }
+
+// ImageByID returns the catalog image with the given ID, or nil.
+func (a *Adventure) ImageByID(id string) *ImageRef {
+	for i := range a.Images {
+		if a.Images[i].ID == id {
+			return &a.Images[i]
+		}
+	}
+	return nil
+}
+
+// resolveImages turns a legacy direct path plus a list of catalog image IDs into
+// the distinct relative asset paths they denote (in order, deduped). Unknown IDs
+// are skipped.
+func (a *Adventure) resolveImages(directPath string, ids []string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	add := func(p string) {
+		p = strings.TrimSpace(p)
+		if p != "" && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	add(directPath)
+	for _, id := range ids {
+		if img := a.ImageByID(id); img != nil {
+			add(img.Path)
+		}
+	}
+	return out
+}
+
+// ZoneImages returns a zone's image paths (map first when identifiable).
+func (a *Adventure) ZoneImages(z *Zone) []string { return a.resolveImages(z.MapImage, z.ImageIDs) }
+
+// ZoneMap returns the best map image path for a zone (its map_image, else the
+// first catalog image of kind "map" among its image_ids, else its first image).
+func (a *Adventure) ZoneMap(z *Zone) string {
+	if strings.TrimSpace(z.MapImage) != "" {
+		return z.MapImage
+	}
+	var first string
+	for _, id := range z.ImageIDs {
+		img := a.ImageByID(id)
+		if img == nil {
+			continue
+		}
+		if first == "" {
+			first = img.Path
+		}
+		if img.Kind == "map" {
+			return img.Path
+		}
+	}
+	return first
+}
+
+// RoomImages returns a room's image paths.
+func (a *Adventure) RoomImages(r *Room) []string { return a.resolveImages(r.Image, r.ImageIDs) }
+
+// NPCImages returns an NPC's image paths.
+func (a *Adventure) NPCImages(n *NPC) []string { return a.resolveImages(n.Image, n.ImageIDs) }
+
+// ItemImages returns an item's image paths.
+func (a *Adventure) ItemImages(it *Item) []string { return a.resolveImages(it.Image, it.ImageIDs) }
 
 // ImageRefs returns every distinct relative asset path referenced anywhere in
 // the adventure (catalog, zone maps, room/NPC/item art).
@@ -353,6 +423,25 @@ func ValidateAdventure(a *Adventure, imageExists func(relPath string) bool) []er
 		}
 	}
 
+	// Image catalog IDs (for image_ids references) and duplicate detection.
+	imageIDs := make(map[string]bool)
+	for _, img := range a.Images {
+		if img.ID == "" {
+			continue
+		}
+		if imageIDs[img.ID] {
+			add("image: duplicate id %q", img.ID)
+		}
+		imageIDs[img.ID] = true
+	}
+	checkImageIDs := func(owner string, ids []string) {
+		for _, id := range ids {
+			if !imageIDs[id] {
+				add("%s: references unknown image %q", owner, id)
+			}
+		}
+	}
+
 	// Referential integrity.
 	for _, z := range a.Zones {
 		for _, c := range z.Connections {
@@ -360,6 +449,7 @@ func ValidateAdventure(a *Adventure, imageExists func(relPath string) bool) []er
 				add("zone %q: connection references unknown zone %q", z.ID, c)
 			}
 		}
+		checkImageIDs("zone "+z.ID, z.ImageIDs)
 		for _, r := range z.Rooms {
 			for _, nid := range r.NPCIDs {
 				if !npcIDs[nid] {
@@ -371,6 +461,7 @@ func ValidateAdventure(a *Adventure, imageExists func(relPath string) bool) []er
 					add("room %q: references unknown event %q", r.ID, eid)
 				}
 			}
+			checkImageIDs("room "+r.ID, r.ImageIDs)
 			for _, ex := range r.Exits {
 				if ex.To != "" && !roomIDs[ex.To] && !zoneIDs[ex.To] {
 					add("room %q: exit references unknown room/zone %q", r.ID, ex.To)
@@ -382,6 +473,10 @@ func ValidateAdventure(a *Adventure, imageExists func(relPath string) bool) []er
 		if n.DefaultLocation != "" && !roomIDs[n.DefaultLocation] {
 			add("npc %q: default_location references unknown room %q", n.ID, n.DefaultLocation)
 		}
+		checkImageIDs("npc "+n.ID, n.ImageIDs)
+	}
+	for _, it := range a.Items {
+		checkImageIDs("item "+it.ID, it.ImageIDs)
 	}
 
 	// Image presence.

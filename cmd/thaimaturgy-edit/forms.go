@@ -37,7 +37,8 @@ func (e *editor) zoneForm(z *domain.Zone) fyne.CanvasObject {
 		field("Name", e.treeStr(&z.Name, "", false)),
 		field("Overview (DM)", e.mEntry(&z.Overview)),
 		field("Description", e.mEntry(&z.Description)),
-		field("Map image", e.imageField("maps", &z.MapImage)),
+		field("Map image (direct path)", e.imageField("maps", &z.MapImage)),
+		field("Image IDs — catalog (one per line)", e.listEntry(&z.ImageIDs)),
 		field("Connections — zone IDs (one per line)", e.listEntry(&z.Connections)),
 		widget.NewLabel("Rooms are listed under this zone in the tree. Use +Room to add."),
 	)
@@ -52,7 +53,8 @@ func (e *editor) roomForm(r *domain.Room) fyne.CanvasObject {
 		field("Name", e.treeStr(&r.Name, "", false)),
 		field("Read-aloud text", e.mEntry(&r.ReadAloud)),
 		field("DM notes", e.mEntry(&r.DMNotes)),
-		field("Image", e.imageField("art", &r.Image)),
+		field("Image (direct path)", e.imageField("art", &r.Image)),
+		field("Image IDs — catalog (one per line)", e.listEntry(&r.ImageIDs)),
 		field("NPC IDs (one per line)", e.listEntry(&r.NPCIDs)),
 		field("Event IDs (one per line)", e.listEntry(&r.EventIDs)),
 		field("Treasure (one per line)", e.listEntry(&r.Treasure)),
@@ -75,7 +77,8 @@ func (e *editor) npcForm(n *domain.NPC) fyne.CanvasObject {
 		field("Voice", e.sEntry(&n.Voice)),
 		field("Disposition", e.sEntry(&n.Disposition)),
 		field("Default location (room ID)", e.sEntry(&n.DefaultLocation)),
-		field("Image", e.imageField("art", &n.Image)),
+		field("Image (direct path)", e.imageField("art", &n.Image)),
+		field("Image IDs — catalog (one per line)", e.listEntry(&n.ImageIDs)),
 		field("Knowledge (one per line)", e.listEntry(&n.Knowledge)),
 		field("Sample dialogue (one per line)", e.listEntry(&n.SampleDialogue)),
 	)
@@ -141,7 +144,20 @@ func (e *editor) itemForm(it *domain.Item) fyne.CanvasObject {
 		field("Rarity", e.sEntry(&it.Rarity)),
 		field("Description", e.mEntry(&it.Description)),
 		field("Mechanics", e.mEntry(&it.Mechanics)),
-		field("Image", e.imageField("art", &it.Image)),
+		field("Image (direct path)", e.imageField("art", &it.Image)),
+		field("Image IDs — catalog (one per line)", e.listEntry(&it.ImageIDs)),
+	)
+}
+
+// imageForm edits a catalog image entry. Other entities reference it by its ID
+// through their image_ids.
+func (e *editor) imageForm(img *domain.ImageRef) fyne.CanvasObject {
+	return container.NewVBox(
+		heading("Image (catalog)"),
+		field("ID (referenced via image_ids)", e.treeStr(&img.ID, "img:", true)),
+		field("File", e.imageField("art", &img.Path)),
+		field("Kind (map | art)", e.sEntry(&img.Kind)),
+		field("Description", e.mEntry(&img.Description)),
 	)
 }
 

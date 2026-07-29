@@ -285,7 +285,7 @@ func (tr *ToolRouter) getZone(id string, args map[string]any) types.ToolResult {
 	if z == nil {
 		return errResult(id, "no zone with id "+zid)
 	}
-	return okResult(id, FormatZone(z))
+	return okResult(id, FormatZone(tr.adv(), z))
 }
 
 func (tr *ToolRouter) getNPC(id string, args map[string]any) types.ToolResult {
@@ -294,7 +294,7 @@ func (tr *ToolRouter) getNPC(id string, args map[string]any) types.ToolResult {
 	if n == nil {
 		return errResult(id, "no npc with id "+nid)
 	}
-	out := FormatNPC(n)
+	out := FormatNPC(tr.adv(), n)
 	if st := tr.state().KnownNPCs[nid]; st != nil {
 		out += fmt.Sprintf("\n[session: met=%v alive=%v disposition=%q]", st.Met, st.Alive, st.Disposition)
 	}
@@ -320,7 +320,7 @@ func (tr *ToolRouter) getItem(id string, args map[string]any) types.ToolResult {
 	if it == nil {
 		return errResult(id, "no item with id "+iid)
 	}
-	return okResult(id, FormatItem(it))
+	return okResult(id, FormatItem(tr.adv(), it))
 }
 
 func (tr *ToolRouter) searchModule(id string, args map[string]any) types.ToolResult {

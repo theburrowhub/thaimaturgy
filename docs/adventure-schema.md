@@ -41,8 +41,28 @@ my-adventure.tar.gz
 | `items` | Item[] | no | Treasure and notable objects. |
 | `factions` | Faction[] | no | Organizations with goals. |
 | `lore` | LoreEntry[] | no | World background entries. |
-| `images` | ImageRef[] | no | Optional catalog of image assets. |
+| `images` | ImageRef[] | no | Catalog of image assets; entities reference these by ID via `image_ids`. |
 | `meta` | object | no | Free-form metadata. |
+
+### Referencing images
+
+Images work like NPCs, events, and items: they live once in the top-level `images`
+catalog (each with a unique `id`) and other entities point at them **by id** through an
+`image_ids` array — the same pattern as `npc_ids` / `event_ids`.
+
+```json
+"images": [
+  { "id": "map-crypt", "path": "assets/maps/crypt.png", "kind": "map", "description": "The crypt" },
+  { "id": "art-grask", "path": "assets/art/grask.png", "kind": "art", "description": "Grask the goblin" }
+],
+"zones": [ { "id": "crypt", "image_ids": ["map-crypt"], "rooms": [ ... ] } ],
+"npcs":  [ { "id": "grask", "image_ids": ["art-grask"] } ]
+```
+
+`image_ids` is available on **zones, rooms, NPCs, and items**. The legacy direct-path
+fields (`map_image` on a zone, `image` on a room/NPC/item) still work and are combined
+with any `image_ids`. The AI importer produces `image_ids` automatically, cataloging each
+extracted image with an id and linking it to the zone/room/NPC/item it belongs to.
 
 ### `Zone`
 
@@ -52,7 +72,8 @@ my-adventure.tar.gz
 | `name` | string | |
 | `overview` | string | DM-facing summary of the zone. |
 | `description` | string | |
-| `map_image` | string | Relative path to a zone map (`/map` opens it). |
+| `map_image` | string | Direct relative path to a zone map (legacy; prefer `image_ids`). |
+| `image_ids` | string[] | Catalog image IDs; `/map` prefers a `kind:"map"` one. |
 | `rooms` | Room[] | |
 | `connections` | string[] | Other **zone** IDs reachable from here. |
 
@@ -64,7 +85,8 @@ my-adventure.tar.gz
 | `name` | string | |
 | `read_aloud` | string | Boxed text to read to players verbatim. |
 | `dm_notes` | string | Hidden info: what happens here, secrets, tactics. |
-| `image` | string | Relative path to room art (`/art <room_id>`). |
+| `image` | string | Direct relative path to room art (legacy; prefer `image_ids`). |
+| `image_ids` | string[] | Catalog image IDs for this room. |
 | `npc_ids` | string[] | NPCs present (must exist in `npcs`). |
 | `event_ids` | string[] | Events tied to this room (must exist in `events`). |
 | `exits` | Exit[] | Connections to other rooms/zones. |
@@ -94,7 +116,8 @@ Both **mechanics** and **roleplay** live here.
 | `sample_dialogue` | string[] | Example lines for inspiration. |
 | `disposition` | string | Starting attitude. |
 | `stat_block` | StatBlock | Combat mechanics (optional). |
-| `image` | string | Relative path to a portrait. |
+| `image` | string | Direct relative path to a portrait (legacy; prefer `image_ids`). |
+| `image_ids` | string[] | Catalog image IDs for this NPC. |
 | `default_location` | string | Room ID where they start (must exist). |
 
 **`StatBlock`**: `{ "ac", "max_hp", "speed", "cr", "abilities": {str,dex,con,int,wis,cha},
@@ -115,21 +138,23 @@ Both **mechanics** and **roleplay** live here.
 
 ### `Item`, `Faction`, `LoreEntry`, `ImageRef`
 
-- **Item**: `{ "id", "name", "description", "rarity", "mechanics", "image" }`
+- **Item**: `{ "id", "name", "description", "rarity", "mechanics", "image", "image_ids": [...] }`
 - **Faction**: `{ "id", "name", "description", "goals" }`
 - **LoreEntry**: `{ "title", "content" }`
-- **ImageRef** (optional catalog): `{ "id", "path", "kind": "map"|"art", "description" }`
+- **ImageRef** (catalog entry, referenced by `image_ids`): `{ "id", "path", "kind": "map"|"art", "description" }`
 
 ## Validation rules
 
 Import fails (with a listed reason) if any of these do not hold:
 
 - `id` and `title` are present; at least one zone exists.
-- Zone, room, NPC, and event IDs are non-empty and unique.
+- Zone, room, NPC, event, and image catalog IDs are non-empty and unique.
 - Every `room.npc_ids` / `room.event_ids` / `npc.default_location` / `exit.to`
   reference points at something that exists.
-- Every referenced image (zone `map_image`, room/NPC/item `image`, and `images[]`
-  paths) exists in the archive.
+- Every `image_ids` entry (on zones/rooms/NPCs/items) refers to an existing
+  `images[]` catalog id.
+- Every referenced image file (catalog `images[].path`, plus legacy `map_image` /
+  `image` paths) exists in the archive.
 
 ## How the module reaches the LLM
 

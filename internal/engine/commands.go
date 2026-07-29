@@ -249,7 +249,7 @@ func (h *CommandHandler) handleZone(cmd *Command, r *CommandResult) {
 		r.Success, r.Message = false, "No zone with id "+zid
 		return
 	}
-	r.Response = FormatZone(z)
+	r.Response = FormatZone(h.adv(), z)
 }
 
 func (h *CommandHandler) handleNPC(cmd *Command, r *CommandResult) {
@@ -262,7 +262,7 @@ func (h *CommandHandler) handleNPC(cmd *Command, r *CommandResult) {
 		r.Success, r.Message = false, "No NPC with id "+cmd.Args[0]
 		return
 	}
-	r.Response = FormatNPC(n)
+	r.Response = FormatNPC(h.adv(), n)
 }
 
 func (h *CommandHandler) handleEvent(cmd *Command, r *CommandResult) {
@@ -288,7 +288,7 @@ func (h *CommandHandler) handleItem(cmd *Command, r *CommandResult) {
 		r.Success, r.Message = false, "No item with id "+cmd.Args[0]
 		return
 	}
-	r.Response = FormatItem(it)
+	r.Response = FormatItem(h.adv(), it)
 }
 
 func (h *CommandHandler) handleMap(cmd *Command, r *CommandResult) {
@@ -297,12 +297,16 @@ func (h *CommandHandler) handleMap(cmd *Command, r *CommandResult) {
 		zid = cmd.Args[0]
 	}
 	z := h.adv().Zone(zid)
-	if z == nil || z.MapImage == "" {
+	mapPath := ""
+	if z != nil {
+		mapPath = h.adv().ZoneMap(z)
+	}
+	if mapPath == "" {
 		r.Success, r.Message = false, "No map image for zone "+zid
 		return
 	}
-	r.NeedsUI, r.UIAction, r.UIArg = true, "image", z.MapImage
-	r.Message = "Opening map: " + z.MapImage
+	r.NeedsUI, r.UIAction, r.UIArg = true, "image", mapPath
+	r.Message = "Opening map: " + mapPath
 }
 
 // handleArt resolves an art reference (npc/room/item id, image catalog id, or a
@@ -324,19 +328,23 @@ func (h *CommandHandler) handleArt(cmd *Command, r *CommandResult) {
 
 func (h *CommandHandler) resolveArt(ref string) string {
 	adv := h.adv()
-	if n := adv.NPC(ref); n != nil && n.Image != "" {
-		return n.Image
-	}
-	if room, _ := adv.Room(ref); room != nil && room.Image != "" {
-		return room.Image
-	}
-	if it := adv.Item(ref); it != nil && it.Image != "" {
-		return it.Image
-	}
-	for _, img := range adv.Images {
-		if img.ID == ref {
-			return img.Path
+	if n := adv.NPC(ref); n != nil {
+		if imgs := adv.NPCImages(n); len(imgs) > 0 {
+			return imgs[0]
 		}
+	}
+	if room, _ := adv.Room(ref); room != nil {
+		if imgs := adv.RoomImages(room); len(imgs) > 0 {
+			return imgs[0]
+		}
+	}
+	if it := adv.Item(ref); it != nil {
+		if imgs := adv.ItemImages(it); len(imgs) > 0 {
+			return imgs[0]
+		}
+	}
+	if img := adv.ImageByID(ref); img != nil {
+		return img.Path
 	}
 	if strings.Contains(ref, "/") || strings.Contains(ref, ".") {
 		return ref // treat as literal relative path

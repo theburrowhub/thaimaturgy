@@ -100,6 +100,7 @@ func (e *editor) buildUI() fyne.CanvasObject {
 		widget.NewButton("+NPC", e.addNPC),
 		widget.NewButton("+Event", e.addEvent),
 		widget.NewButton("+Item", e.addItem),
+		widget.NewButton("+Image", e.addImage),
 		widget.NewButton("Delete", e.deleteSelected),
 	)
 	e.nav = e.buildTree()
@@ -132,7 +133,13 @@ func (e *editor) buildTree() *widget.Tree {
 func (e *editor) childUIDs(uid widget.TreeNodeID) []widget.TreeNodeID {
 	switch {
 	case uid == "":
-		return []widget.TreeNodeID{"meta", "zones", "npcs", "events", "items"}
+		return []widget.TreeNodeID{"meta", "zones", "npcs", "events", "items", "images"}
+	case uid == "images":
+		var out []widget.TreeNodeID
+		for _, img := range e.adv.Images {
+			out = append(out, "img:"+img.ID)
+		}
+		return out
 	case uid == "zones":
 		var out []widget.TreeNodeID
 		for _, z := range e.adv.Zones {
@@ -173,7 +180,7 @@ func (e *editor) childUIDs(uid widget.TreeNodeID) []widget.TreeNodeID {
 
 func (e *editor) isBranch(uid widget.TreeNodeID) bool {
 	switch uid {
-	case "", "zones", "npcs", "events", "items":
+	case "", "zones", "npcs", "events", "items", "images":
 		return true
 	}
 	return strings.HasPrefix(uid, "zone:")
@@ -191,6 +198,8 @@ func (e *editor) nodeLabel(uid widget.TreeNodeID) string {
 		return "⚡ Events"
 	case "items":
 		return "💎 Items"
+	case "images":
+		return "🖼 Images"
 	}
 	switch {
 	case strings.HasPrefix(uid, "zone:"):
@@ -213,6 +222,14 @@ func (e *editor) nodeLabel(uid widget.TreeNodeID) string {
 	case strings.HasPrefix(uid, "item:"):
 		if it := e.adv.Item(strings.TrimPrefix(uid, "item:")); it != nil {
 			return labelOrID(it.Name, it.ID)
+		}
+	case strings.HasPrefix(uid, "img:"):
+		if img := e.adv.ImageByID(strings.TrimPrefix(uid, "img:")); img != nil {
+			label := img.ID
+			if img.Kind != "" {
+				label += " (" + img.Kind + ")"
+			}
+			return label
 		}
 	}
 	return uid
@@ -245,6 +262,10 @@ func (e *editor) showForm(uid widget.TreeNodeID) {
 	case strings.HasPrefix(uid, "item:"):
 		if it := e.adv.Item(strings.TrimPrefix(uid, "item:")); it != nil {
 			form = e.itemForm(it)
+		}
+	case strings.HasPrefix(uid, "img:"):
+		if img := e.adv.ImageByID(strings.TrimPrefix(uid, "img:")); img != nil {
+			form = e.imageForm(img)
 		}
 	default:
 		form = widget.NewLabel("Select an item to edit, or use the + buttons to add content.")
@@ -314,6 +335,14 @@ func (e *editor) addItem() {
 	e.showForm("item:" + id)
 }
 
+func (e *editor) addImage() {
+	id := uniqueID("image", func(s string) bool { return e.adv.ImageByID(s) != nil })
+	e.adv.Images = append(e.adv.Images, domain.ImageRef{ID: id, Kind: "art"})
+	e.dirty = true
+	e.refreshTree()
+	e.showForm("img:" + id)
+}
+
 func (e *editor) deleteSelected() {
 	uid := e.currentUID
 	if uid == "" || e.isBranch(uid) && !strings.HasPrefix(uid, "zone:") {
@@ -355,7 +384,20 @@ func (e *editor) removeByUID(uid string) {
 	case strings.HasPrefix(uid, "item:"):
 		id := strings.TrimPrefix(uid, "item:")
 		e.adv.Items = filterItems(e.adv.Items, func(it domain.Item) bool { return it.ID != id })
+	case strings.HasPrefix(uid, "img:"):
+		id := strings.TrimPrefix(uid, "img:")
+		e.adv.Images = filterImages(e.adv.Images, func(im domain.ImageRef) bool { return im.ID != id })
 	}
+}
+
+func filterImages(s []domain.ImageRef, keep func(domain.ImageRef) bool) []domain.ImageRef {
+	out := s[:0]
+	for _, v := range s {
+		if keep(v) {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func (e *editor) selectedZoneID() string {

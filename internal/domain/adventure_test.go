@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func validAdv() *Adventure {
 	return &Adventure{
@@ -76,6 +79,48 @@ func TestAdventureLookups(t *testing.T) {
 	}
 	if a.Event("e1") == nil {
 		t.Error("Event lookup failed")
+	}
+}
+
+func TestImageIDReferencesValidation(t *testing.T) {
+	a := validAdv()
+	a.Images = []ImageRef{{ID: "map1", Path: "assets/map1.png", Kind: "map"}, {ID: "art1", Path: "assets/art1.png", Kind: "art"}}
+	a.Zones[0].ImageIDs = []string{"map1"}
+	a.Zones[0].Rooms[0].ImageIDs = []string{"art1", "ghost-img"} // ghost-img is dangling
+	a.NPCs[0].ImageIDs = []string{"art1"}
+
+	errs := ValidateAdventure(a, nil)
+	if len(errs) != 1 {
+		t.Fatalf("expected exactly 1 error (dangling image ref), got %d: %v", len(errs), errs)
+	}
+	if !strings.Contains(errs[0].Error(), "ghost-img") {
+		t.Errorf("error should name the dangling image, got %v", errs[0])
+	}
+}
+
+func TestImageResolvers(t *testing.T) {
+	a := validAdv()
+	a.Images = []ImageRef{
+		{ID: "scene", Path: "assets/scene.png", Kind: "art"},
+		{ID: "themap", Path: "assets/themap.png", Kind: "map"},
+	}
+	// Zone with two image_ids and no direct map_image: ZoneMap prefers the map.
+	a.Zones[0].ImageIDs = []string{"scene", "themap"}
+	if got := a.ZoneMap(&a.Zones[0]); got != "assets/themap.png" {
+		t.Errorf("ZoneMap = %q, want assets/themap.png (map kind preferred)", got)
+	}
+	// Room combines a direct path with a catalog id, deduped and in order.
+	r := &a.Zones[0].Rooms[0]
+	r.Image = "assets/direct.png"
+	r.ImageIDs = []string{"scene", "themap"}
+	imgs := a.RoomImages(r)
+	want := []string{"assets/direct.png", "assets/scene.png", "assets/themap.png"}
+	if len(imgs) != 3 || imgs[0] != want[0] || imgs[1] != want[1] || imgs[2] != want[2] {
+		t.Errorf("RoomImages = %v, want %v", imgs, want)
+	}
+	// Unknown ids resolve to nothing.
+	if got := a.resolveImages("", []string{"nope"}); len(got) != 0 {
+		t.Errorf("unknown id should resolve to nothing, got %v", got)
 	}
 }
 

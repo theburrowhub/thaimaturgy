@@ -375,37 +375,28 @@ func (g *gui) showDetail(uid widget.TreeNodeID) {
 	adv := g.session.Adventure
 	var text string
 	var actions []fyne.CanvasObject
-	image := ""
+	var images []string // resolved relative paths (image_ids + legacy paths)
 
 	switch {
 	case strings.HasPrefix(uid, "zone:"):
 		if z := adv.Zone(strings.TrimPrefix(uid, "zone:")); z != nil {
-			text = engine.FormatZone(z)
-			image = z.MapImage
-			if z.MapImage != "" {
-				actions = append(actions, widget.NewButton("Show map", func() { g.showInline(z.MapImage) }))
-			}
+			text = engine.FormatZone(adv, z)
+			images = adv.ZoneImages(z)
 		}
 	case strings.HasPrefix(uid, "room:"):
 		_, rid := splitRoomUID(uid)
 		if r, _ := adv.Room(rid); r != nil {
 			text = engine.FormatRoom(adv, r)
-			image = r.Image
+			images = adv.RoomImages(r)
 			id := r.ID
 			actions = append(actions, widget.NewButton("▶ Move party here", func() { g.movePartyHere(id) }))
-			if r.Image != "" {
-				actions = append(actions, widget.NewButton("Show art", func() { g.showInline(r.Image) }))
-			}
 		}
 	case strings.HasPrefix(uid, "npc:"):
 		if n := adv.NPC(strings.TrimPrefix(uid, "npc:")); n != nil {
-			text = engine.FormatNPC(n)
-			image = n.Image
+			text = engine.FormatNPC(adv, n)
+			images = adv.NPCImages(n)
 			id, name := n.ID, n.Name
 			actions = append(actions, widget.NewButton("Mark as met", func() { g.markNPCMet(id, name) }))
-			if n.Image != "" {
-				actions = append(actions, widget.NewButton("Show art", func() { g.showInline(n.Image) }))
-			}
 		}
 	case strings.HasPrefix(uid, "event:"):
 		if e := adv.Event(strings.TrimPrefix(uid, "event:")); e != nil {
@@ -415,21 +406,28 @@ func (g *gui) showDetail(uid widget.TreeNodeID) {
 		}
 	case strings.HasPrefix(uid, "item:"):
 		if it := adv.Item(strings.TrimPrefix(uid, "item:")); it != nil {
-			text = engine.FormatItem(it)
-			image = it.Image
-			if it.Image != "" {
-				actions = append(actions, widget.NewButton("Show art", func() { g.showInline(it.Image) }))
-			}
+			text = engine.FormatItem(adv, it)
+			images = adv.ItemImages(it)
 		}
 	default:
 		text = "Select a zone, room, NPC, event, or item on the left to view it."
 	}
 
+	// One "Show" button per referenced image; show the first inline by default.
+	for i, p := range images {
+		p := p
+		label := "Show image"
+		if len(images) > 1 {
+			label = fmt.Sprintf("Image %d", i+1)
+		}
+		actions = append(actions, widget.NewButton(label, func() { g.showInline(p) }))
+	}
+
 	g.detailText.ParseMarkdown("```\n" + text + "\n```")
 	g.detailActions.Objects = actions
 	g.detailActions.Refresh()
-	if image != "" {
-		g.showInline(image)
+	if len(images) > 0 {
+		g.showInline(images[0])
 	} else {
 		g.detailImage.Objects = nil
 		g.detailImage.Refresh()
