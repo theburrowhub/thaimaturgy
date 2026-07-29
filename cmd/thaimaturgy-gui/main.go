@@ -15,11 +15,13 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
+	"github.com/theburrowhub/thaimaturgy/internal/guitheme"
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
@@ -78,6 +80,7 @@ func main() {
 		_ = store.SaveConfig(config) // generate config.yaml on first run
 	}
 	g.prov = providers.New(config)
+	g.app.Settings().SetTheme(guitheme.New())
 	g.win = g.app.NewWindow("thAImaturgy — DM Oracle")
 	g.win.Resize(fyne.NewSize(1200, 780))
 	g.showLibrary()
@@ -89,10 +92,10 @@ func main() {
 func (g *gui) showLibrary() {
 	g.session, g.oracle, g.cmd = nil, nil, nil
 
-	title := widget.NewLabelWithStyle("thAImaturgy — Adventure Library",
-		fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	title := widget.NewLabelWithStyle("🐉  thAImaturgy", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	subtitle := widget.NewLabelWithStyle("An AI oracle for the Dungeon Master", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
-	importBtn := widget.NewButton("Import module (.tar.gz)…", g.importDialog)
+	importBtn := widget.NewButtonWithIcon("Import module (.tar.gz)…", theme.FolderOpenIcon(), g.importDialog)
 
 	list := container.NewVBox()
 
@@ -128,8 +131,8 @@ func (g *gui) showLibrary() {
 			fyne.TextAlignCenter, fyne.TextStyle{Italic: true}))
 	}
 
-	top := container.NewVBox(title, importBtn, widget.NewSeparator())
-	content := container.NewBorder(top, bottom, nil, nil, container.NewVScroll(list))
+	top := container.NewVBox(title, subtitle, widget.NewSeparator(), importBtn, widget.NewSeparator())
+	content := container.NewBorder(top, bottom, nil, nil, widget.NewCard("Library", "", container.NewVScroll(list)))
 	g.win.SetContent(content)
 }
 
@@ -208,33 +211,34 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	sendBtn := widget.NewButton("Send", func() { g.submit(g.entry.Text) })
 
 	// Left column: adventure browser (top) + session log (bottom).
-	navHeader := widget.NewLabelWithStyle("ADVENTURE", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	logHeader := widget.NewLabelWithStyle("SESSION LOG", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	left := container.NewVSplit(
-		container.NewBorder(navHeader, nil, nil, nil, g.navTree),
-		container.NewBorder(logHeader, nil, nil, nil, g.logScroll),
+		widget.NewCard("Adventure", "", g.navTree),
+		widget.NewCard("Session Log", "", g.logScroll),
 	)
 	left.SetOffset(0.62)
 
 	// Center: oracle transcript + input.
 	inputRow := container.NewBorder(nil, nil, nil, sendBtn, g.entry)
-	center := container.NewBorder(nil, inputRow, nil, nil, g.transScroll)
+	center := widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transScroll))
 
 	// Right: detail of the selected zone/room/NPC/event/item + inline image.
-	detailHeader := widget.NewLabelWithStyle("DETAIL", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	detailBody := container.NewVSplit(container.NewVScroll(g.detailText), container.NewVScroll(g.detailImage))
 	detailBody.SetOffset(0.6)
-	right := container.NewBorder(container.NewVBox(detailHeader, g.detailActions), nil, nil, nil, detailBody)
+	right := widget.NewCard("Detail", "", container.NewBorder(g.detailActions, nil, nil, nil, detailBody))
 
 	body := container.NewHSplit(left, container.NewHSplit(center, right))
 	body.SetOffset(0.24)
 
-	g.locLabel = widget.NewLabel("")
-	toolbar := container.NewHBox(
-		widget.NewButton("← Library", g.showLibrary),
-		widget.NewButton("Save", g.save),
-		widget.NewLabel(adv.Title+"  |"),
-		g.locLabel,
+	g.locLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	title := widget.NewLabelWithStyle("🐉  "+adv.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	toolbar := container.NewVBox(
+		container.NewHBox(
+			widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary),
+			widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save),
+			title,
+			g.locLabel,
+		),
+		widget.NewSeparator(),
 	)
 
 	g.win.SetContent(container.NewBorder(toolbar, nil, nil, nil, body))

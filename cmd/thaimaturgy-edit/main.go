@@ -22,6 +22,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/aibuild"
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/guitheme"
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
@@ -65,6 +66,7 @@ func main() {
 	}
 
 	e := &editor{app: app.New(), config: config, prov: providers.New(config), model: config.Model, authMsg: authMsg}
+	e.app.Settings().SetTheme(guitheme.New())
 	e.win = e.app.NewWindow("thAImaturgy — Module Editor")
 	e.win.Resize(fyne.NewSize(1180, 820))
 	e.newAdventure() // start with a template
@@ -101,12 +103,16 @@ func (e *editor) buildUI() fyne.CanvasObject {
 		widget.NewButton("Delete", e.deleteSelected),
 	)
 	e.nav = e.buildTree()
-	left := container.NewBorder(navTools, nil, nil, nil, e.nav)
+	left := widget.NewCard("Adventure", "", container.NewBorder(navTools, nil, nil, nil, e.nav))
+	form := widget.NewCard("Editor", "", container.NewVScroll(e.formHost))
 
-	split := container.NewHSplit(left, container.NewVScroll(e.formHost))
+	split := container.NewHSplit(left, form)
 	split.SetOffset(0.28)
 
-	return container.NewBorder(toolbar, e.status, nil, nil, split)
+	title := widget.NewLabelWithStyle("⚔  thAImaturgy — Module Editor", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	header := container.NewVBox(title, toolbar, widget.NewSeparator())
+
+	return container.NewBorder(header, e.status, nil, nil, split)
 }
 
 func (e *editor) buildTree() *widget.Tree {
