@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/ingest"
 )
 
 const (
@@ -82,6 +83,17 @@ func (s *Storage) ImportModule(srcPath string) (*domain.Adventure, error) {
 	}
 	if strings.TrimSpace(adv.ID) == "" {
 		return nil, fmt.Errorf("adventure.json is missing required field 'id'")
+	}
+
+	// Normalize images (transcode TIFF→PNG incl. CMYK, downscale huge scans, and
+	// drop near-blank paper/texture layers), rewriting adv's references. Pre-built
+	// modules bypass the PDF/folder ingest pipeline, so without this they can carry
+	// undisplayable TIFFs and blank layers. Persist the updated references so the
+	// stored adventure.json matches the normalized files on disk.
+	if t, d := ingest.NormalizeModuleImages(staging, &adv); t > 0 || d > 0 {
+		if out, merr := json.MarshalIndent(&adv, "", "  "); merr == nil {
+			_ = os.WriteFile(advPath, out, 0644)
+		}
 	}
 
 	imageExists := func(rel string) bool {

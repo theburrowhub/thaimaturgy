@@ -22,6 +22,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/guitheme"
+	_ "github.com/theburrowhub/thaimaturgy/internal/imagefmt" // register TIFF/WebP/BMP decoders
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
@@ -51,6 +52,7 @@ type gui struct {
 	// Adventure browser + detail pane.
 	navTree       *widget.Tree
 	detailText    *widget.RichText
+	detailLinks   *fyne.Container
 	detailImage   *fyne.Container
 	detailActions *fyne.Container
 	locLabel      *widget.Label
@@ -201,6 +203,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 
 	g.detailText = widget.NewRichTextFromMarkdown("")
 	g.detailText.Wrapping = fyne.TextWrapWord
+	g.detailLinks = container.NewVBox()
 	g.detailImage = container.NewStack()
 	g.detailActions = container.NewHBox()
 	g.navTree = g.buildAdvTree()
@@ -221,8 +224,10 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	inputRow := container.NewBorder(nil, nil, nil, sendBtn, g.entry)
 	center := widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transScroll))
 
-	// Right: detail of the selected zone/room/NPC/event/item + inline image.
-	detailBody := container.NewVSplit(container.NewVScroll(g.detailText), container.NewVScroll(g.detailImage))
+	// Right: detail of the selected zone/room/NPC/event/item — prose + navigable
+	// links (top, scrolls together) and the inline image (bottom).
+	detailContent := container.NewVScroll(container.NewVBox(g.detailText, g.detailLinks))
+	detailBody := container.NewVSplit(detailContent, container.NewVScroll(g.detailImage))
 	detailBody.SetOffset(0.6)
 	right := widget.NewCard("Detail", "", container.NewBorder(g.detailActions, nil, nil, nil, detailBody))
 
@@ -373,44 +378,48 @@ func (g *gui) treeLabel(uid widget.TreeNodeID) string {
 func (g *gui) showDetail(uid widget.TreeNodeID) {
 	g.currentUID = uid
 	adv := g.session.Adventure
-	var text string
+	var md string
+	var groups []navGroup
 	var actions []fyne.CanvasObject
 	var images []string // resolved relative paths (image_ids + legacy paths)
 
 	switch {
 	case strings.HasPrefix(uid, "zone:"):
 		if z := adv.Zone(strings.TrimPrefix(uid, "zone:")); z != nil {
-			text = engine.FormatZone(adv, z)
+			md = zoneMarkdown(z)
+			groups = zoneGroups(adv, z)
 			images = adv.ZoneImages(z)
 		}
 	case strings.HasPrefix(uid, "room:"):
 		_, rid := splitRoomUID(uid)
 		if r, _ := adv.Room(rid); r != nil {
-			text = engine.FormatRoom(adv, r)
+			md = roomMarkdown(r)
+			groups = roomGroups(adv, r)
 			images = adv.RoomImages(r)
 			id := r.ID
 			actions = append(actions, widget.NewButton("▶ Move party here", func() { g.movePartyHere(id) }))
 		}
 	case strings.HasPrefix(uid, "npc:"):
 		if n := adv.NPC(strings.TrimPrefix(uid, "npc:")); n != nil {
-			text = engine.FormatNPC(adv, n)
+			md = npcMarkdown(n)
+			groups = npcGroups(adv, n)
 			images = adv.NPCImages(n)
 			id, name := n.ID, n.Name
 			actions = append(actions, widget.NewButton("Mark as met", func() { g.markNPCMet(id, name) }))
 		}
 	case strings.HasPrefix(uid, "event:"):
 		if e := adv.Event(strings.TrimPrefix(uid, "event:")); e != nil {
-			text = engine.FormatEvent(e)
+			md = eventMarkdown(e)
 			id, name := e.ID, e.Name
 			actions = append(actions, widget.NewButton("Mark triggered", func() { g.triggerEvent(id, name) }))
 		}
 	case strings.HasPrefix(uid, "item:"):
 		if it := adv.Item(strings.TrimPrefix(uid, "item:")); it != nil {
-			text = engine.FormatItem(adv, it)
+			md = itemMarkdown(it)
 			images = adv.ItemImages(it)
 		}
 	default:
-		text = "Select a zone, room, NPC, event, or item on the left to view it."
+		md = "_Select a zone, room, NPC, event, or item on the left to view it._"
 	}
 
 	// One "Show" button per referenced image; show the first inline by default.
@@ -423,7 +432,8 @@ func (g *gui) showDetail(uid widget.TreeNodeID) {
 		actions = append(actions, widget.NewButton(label, func() { g.showInline(p) }))
 	}
 
-	g.detailText.ParseMarkdown("```\n" + text + "\n```")
+	g.detailText.ParseMarkdown(md)
+	g.setDetailLinks(groups)
 	g.detailActions.Objects = actions
 	g.detailActions.Refresh()
 	if len(images) > 0 {
@@ -432,6 +442,39 @@ func (g *gui) showDetail(uid widget.TreeNodeID) {
 		g.detailImage.Objects = nil
 		g.detailImage.Refresh()
 	}
+}
+
+// setDetailLinks renders the navigable "Go to" reference groups as tappable
+// hyperlinks that jump to the target node in the browser and detail pane.
+func (g *gui) setDetailLinks(groups []navGroup) {
+	g.detailLinks.Objects = nil
+	for _, grp := range groups {
+		if len(grp.refs) == 0 {
+			continue
+		}
+		g.detailLinks.Add(widget.NewLabelWithStyle(grp.title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
+		for _, ref := range grp.refs {
+			target := ref.uid
+			link := widget.NewHyperlink("› "+ref.label, nil)
+			link.OnTapped = func() { g.selectNode(target) }
+			g.detailLinks.Add(link)
+		}
+	}
+	g.detailLinks.Refresh()
+}
+
+// selectNode navigates the browser to uid and shows its detail, revealing the
+// containing zone branch for rooms.
+func (g *gui) selectNode(uid widget.TreeNodeID) {
+	if strings.HasPrefix(uid, "room:") {
+		if zid, _ := splitRoomUID(uid); zid != "" {
+			g.navTree.OpenBranch("zones")
+			g.navTree.OpenBranch("zone:" + zid)
+		}
+	}
+	g.navTree.Select(uid)
+	g.navTree.ScrollTo(uid)
+	g.showDetail(uid)
 }
 
 func (g *gui) movePartyHere(roomID string) {

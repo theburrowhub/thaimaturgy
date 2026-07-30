@@ -327,7 +327,7 @@ func extractPDFImages(pdfPath, workingDir string) (map[int][]string, []domain.Im
 	}
 
 	entries, _ := os.ReadDir(outDir)
-	total, kept, skipped := 0, 0, 0
+	total, kept, skipped, blank := 0, 0, 0, 0
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -341,19 +341,31 @@ func extractPDFImages(pdfPath, workingDir string) (map[int][]string, []domain.Im
 		if kept >= maxImages {
 			continue
 		}
+		// Transcode/downscale so the referenced file renders everywhere (TIFF,
+		// incl. CMYK page scans, becomes PNG) and stays light. The name may
+		// change extension, so derive rel/id from the normalized basename.
+		name, keep := normalizeImageFile(filepath.Join(outDir, e.Name()))
+		if !keep {
+			// pdfcpu extracts every image layer, including near-blank paper/
+			// texture/overlay layers; drop those so they don't pollute the module.
+			blank++
+			_ = os.Remove(filepath.Join(outDir, name))
+			ingestLog.Printf("dropping near-blank extracted layer: %s", name)
+			continue
+		}
 		kept++
-		rel := filepath.ToSlash(filepath.Join(relDir, e.Name()))
-		if m := pageImgRe.FindStringSubmatch(e.Name()); m != nil {
+		rel := filepath.ToSlash(filepath.Join(relDir, name))
+		if m := pageImgRe.FindStringSubmatch(name); m != nil {
 			if pg, err := strconv.Atoi(m[1]); err == nil {
 				byPage[pg] = append(byPage[pg], rel)
 				continue
 			}
 		}
 		catalog = append(catalog, domain.ImageRef{
-			ID: slug(strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))), Path: rel, Kind: "art",
+			ID: slug(strings.TrimSuffix(name, filepath.Ext(name))), Path: rel, Kind: "art",
 		})
 	}
-	ingestLog.Printf("pdfcpu wrote %d file(s): %d image(s) kept, %d skipped", total, kept, skipped)
+	ingestLog.Printf("pdfcpu wrote %d file(s): %d image(s) kept, %d near-blank layer(s) dropped, %d skipped", total, kept, blank, skipped)
 	if total == 0 {
 		ingestLog.Printf("no embedded images found — the PDF likely uses vector art, inline images, or full-page scans that pdfcpu cannot extract as image streams")
 	}
@@ -403,7 +415,12 @@ func copyImage(src, workingDir, kind string) (string, error) {
 	if _, err := io.Copy(out, in); err != nil {
 		return "", err
 	}
-	return filepath.ToSlash(filepath.Join(relDir, filepath.Base(dest))), nil
+	if cerr := out.Close(); cerr != nil {
+		return "", cerr
+	}
+	// Make the copied image portable/light (TIFF→PNG, downscale huge scans).
+	name, _ := normalizeImageFile(dest)
+	return filepath.ToSlash(filepath.Join(relDir, name)), nil
 }
 
 func fileExists(p string) bool {

@@ -23,6 +23,8 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/guitheme"
+	_ "github.com/theburrowhub/thaimaturgy/internal/imagefmt" // register TIFF/WebP/BMP decoders
+	"github.com/theburrowhub/thaimaturgy/internal/ingest"
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
@@ -506,12 +508,19 @@ func (e *editor) openArchive() {
 			nativeui.Error("Open module", "Invalid adventure.json: "+jerr.Error())
 			return
 		}
+		// Transcode TIFF→PNG (incl. CMYK), downscale, and drop near-blank layers so
+		// previews render and junk paper-texture layers are purged on open.
+		transcoded, dropped := ingest.NormalizeModuleImages(dir, &adv)
+		status := "Opened archive: " + src
+		if transcoded > 0 || dropped > 0 {
+			status = fmt.Sprintf("%s (normalized %d image(s), dropped %d blank layer(s))", status, transcoded, dropped)
+		}
 		fyne.Do(func() {
 			e.adv = &adv
 			e.workingDir = dir
-			e.dirty = false
+			e.dirty = transcoded > 0 || dropped > 0 // prompt to save the cleaned-up module
 			e.reload()
-			e.setStatus("Opened archive: " + src)
+			e.setStatus(status)
 		})
 	}()
 }
