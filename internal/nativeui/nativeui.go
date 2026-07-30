@@ -64,5 +64,25 @@ func Confirm(title, message string) bool {
 	return err == nil // nil = OK/Yes; ErrCanceled = No/Cancel
 }
 
+// Choice shows a native question with two labeled buttons plus Cancel. It returns
+// 1 for the primary button (primaryLabel), 2 for the secondary (secondaryLabel),
+// or 0 if the dialog was canceled or dismissed.
+func Choice(title, message, primaryLabel, secondaryLabel string) int {
+	err := zenity.Question(message,
+		zenity.Title(title),
+		zenity.OKLabel(primaryLabel),
+		zenity.ExtraButton(secondaryLabel),
+		zenity.CancelLabel("Cancel"),
+	)
+	switch {
+	case err == nil:
+		return 1
+	case errors.Is(err, zenity.ErrExtraButton):
+		return 2
+	default:
+		return 0
+	}
+}
+
 // Canceled reports whether an error from a dialog is a user cancellation.
 func Canceled(err error) bool { return errors.Is(err, zenity.ErrCanceled) }

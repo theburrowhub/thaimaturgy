@@ -43,6 +43,10 @@ type editor struct {
 	workingDir string // holds adventure.json + assets/
 	dirty      bool
 
+	// translate toggles AI translation of the imported module into the configured
+	// import language. Off by default: import in the source document's language.
+	translate bool
+
 	nav        *widget.Tree
 	formHost   *fyne.Container
 	status     *widget.Label
@@ -82,15 +86,16 @@ func main() {
 // --- UI scaffold ---------------------------------------------------------
 
 func (e *editor) buildUI() fyne.CanvasObject {
+	translateCheck := widget.NewCheck(e.translateLabel(), func(v bool) { e.translate = v })
+	translateCheck.SetChecked(e.translate)
+
 	toolbar := container.NewHBox(
 		widget.NewButton("New", e.confirmNew),
-		widget.NewButton("Open folder…", e.openFolder),
-		widget.NewButton("Open .tar.gz…", e.openArchive),
-		widget.NewButton("Import images…", e.ingestFolder),
-		widget.NewButton("Import PDF…", e.ingestPDF),
-		widget.NewButton("Save", func() { _ = e.save() }),
+		widget.NewButton("Open…", e.openDialog),
+		widget.NewButton("Import…", e.importDialog),
+		translateCheck,
+		widget.NewButton("Save…", e.saveDialog),
 		widget.NewButton("Validate", e.validate),
-		widget.NewButton("Package .tar.gz…", e.packageModule),
 	)
 
 	e.status = widget.NewLabel("")
@@ -456,77 +461,88 @@ func (e *editor) newAdventure() {
 	e.dirty = false
 }
 
-func (e *editor) openFolder() {
+// openDialog opens an existing module — either an unpacked adventure folder or a
+// packaged .tar.gz — chosen from a single dialog.
+func (e *editor) openDialog() {
 	go func() {
-		dir, ok := nativeui.OpenFolder("Open module folder")
-		if !ok {
+		if !e.confirmReplaceNative() {
 			return
 		}
-		data, rerr := os.ReadFile(filepath.Join(dir, storage.AdventureFile))
-		if rerr != nil {
-			nativeui.Error("Open folder", fmt.Sprintf("No %s in that folder.", storage.AdventureFile))
-			return
+		switch nativeui.Choice("Open adventure", "Open an adventure folder, or a .tar.gz module?", "Adventure folder…", ".tar.gz module…") {
+		case 1:
+			if dir, ok := nativeui.OpenFolder("Open adventure folder"); ok {
+				e.loadFromFolder(dir)
+			}
+		case 2:
+			if src, ok := nativeui.OpenFile("Open .tar.gz module",
+				nativeui.Filter{Name: "Adventure module", Patterns: []string{"*.tar.gz", "*.tgz", "*.gz"}}); ok {
+				e.loadFromArchive(src)
+			}
 		}
-		var adv domain.Adventure
-		if jerr := json.Unmarshal(data, &adv); jerr != nil {
-			nativeui.Error("Open folder", "Invalid adventure.json: "+jerr.Error())
-			return
-		}
-		fyne.Do(func() {
-			e.adv = &adv
-			e.workingDir = dir
-			e.dirty = false
-			e.reload()
-			e.setStatus("Opened folder: " + dir)
-		})
 	}()
 }
 
-func (e *editor) openArchive() {
-	go func() {
-		src, ok := nativeui.OpenFile("Open .tar.gz module",
-			nativeui.Filter{Name: "Adventure module", Patterns: []string{"*.tar.gz", "*.tgz", "*.gz"}})
-		if !ok {
-			return
-		}
-		dir, merr := os.MkdirTemp("", "thaim-edit-*")
-		if merr != nil {
-			nativeui.Error("Open module", merr.Error())
-			return
-		}
-		if xerr := storage.ExtractModule(src, dir); xerr != nil {
-			nativeui.Error("Open module", xerr.Error())
-			return
-		}
-		data, rerr := os.ReadFile(filepath.Join(dir, storage.AdventureFile))
-		if rerr != nil {
-			nativeui.Error("Open module", fmt.Sprintf("Archive has no %s.", storage.AdventureFile))
-			return
-		}
-		var adv domain.Adventure
-		if jerr := json.Unmarshal(data, &adv); jerr != nil {
-			nativeui.Error("Open module", "Invalid adventure.json: "+jerr.Error())
-			return
-		}
-		// Transcode TIFF→PNG (incl. CMYK), downscale, and drop near-blank layers so
-		// previews render and junk paper-texture layers are purged on open.
-		transcoded, dropped := ingest.NormalizeModuleImages(dir, &adv)
-		status := "Opened archive: " + src
-		if transcoded > 0 || dropped > 0 {
-			status = fmt.Sprintf("%s (normalized %d image(s), dropped %d blank layer(s))", status, transcoded, dropped)
-		}
-		fyne.Do(func() {
-			e.adv = &adv
-			e.workingDir = dir
-			e.dirty = transcoded > 0 || dropped > 0 // prompt to save the cleaned-up module
-			e.reload()
-			e.setStatus(status)
-		})
-	}()
+// loadFromFolder opens an unpacked module directory in place. It runs on the
+// caller's goroutine (not the UI thread) and marshals UI updates via fyne.Do.
+func (e *editor) loadFromFolder(dir string) {
+	data, rerr := os.ReadFile(filepath.Join(dir, storage.AdventureFile))
+	if rerr != nil {
+		nativeui.Error("Open folder", fmt.Sprintf("No %s in that folder.", storage.AdventureFile))
+		return
+	}
+	var adv domain.Adventure
+	if jerr := json.Unmarshal(data, &adv); jerr != nil {
+		nativeui.Error("Open folder", "Invalid adventure.json: "+jerr.Error())
+		return
+	}
+	fyne.Do(func() {
+		e.adv = &adv
+		e.workingDir = dir
+		e.dirty = false
+		e.reload()
+		e.setStatus("Opened folder: " + dir)
+	})
 }
 
-// ingestFolder builds a module from a folder of images, interpreted by the AI.
-func (e *editor) ingestFolder() {
+// loadFromArchive extracts a .tar.gz into a temp working dir and opens it,
+// normalizing images (TIFF→PNG, drop near-blank layers) so previews render.
+func (e *editor) loadFromArchive(src string) {
+	dir, merr := os.MkdirTemp("", "thaim-edit-*")
+	if merr != nil {
+		nativeui.Error("Open module", merr.Error())
+		return
+	}
+	if xerr := storage.ExtractModule(src, dir); xerr != nil {
+		nativeui.Error("Open module", xerr.Error())
+		return
+	}
+	data, rerr := os.ReadFile(filepath.Join(dir, storage.AdventureFile))
+	if rerr != nil {
+		nativeui.Error("Open module", fmt.Sprintf("Archive has no %s.", storage.AdventureFile))
+		return
+	}
+	var adv domain.Adventure
+	if jerr := json.Unmarshal(data, &adv); jerr != nil {
+		nativeui.Error("Open module", "Invalid adventure.json: "+jerr.Error())
+		return
+	}
+	transcoded, dropped := ingest.NormalizeModuleImages(dir, &adv)
+	status := "Opened archive: " + src
+	if transcoded > 0 || dropped > 0 {
+		status = fmt.Sprintf("%s (normalized %d image(s), dropped %d blank layer(s))", status, transcoded, dropped)
+	}
+	fyne.Do(func() {
+		e.adv = &adv
+		e.workingDir = dir
+		e.dirty = transcoded > 0 || dropped > 0 // prompt to save the cleaned-up module
+		e.reload()
+		e.setStatus(status)
+	})
+}
+
+// importDialog builds a new module with AI from either a PDF file or a folder of
+// images, chosen from a single dialog.
+func (e *editor) importDialog() {
 	if !e.requireProvider() {
 		return
 	}
@@ -534,43 +550,84 @@ func (e *editor) ingestFolder() {
 		if !e.confirmReplaceNative() {
 			return
 		}
-		src, ok := nativeui.OpenFolder("Choose a folder of images")
-		if !ok {
-			return
+		switch nativeui.Choice("Import adventure", "Import from a PDF file, or a folder of images?", "PDF file…", "Images folder…") {
+		case 1:
+			src, ok := nativeui.OpenFile("Choose a PDF", nativeui.Filter{Name: "PDF", Patterns: []string{"*.pdf"}})
+			if !ok {
+				return
+			}
+			title := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+			e.runIngest("Interpreting PDF with AI…", func(dir string) (*domain.Adventure, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+				defer cancel()
+				return aibuild.FromPDF(ctx, e.prov, e.importConfig(), src, dir, title, e.progress(), e.fallbackConfirm())
+			})
+		case 2:
+			src, ok := nativeui.OpenFolder("Choose a folder of images")
+			if !ok {
+				return
+			}
+			e.runIngest("Interpreting images with AI…", func(dir string) (*domain.Adventure, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+				defer cancel()
+				return aibuild.FromImages(ctx, e.prov, e.importConfig(), src, dir, filepath.Base(src), e.progress(), e.fallbackConfirm())
+			})
 		}
-		e.runIngest("Interpreting images with AI…", func(dir string) (*domain.Adventure, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-			defer cancel()
-			return aibuild.FromImages(ctx, e.prov, e.config, src, dir, filepath.Base(src), e.progress())
-		})
-	}()
-}
-
-// ingestPDF builds a module from a PDF: text and images are interpreted by the AI.
-func (e *editor) ingestPDF() {
-	if !e.requireProvider() {
-		return
-	}
-	go func() {
-		if !e.confirmReplaceNative() {
-			return
-		}
-		src, ok := nativeui.OpenFile("Choose a PDF", nativeui.Filter{Name: "PDF", Patterns: []string{"*.pdf"}})
-		if !ok {
-			return
-		}
-		title := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
-		e.runIngest("Interpreting PDF with AI…", func(dir string) (*domain.Adventure, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-			defer cancel()
-			return aibuild.FromPDF(ctx, e.prov, e.config, src, dir, title, e.progress())
-		})
 	}()
 }
 
 // progress returns a callback that mirrors import progress into the status bar.
 func (e *editor) progress() aibuild.Progress {
 	return func(s string) { fyne.Do(func() { e.setStatus(s) }) }
+}
+
+// fallbackConfirm returns a callback the importer consults when the chosen model
+// is unavailable and would be substituted (e.g. a rate-limited model falling back
+// to a smaller one). It asks natively whether to proceed with the substitute.
+func (e *editor) fallbackConfirm() aibuild.ConfirmFallback {
+	return func(requested, served string) bool {
+		return nativeui.Confirm("Model unavailable",
+			fmt.Sprintf("%q is currently unavailable (likely rate-limited).\n\nContinue this import with %q instead?\n\nChoose Cancel to abort and retry later with %q.",
+				requested, served, requested))
+	}
+}
+
+// importLang is the language used when the Translate toggle is on: the configured
+// import language, falling back to the UI language.
+func (e *editor) importLang() string {
+	if e.config == nil {
+		return "Spanish"
+	}
+	if l := strings.TrimSpace(e.config.ImportLanguage); l != "" {
+		return l
+	}
+	return string(e.config.Language)
+}
+
+// translateLabel is the checkbox caption, naming the target language.
+func (e *editor) translateLabel() string {
+	return "Translate import → " + e.importConfigWith(true).ImportLanguageName()
+}
+
+// importConfig returns the config to use for an import, honoring the Translate
+// toggle: when off, translation is disabled (import in the source language);
+// when on, the configured/UI import language is applied. It never mutates the
+// shared config — it returns a copy.
+func (e *editor) importConfig() *domain.Config {
+	return e.importConfigWith(e.translate)
+}
+
+func (e *editor) importConfigWith(translate bool) *domain.Config {
+	if e.config == nil {
+		e.config = domain.DefaultConfig()
+	}
+	cfg := *e.config // shallow copy
+	if translate {
+		cfg.ImportLanguage = e.importLang()
+	} else {
+		cfg.ImportLanguage = ""
+	}
+	return &cfg
 }
 
 // requireProvider ensures an AI provider is configured before an AI import.
@@ -675,25 +732,101 @@ func (e *editor) validate() {
 	go nativeui.Info("Validation", sb.String())
 }
 
-func (e *editor) packageModule() {
-	if err := e.save(); err != nil {
+// saveDialog flushes the current edits and saves the module either as an unpacked
+// adventure folder or as a packaged .tar.gz, chosen from a single dialog.
+func (e *editor) saveDialog() {
+	if e.workingDir == "" || e.adv == nil {
+		e.showErr(fmt.Errorf("nothing to save yet — create or import a module first"))
+		return
+	}
+	if err := e.save(); err != nil { // flush adventure.json into the working dir first
 		return
 	}
 	work, advID := e.workingDir, e.adv.ID
 	go func() {
-		dest, ok := nativeui.SaveFile("Package module", advID+".tar.gz",
-			nativeui.Filter{Name: "Adventure module", Patterns: []string{"*.tar.gz"}})
-		if !ok {
-			return
+		switch nativeui.Choice("Save adventure", "Save as an adventure folder, or a .tar.gz module?", "Adventure folder…", ".tar.gz module…") {
+		case 1:
+			dest, ok := nativeui.OpenFolder("Choose a destination folder")
+			if !ok {
+				return
+			}
+			if filepath.Clean(dest) != filepath.Clean(work) {
+				if cerr := copyTree(work, dest); cerr != nil {
+					nativeui.Error("Save failed", cerr.Error())
+					return
+				}
+			}
+			fyne.Do(func() {
+				e.workingDir = dest // subsequent saves target the chosen folder
+				e.setStatus("Saved folder: " + dest)
+			})
+		case 2:
+			dest, ok := nativeui.SaveFile("Save .tar.gz module", advID+".tar.gz",
+				nativeui.Filter{Name: "Adventure module", Patterns: []string{"*.tar.gz"}})
+			if !ok {
+				return
+			}
+			_ = os.Remove(dest) // PackageModule recreates it
+			if perr := storage.PackageModule(work, dest); perr != nil {
+				nativeui.Error("Save failed", perr.Error())
+				return
+			}
+			nativeui.Info("Saved", "Module written to:\n"+dest)
+			fyne.Do(func() { e.setStatus("Saved archive: " + dest) })
 		}
-		_ = os.Remove(dest) // PackageModule recreates it
-		if perr := storage.PackageModule(work, dest); perr != nil {
-			nativeui.Error("Package failed", perr.Error())
-			return
-		}
-		nativeui.Info("Packaged", "Module written to:\n"+dest)
-		fyne.Do(func() { e.setStatus("Packaged: " + dest) })
 	}()
+}
+
+// copyTree recursively copies the module at src into dst, skipping hidden files
+// and the diagnostic import dump so a saved folder stays clean.
+func copyTree(src, dst string) error {
+	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, rerr := filepath.Rel(src, p)
+		if rerr != nil {
+			return rerr
+		}
+		if rel == "." {
+			return os.MkdirAll(dst, 0755)
+		}
+		base := filepath.Base(p)
+		if strings.HasPrefix(base, ".") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if base == "_import_raw.txt" {
+			return nil
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		return copyFileContents(p, target)
+	})
+}
+
+func copyFileContents(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // importImage copies a chosen file into workingDir/assets/<kind>/ and calls set

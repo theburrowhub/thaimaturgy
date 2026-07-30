@@ -1,5 +1,7 @@
 package domain
 
+import "strings"
+
 type ProviderType string
 type Language string
 
@@ -73,6 +75,12 @@ type Config struct {
 	ImportMaxDocChars      int `json:"import_max_doc_chars"`
 	ImportMaxOutputTokens  int `json:"import_max_output_tokens"`
 
+	// ImportLanguage is the language adventures are authored in during AI import,
+	// independent of the source document's language (e.g. import an English PDF as
+	// a Spanish module). A language name or code ("Spanish", "es", "French"). When
+	// empty, import follows the UI Language.
+	ImportLanguage string `json:"import_language,omitempty"`
+
 	TTS TTSConfig `json:"tts"`
 }
 
@@ -97,7 +105,7 @@ func DefaultConfig() *Config {
 		ImportVisionMaxImages:  10,
 		ImportVisionMaxImageMB: 4,
 		ImportMaxDocChars:      90000,
-		ImportMaxOutputTokens:  32000,
+		ImportMaxOutputTokens:  64000,
 
 		TTS: TTSConfig{
 			Enabled: false,
@@ -155,6 +163,46 @@ func (c *Config) GetSystemPrompt() string {
 		return DefaultSystemPromptES
 	}
 	return DefaultSystemPromptEN
+}
+
+// LanguageName returns the English display name of a UI language.
+func LanguageName(l Language) string {
+	if l == LangSpanish {
+		return "Spanish"
+	}
+	return "English"
+}
+
+// ImportLanguageName returns the human-readable target language that adventures
+// are authored in during AI import. An empty ImportLanguage follows the UI
+// Language; otherwise common codes/names are normalized and anything else is
+// passed through verbatim (e.g. "French", "Deutsch").
+func (c *Config) ImportLanguageName() string {
+	s := strings.TrimSpace(c.ImportLanguage)
+	if s == "" {
+		return LanguageName(c.Language)
+	}
+	switch strings.ToLower(s) {
+	case "en", "eng", "english":
+		return "English"
+	case "es", "spa", "spanish", "español", "espanol", "castellano":
+		return "Spanish"
+	}
+	return s
+}
+
+// ImportLanguageCode returns a best-effort language code for the import target,
+// suitable for the adventure's "language" field ("en", "es", or a lower-cased
+// form of a free-text language for anything else).
+func (c *Config) ImportLanguageCode() string {
+	switch c.ImportLanguageName() {
+	case "English":
+		return "en"
+	case "Spanish":
+		return "es"
+	default:
+		return strings.ToLower(strings.TrimSpace(c.ImportLanguage))
+	}
 }
 
 var DefaultSystemPromptEN = `You are an expert assistant to a human Dungeon Master who is running THIS specific, pre-authored D&D-style adventure. You are NOT the DM and you do NOT control the players. Your job is to help the DM run the adventure that is loaded.

@@ -55,7 +55,7 @@ func TestFromImagesBuildsAndSanitizes(t *testing.T) {
 	  "npcs":[{"id":"villain","name":"Villain","default_location":"badroom"}]
 	}` + "\n```"}
 
-	adv, err := FromImages(context.Background(), stub, &domain.Config{Model: "gpt-4o"}, src, work, "Fallback Title", nil)
+	adv, err := FromImages(context.Background(), stub, &domain.Config{Model: "gpt-4o"}, src, work, "Fallback Title", nil, nil)
 	if err != nil {
 		t.Fatalf("FromImages: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestFromImagesBuildsAndSanitizes(t *testing.T) {
 }
 
 func TestFromImagesRequiresProvider(t *testing.T) {
-	if _, err := FromImages(context.Background(), nil, nil, t.TempDir(), t.TempDir(), "x", nil); err == nil {
+	if _, err := FromImages(context.Background(), nil, nil, t.TempDir(), t.TempDir(), "x", nil, nil); err == nil {
 		t.Fatal("expected an error when no provider is configured")
 	}
 }
@@ -118,7 +118,7 @@ func TestBuildRepairsInvalidJSON(t *testing.T) {
 		{Content: "Here is your module: {\"id\":\"x\"", FinishReason: "stop"}, // unparseable
 		{Content: `{"id":"x","title":"X","zones":[{"id":"z","name":"Z"}]}`, FinishReason: "stop"},
 	}}
-	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil)
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil, nil)
 	if err != nil {
 		t.Fatalf("build should recover via repair: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestBuildReportsTruncation(t *testing.T) {
 	stub := &seqProvider{resps: []*providers.ChatResponse{
 		{Content: "{\"id\":\"x\",", FinishReason: "max_tokens"},
 	}}
-	_, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil)
+	_, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil, nil)
 	if err == nil {
 		t.Fatal("expected an error for persistently truncated output")
 	}
@@ -154,7 +154,7 @@ func TestBuildContinuesTruncatedJSON(t *testing.T) {
 		{Content: `{"id":"x","title":"X","zones":[`, FinishReason: "max_tokens"},
 		{Content: `{"id":"z","name":"Z"}]}`, FinishReason: "stop"},
 	}}
-	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil)
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil, nil)
 	if err != nil {
 		t.Fatalf("build should stitch continuations: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestCurationClassifiesAndDropsDecorative(t *testing.T) {
 	}}
 
 	in := []ingest.Asset{{RelPath: "assets/art/a.png"}, {RelPath: "assets/art/b.png"}}
-	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", in, work, nil)
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", in, work, nil, nil)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestCurationBuildsImageIDReferences(t *testing.T) {
 	}}
 
 	in := []ingest.Asset{{RelPath: "assets/art/a.png"}}
-	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", in, work, nil)
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", in, work, nil, nil)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -133,6 +134,7 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 
 	// If the chosen model is unavailable or throttled, retry with the fallback.
 	if err != nil && p.fallbackModel != "" && req.Model != p.fallbackModel && anthropicRetryable(err) {
+		log.Printf("anthropic: model %q unavailable (%v); falling back to %q", req.Model, err, p.fallbackModel)
 		req.Model = p.fallbackModel
 		resp, err = p.chatOnce(ctx, req)
 	}

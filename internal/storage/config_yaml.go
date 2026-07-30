@@ -42,10 +42,16 @@ type fileConfig struct {
 	} `yaml:"oracle"`
 
 	Import struct {
-		VisionMaxImages  int `yaml:"vision_max_images"`
-		VisionMaxImageMB int `yaml:"vision_max_image_mb"`
-		MaxDocChars      int `yaml:"max_doc_chars"`
-		MaxOutputTokens  int `yaml:"max_output_tokens"`
+		// Language adventures are authored in during AI import, independent of the
+		// source document (e.g. import an English PDF as a Spanish module). A name or
+		// code ("Spanish", "es", "French"); empty follows ui.language. Game terms —
+		// monster/spell/item names — are written translated with the original in
+		// parentheses so they stay searchable in official books.
+		Language         string `yaml:"language"`
+		VisionMaxImages  int    `yaml:"vision_max_images"`
+		VisionMaxImageMB int    `yaml:"vision_max_image_mb"`
+		MaxDocChars      int    `yaml:"max_doc_chars"`
+		MaxOutputTokens  int    `yaml:"max_output_tokens"`
 	} `yaml:"import"`
 
 	TTS struct {
@@ -81,6 +87,7 @@ func fromConfig(c *domain.Config) fileConfig {
 	fc.Oracle.SummarizeAfter = c.OracleSummarizeAfter
 	fc.Oracle.RequestTimeoutSeconds = c.RequestTimeoutSeconds
 
+	fc.Import.Language = c.ImportLanguage
 	fc.Import.VisionMaxImages = c.ImportVisionMaxImages
 	fc.Import.VisionMaxImageMB = c.ImportVisionMaxImageMB
 	fc.Import.MaxDocChars = c.ImportMaxDocChars
@@ -117,6 +124,7 @@ func toConfig(fc *fileConfig, c *domain.Config) {
 	c.OracleSummarizeAfter = fc.Oracle.SummarizeAfter
 	c.RequestTimeoutSeconds = fc.Oracle.RequestTimeoutSeconds
 
+	c.ImportLanguage = fc.Import.Language
 	c.ImportVisionMaxImages = fc.Import.VisionMaxImages
 	c.ImportVisionMaxImageMB = fc.Import.VisionMaxImageMB
 	c.ImportMaxDocChars = fc.Import.MaxDocChars

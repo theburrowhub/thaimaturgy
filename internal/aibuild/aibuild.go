@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/ingest"
@@ -72,7 +73,7 @@ func limitsFrom(cfg *domain.Config) limits {
 }
 
 // FromPDF extracts a PDF and asks the model to build an adventure from it.
-func FromPDF(ctx context.Context, prov providers.Provider, cfg *domain.Config, pdfPath, workingDir, title string, progress Progress) (*domain.Adventure, error) {
+func FromPDF(ctx context.Context, prov providers.Provider, cfg *domain.Config, pdfPath, workingDir, title string, progress Progress, confirm ConfirmFallback) (*domain.Adventure, error) {
 	if prov == nil {
 		return nil, fmt.Errorf("no AI provider configured; set an API key first")
 	}
@@ -85,12 +86,12 @@ func FromPDF(ctx context.Context, prov providers.Provider, cfg *domain.Config, p
 	if len(assets) == 0 {
 		report(progress, "No embedded images could be extracted (the PDF may use vector art or full-page scans). Proceeding with text only.")
 	}
-	return build(ctx, prov, cfg, title, text, assets, workingDir, progress)
+	return build(ctx, prov, cfg, title, text, assets, workingDir, progress, confirm)
 }
 
 // FromImages copies a folder of images and asks the model to build an adventure
 // by interpreting them visually.
-func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config, srcDir, workingDir, title string, progress Progress) (*domain.Adventure, error) {
+func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config, srcDir, workingDir, title string, progress Progress, confirm ConfirmFallback) (*domain.Adventure, error) {
 	if prov == nil {
 		return nil, fmt.Errorf("no AI provider configured; set an API key first")
 	}
@@ -100,15 +101,38 @@ func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config
 		return nil, err
 	}
 	report(progress, "Found %d image(s).", len(assets))
-	return build(ctx, prov, cfg, title, "", assets, workingDir, progress)
+	return build(ctx, prov, cfg, title, "", assets, workingDir, progress, confirm)
 }
 
-func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, title, docText string, assets []ingest.Asset, workingDir string, progress Progress) (*domain.Adventure, error) {
+// ConfirmFallback is consulted when the configured model is unavailable and the
+// provider would serve the request with a different (usually smaller) model. It
+// receives the requested and the substitute model ids; returning true proceeds
+// with the substitute, false aborts the import. A nil ConfirmFallback proceeds
+// silently (the provider's own fallback applies).
+type ConfirmFallback func(requested, served string) bool
+
+func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, title, docText string, assets []ingest.Asset, workingDir string, progress Progress, confirm ConfirmFallback) (*domain.Adventure, error) {
 	lim := limitsFrom(cfg)
 	model := ""
 	if cfg != nil {
 		model = cfg.Model
 	}
+
+	// Before the expensive authoring, check whether the chosen model is actually
+	// available: a cheap ping reveals if the provider would substitute a different
+	// (usually smaller) model — e.g. a rate-limited Sonnet falling back to Haiku.
+	// If so, let the caller decide whether to proceed or abort. Only Anthropic does
+	// this family-level downgrade; OpenAI/Gemini return dated ids for the same model
+	// (which would falsely look like a substitution), so restrict the check to it.
+	if confirm != nil && model != "" && cfg != nil && cfg.Provider == domain.ProviderAnthropic {
+		if served := servedModel(ctx, prov, model); served != "" && served != model {
+			if !confirm(model, served) {
+				return nil, fmt.Errorf("import cancelled: %q is unavailable and %q was declined", model, served)
+			}
+			report(progress, "Continuing with %q (the chosen model %q is unavailable).", served, model)
+		}
+	}
+
 	// Curate the extracted images with vision: classify (map/portrait/scene/
 	// item/decorative), caption, and drop decorative junk.
 	if len(assets) > 0 {
@@ -122,11 +146,26 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 	user := buildUserPrompt(title, docText, curated, lim.maxDocChars)
 	images := loadVisionImages(workingDir, curated, lim.visionMaxImages, lim.maxImageBytes)
 
+	sys := systemPrompt
+	if dir := importLanguageDirective(cfg); dir != "" {
+		sys += "\n\n" + dir
+		report(progress, "Authoring the module in %s.", cfg.ImportLanguageName())
+	}
+
 	// Generate the JSON, continuing across responses when the model runs into
 	// the per-reply output-token limit (adventures easily exceed it).
 	report(progress, "Generating the adventure…")
-	raw, finish, err := generate(ctx, prov, model, systemPrompt, user, images, lim.maxOutputTokens, progress)
+	raw, finish, err := generate(ctx, prov, model, sys, user, images, lim.maxOutputTokens, progress)
 	if err != nil {
+		// Surface the reason in the log and keep whatever partial output we got,
+		// so a mid-continuation API failure is diagnosable and recoverable.
+		report(progress, "AI request failed: %v", err)
+		if workingDir != "" && strings.TrimSpace(raw) != "" {
+			rawPath := filepath.Join(workingDir, "_import_raw.txt")
+			if werr := os.WriteFile(rawPath, []byte(raw), 0644); werr == nil {
+				report(progress, "Partial output saved to %s (%d chars).", rawPath, len(raw))
+			}
+		}
 		return nil, fmt.Errorf("AI request failed: %w", err)
 	}
 
@@ -146,10 +185,20 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 		if truncated(finish) {
 			hint = "the reply exceeded the output limit even after continuing — raise import.max_output_tokens in config.yaml, or import a smaller source."
 		}
+		// Persist the raw reply so the work isn't lost and the failure is diagnosable.
+		if workingDir != "" && strings.TrimSpace(raw) != "" {
+			rawPath := filepath.Join(workingDir, "_import_raw.txt")
+			if werr := os.WriteFile(rawPath, []byte(raw), 0644); werr == nil {
+				hint += " The raw model output was saved to " + rawPath + "."
+			}
+		}
 		return nil, fmt.Errorf("the model did not return usable adventure JSON (%v); %s", perr, hint)
 	}
 
 	sanitize(adv, title, workingDir)
+	if code := importLanguageCode(cfg); code != "" {
+		adv.Language = code // keep the module's language tag consistent with the import target
+	}
 	enrichCatalog(adv, curated)
 	dropUnknownImageIDs(adv)
 	report(progress, "Done: %d zone(s), %d room(s), %d NPC(s), %d event(s), %d image(s).",
@@ -163,6 +212,22 @@ func countRooms(adv *domain.Adventure) int {
 		n += len(z.Rooms)
 	}
 	return n
+}
+
+// servedModel pings the provider with a tiny request and reports which model id
+// actually served it, which may differ from the requested one when the provider
+// substitutes a fallback. Returns "" if the ping fails (then we don't second-guess
+// the real call).
+func servedModel(ctx context.Context, prov providers.Provider, model string) string {
+	resp, err := prov.Chat(ctx, providers.ChatRequest{
+		Model:     model,
+		MaxTokens: 8,
+		Messages:  []providers.Message{{Role: providers.RoleUser, Content: "ping"}},
+	})
+	if err != nil || resp == nil {
+		return ""
+	}
+	return resp.Model
 }
 
 // maxContinuations bounds how many "keep going" round-trips generate() will make.
@@ -191,18 +256,72 @@ func generate(ctx context.Context, prov providers.Provider, model, sys, user str
 		if err != nil {
 			return full.String(), finish, err
 		}
-		full.WriteString(resp.Content)
+		if i == 0 && resp.Model != "" && resp.Model != model {
+			// The provider served a different model than requested (e.g. fell back
+			// to a smaller model because the chosen one was rate-limited). Surface
+			// it: a downgrade materially affects output quality on large modules.
+			report(progress, "Note: request served by %q instead of %q (the chosen model was unavailable).", resp.Model, model)
+		}
+
+		// Stitch the reply onto what we have. Continuations (i>0) can arrive wrapped
+		// in a code fence or repeating a few trailing characters despite the
+		// instruction; clean that so the concatenation stays valid JSON.
+		chunk := resp.Content
+		if i > 0 {
+			chunk = stitchContinuation(full.String(), chunk)
+		}
+		full.WriteString(chunk)
 		finish = resp.FinishReason
 		if !truncated(finish) {
 			break
 		}
-		// Ask the model to continue exactly where it stopped.
+		// Resume. This model family may not support assistant prefill, so the
+		// conversation must end with a user turn; give the model its own partial
+		// output back plus an explicit instruction and the exact tail to continue.
+		tail := lastN(full.String(), 240)
 		messages = append(messages,
 			providers.Message{Role: providers.RoleAssistant, Content: resp.Content},
-			providers.Message{Role: providers.RoleUser, Content: "Continue the JSON exactly where you left off. Output ONLY the remaining raw characters — do not repeat anything already sent, no prose, no markdown fences."},
+			providers.Message{Role: providers.RoleUser, Content: "Your JSON object is incomplete — it was cut off. Continue it from EXACTLY where it stopped. Output ONLY the remaining raw JSON characters: no repetition of what you already sent, no explanation, no markdown fences. For reference, your output so far ends with:\n" + tail},
 		)
 	}
 	return full.String(), finish, nil
+}
+
+// stitchContinuation cleans a continuation chunk before appending it to prev: it
+// strips a leading code fence and removes any overlap where the model repeated
+// the tail of what it already sent, so the concatenation stays valid JSON.
+func stitchContinuation(prev, chunk string) string {
+	chunk = strings.TrimLeft(chunk, " \t\r\n")
+	for _, f := range []string{"```json", "```JSON", "```Json", "```"} {
+		chunk = strings.TrimPrefix(chunk, f)
+	}
+	chunk = strings.TrimLeft(chunk, " \t\r\n")
+	// Drop the largest prefix of chunk that duplicates the suffix of prev.
+	max := 400
+	if len(prev) < max {
+		max = len(prev)
+	}
+	if len(chunk) < max {
+		max = len(chunk)
+	}
+	for k := max; k > 0; k-- {
+		if prev[len(prev)-k:] == chunk[:k] {
+			return chunk[k:]
+		}
+	}
+	return chunk
+}
+
+// lastN returns the last n bytes of s (rune-safe at the cut point).
+func lastN(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	s = s[len(s)-n:]
+	for len(s) > 0 && !utf8.RuneStart(s[0]) {
+		s = s[1:]
+	}
+	return s
 }
 
 func truncated(finishReason string) bool {
@@ -254,6 +373,38 @@ RULES:
 - IMAGES: you are given a list of extracted images, each with an image_id, a kind, and a caption. Reference them by id in the "image_ids" arrays: put kind=map images in the matching zone's image_ids; put kind=portrait/scene/item in the matching NPC, room, or item's image_ids, guided by the caption. Use ONLY image_ids from the provided list — never invent ids or file paths. You do not need to output the top-level "images" catalog; it is filled in automatically.
 - Every id must be unique and kebab-case. Every reference (npc_ids, event_ids, exit "to", default_location, image_ids) must point to an id that exists.
 - Return valid JSON only.`
+
+// importLanguageDirective returns extra system-prompt rules pinning the language
+// the module is authored in, or "" when import.language is unset — in which case
+// the model follows the source document, preserving prior behavior. When set, all
+// prose is written in the target language while rules terms (monsters, spells,
+// items) are given translated with the original in parentheses, so the DM can
+// still cross-reference official books and the internet.
+func importLanguageDirective(cfg *domain.Config) string {
+	if cfg == nil || strings.TrimSpace(cfg.ImportLanguage) == "" {
+		return ""
+	}
+	lang := cfg.ImportLanguageName()
+	var sb strings.Builder
+	sb.WriteString("LANGUAGE:\n")
+	fmt.Fprintf(&sb, "- Author ALL prose in %s, regardless of the source document's language: summary, background, introduction, conclusion, hooks, zone/room overviews and descriptions, read_aloud (boxed) text, dm_notes, every NPC field (appearance, personality, motivations, secrets, voice, knowledge, sample_dialogue), event text, and item descriptions/mechanics.\n", lang)
+	fmt.Fprintf(&sb, "- Set the top-level \"language\" field to %q.\n", cfg.ImportLanguageCode())
+	sb.WriteString("- Keep every \"id\" value in ASCII kebab-case; never translate ids.\n")
+	if !strings.EqualFold(lang, "English") {
+		fmt.Fprintf(&sb, "- For rules terminology a DM may need to look up in official books — monster/creature names, spells, magic items, equipment, conditions, and other game keywords — write the %s term followed by the original source-language term in parentheses on first use in each field, e.g. \"lobo huargo (dire wolf)\", \"espada larga (longsword)\". Afterwards the %s term alone is fine.\n", lang, lang)
+		sb.WriteString("- Preserve unique proper nouns (character and place names) in their original form; you may add a parenthetical translation when the source itself localizes them.\n")
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// importLanguageCode returns the module "language" tag for the import target, or
+// "" when import.language is unset.
+func importLanguageCode(cfg *domain.Config) string {
+	if cfg == nil || strings.TrimSpace(cfg.ImportLanguage) == "" {
+		return ""
+	}
+	return cfg.ImportLanguageCode()
+}
 
 func buildUserPrompt(title, docText string, assets []asset, maxDocChars int) string {
 	var sb strings.Builder
