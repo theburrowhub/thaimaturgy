@@ -40,7 +40,7 @@ const (
 	defVisionMaxImages  = 10
 	defVisionMaxImageMB = 4
 	defMaxDocChars      = 90_000
-	defMaxOutputTokens  = 16000
+	defMaxOutputTokens  = 32000
 )
 
 // limits resolves the effective import caps from config, applying defaults.
@@ -114,7 +114,7 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 	if len(assets) > 0 {
 		report(progress, "Curating %d image(s) with vision…", len(assets))
 	}
-	curated := curateAssets(ctx, prov, model, workingDir, toAssets(assets), lim.maxImageBytes, progress)
+	curated := curateAssets(ctx, prov, model, workingDir, toAssets(assets), curationMaxBytes, progress)
 	if len(assets) > 0 {
 		report(progress, "Kept %d image(s) after curation.", len(curated))
 	}
@@ -335,14 +335,12 @@ func mediaType(rel string) string {
 
 // parseAdventure extracts a JSON object from the model's reply and unmarshals it.
 func parseAdventure(content string) (*domain.Adventure, error) {
-	s := strings.TrimSpace(content)
-	// Strip ```json ... ``` fences if present.
-	if i := strings.Index(s, "```"); i >= 0 {
-		s = s[i+3:]
-		s = strings.TrimPrefix(s, "json")
-		if j := strings.LastIndex(s, "```"); j >= 0 {
-			s = s[:j]
-		}
+	// Remove ALL markdown code fences, not just the outer pair: when the reply
+	// was stitched from several continuation chunks, each chunk may have added
+	// its own ```json fence in the middle of the JSON.
+	s := content
+	for _, f := range []string{"```json", "```JSON", "```Json", "```"} {
+		s = strings.ReplaceAll(s, f, "")
 	}
 	start := strings.Index(s, "{")
 	end := strings.LastIndex(s, "}")

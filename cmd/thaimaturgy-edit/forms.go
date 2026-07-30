@@ -1,15 +1,50 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
+
+// imagePreview renders inline previews for the given module-relative image
+// paths, or nil if there's nothing to show.
+func (e *editor) imagePreview(paths []string) fyne.CanvasObject {
+	if e.workingDir == "" || len(paths) == 0 {
+		return nil
+	}
+	box := container.NewVBox()
+	for _, p := range paths {
+		abs := filepath.Join(e.workingDir, filepath.FromSlash(p))
+		if info, err := os.Stat(abs); err != nil || info.IsDir() {
+			continue
+		}
+		img := canvas.NewImageFromFile(abs)
+		img.FillMode = canvas.ImageFillContain
+		img.SetMinSize(fyne.NewSize(240, 240))
+		box.Add(widget.NewLabel(p))
+		box.Add(img)
+	}
+	if len(box.Objects) == 0 {
+		return nil
+	}
+	return container.NewVBox(widget.NewSeparator(), heading("Preview"), box)
+}
+
+// withPreview appends image previews (if any) to a form box and returns it.
+func (e *editor) withPreview(box *fyne.Container, paths []string) fyne.CanvasObject {
+	if p := e.imagePreview(paths); p != nil {
+		box.Add(p)
+	}
+	return box
+}
 
 // --- Forms ---------------------------------------------------------------
 
@@ -31,7 +66,7 @@ func (e *editor) metaForm() fyne.CanvasObject {
 }
 
 func (e *editor) zoneForm(z *domain.Zone) fyne.CanvasObject {
-	return container.NewVBox(
+	box := container.NewVBox(
 		heading("Zone"),
 		field("ID", e.treeStr(&z.ID, "zone:", true)),
 		field("Name", e.treeStr(&z.Name, "", false)),
@@ -42,12 +77,13 @@ func (e *editor) zoneForm(z *domain.Zone) fyne.CanvasObject {
 		field("Connections — zone IDs (one per line)", e.listEntry(&z.Connections)),
 		widget.NewLabel("Rooms are listed under this zone in the tree. Use +Room to add."),
 	)
+	return e.withPreview(box, e.adv.ZoneImages(z))
 }
 
 func (e *editor) roomForm(r *domain.Room) fyne.CanvasObject {
 	zid := e.selectedZoneID()
 	prefix := "room:" + zid + "::"
-	return container.NewVBox(
+	box := container.NewVBox(
 		heading("Room"),
 		field("ID", e.treeStr(&r.ID, prefix, true)),
 		field("Name", e.treeStr(&r.Name, "", false)),
@@ -62,6 +98,7 @@ func (e *editor) roomForm(r *domain.Room) fyne.CanvasObject {
 		e.featuresEditor(r),
 		e.encountersEditor(r),
 	)
+	return e.withPreview(box, e.adv.RoomImages(r))
 }
 
 func (e *editor) npcForm(n *domain.NPC) fyne.CanvasObject {
@@ -83,7 +120,7 @@ func (e *editor) npcForm(n *domain.NPC) fyne.CanvasObject {
 		field("Sample dialogue (one per line)", e.listEntry(&n.SampleDialogue)),
 	)
 	box.Add(e.statBlockEditor(n))
-	return box
+	return e.withPreview(box, e.adv.NPCImages(n))
 }
 
 func (e *editor) statBlockEditor(n *domain.NPC) fyne.CanvasObject {
@@ -137,7 +174,7 @@ func (e *editor) eventForm(ev *domain.Event) fyne.CanvasObject {
 }
 
 func (e *editor) itemForm(it *domain.Item) fyne.CanvasObject {
-	return container.NewVBox(
+	box := container.NewVBox(
 		heading("Item"),
 		field("ID", e.treeStr(&it.ID, "item:", true)),
 		field("Name", e.treeStr(&it.Name, "", false)),
@@ -147,18 +184,24 @@ func (e *editor) itemForm(it *domain.Item) fyne.CanvasObject {
 		field("Image (direct path)", e.imageField("art", &it.Image)),
 		field("Image IDs — catalog (one per line)", e.listEntry(&it.ImageIDs)),
 	)
+	return e.withPreview(box, e.adv.ItemImages(it))
 }
 
 // imageForm edits a catalog image entry. Other entities reference it by its ID
 // through their image_ids.
 func (e *editor) imageForm(img *domain.ImageRef) fyne.CanvasObject {
-	return container.NewVBox(
+	box := container.NewVBox(
 		heading("Image (catalog)"),
 		field("ID (referenced via image_ids)", e.treeStr(&img.ID, "img:", true)),
 		field("File", e.imageField("art", &img.Path)),
 		field("Kind (map | art)", e.sEntry(&img.Kind)),
 		field("Description", e.mEntry(&img.Description)),
 	)
+	var paths []string
+	if img.Path != "" {
+		paths = []string{img.Path}
+	}
+	return e.withPreview(box, paths)
 }
 
 // --- Sub-list editors ----------------------------------------------------

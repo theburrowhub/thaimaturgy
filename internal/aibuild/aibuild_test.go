@@ -252,6 +252,20 @@ func TestParseAdventureToleratesTrailingCommas(t *testing.T) {
 	}
 }
 
+func TestParseAdventureStitchedFences(t *testing.T) {
+	// Simulate a reply stitched from continuation chunks where a chunk injected
+	// its own ```json fence in the middle of the JSON.
+	stitched := "```json\n{\"id\":\"a\",\"title\":\"A\",\"zones\":[{\"id\":\"z\"," +
+		"\n```json\n\"name\":\"Z\"}]}\n```"
+	adv, err := parseAdventure(stitched)
+	if err != nil {
+		t.Fatalf("should tolerate mid-string fences: %v", err)
+	}
+	if adv.ID != "a" || len(adv.Zones) != 1 || adv.Zones[0].Name != "Z" {
+		t.Errorf("unexpected parse: %+v", adv)
+	}
+}
+
 func TestParseAdventurePlainAndFenced(t *testing.T) {
 	for _, in := range []string{
 		`{"id":"a","title":"A","zones":[{"id":"z","name":"Z"}]}`,

@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	curationBatch     = 6  // images classified per vision call
-	maxCurationImages = 30 // overall cap on images to classify
+	curationBatch     = 6        // images classified per vision call
+	maxCurationImages = 30       // overall cap on images to classify
+	curationMaxBytes  = 16 << 20 // per-image size cap for classification (higher than
+	// generation vision, since classification benefits from seeing large scans)
 )
 
 // asset is an extracted image plus the AI's classification of it. id is a stable
