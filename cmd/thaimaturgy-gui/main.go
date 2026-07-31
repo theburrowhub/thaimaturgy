@@ -157,6 +157,7 @@ func (g *gui) showLibrary() {
 	subtitle := widget.NewLabelWithStyle("An AI oracle for the Dungeon Master", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
 	importBtn := widget.NewButtonWithIcon("Import module (.tar.gz)…", theme.FolderOpenIcon(), g.importDialog)
+	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.showSettings)
 
 	list := container.NewVBox()
 
@@ -198,7 +199,8 @@ func (g *gui) showLibrary() {
 			fyne.TextAlignCenter, fyne.TextStyle{Italic: true}))
 	}
 
-	top := container.NewVBox(title, subtitle, widget.NewSeparator(), importBtn, widget.NewSeparator())
+	top := container.NewVBox(title, subtitle, widget.NewSeparator(),
+		container.NewHBox(importBtn, settingsBtn), widget.NewSeparator())
 	content := container.NewBorder(top, bottom, nil, nil, widget.NewCard("Library", "", container.NewVScroll(list)))
 	g.win.SetContent(content)
 }

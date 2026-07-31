@@ -31,6 +31,7 @@ const (
 	ScreenImport
 	ScreenSession
 	ScreenHelp
+	ScreenSettings
 )
 
 // ConfigStep drives the first-run API key wizard (reused from v1).
@@ -118,6 +119,12 @@ type Model struct {
 	configProvider int
 	apiKeyInput    textinput.Model
 	envFileCreated bool
+
+	// Settings screen (full config editor)
+	settingsCfg     *domain.Config
+	settingsCursor  int
+	settingsEditing bool
+	settingsInput   textinput.Model
 }
 
 var translations = map[string]map[domain.Language]string{
@@ -192,18 +199,23 @@ func NewModel(store *storage.Storage, config *domain.Config) *Model {
 	apiKeyInput.EchoMode = textinput.EchoPassword
 	apiKeyInput.EchoCharacter = '*'
 
+	settingsInput := textinput.New()
+	settingsInput.CharLimit = 200
+	settingsInput.Width = 40
+
 	m := &Model{
-		screen:      ScreenBoot,
-		styles:      NewStyles(),
-		storage:     store,
-		config:      config,
-		input:       input,
-		importInput: importInput,
-		apiKeyInput: apiKeyInput,
-		oracleVP:    viewport.New(60, 15),
-		locationVP:  viewport.New(30, 15),
-		logVP:       viewport.New(30, 15),
-		focusPanel:  FocusInput,
+		screen:        ScreenBoot,
+		styles:        NewStyles(),
+		storage:       store,
+		config:        config,
+		input:         input,
+		importInput:   importInput,
+		apiKeyInput:   apiKeyInput,
+		settingsInput: settingsInput,
+		oracleVP:      viewport.New(60, 15),
+		locationVP:    viewport.New(30, 15),
+		logVP:         viewport.New(30, 15),
+		focusPanel:    FocusInput,
 	}
 	m.statusMsg = auth.AutoConfigure(m.config)
 	m.initProvider()
@@ -300,6 +312,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.updateImport(msg))
 		case ScreenSession:
 			cmds = append(cmds, m.updateSession(msg))
+		case ScreenSettings:
+			cmds = append(cmds, m.updateSettings(msg))
 		case ScreenHelp:
 			if msg.Type == tea.KeyEsc || msg.Type == tea.KeyEnter {
 				m.screen = m.previousScreen
@@ -434,8 +448,7 @@ func (m *Model) selectLibraryEntry() tea.Cmd {
 	case libSession:
 		return m.loadSession(e.id)
 	case libSettings:
-		m.screen = ScreenConfig
-		m.configStep = ConfigStepLanguage
+		m.enterSettings()
 	case libHelp:
 		m.previousScreen = ScreenLibrary
 		m.screen = ScreenHelp

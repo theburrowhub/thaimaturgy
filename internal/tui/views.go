@@ -22,6 +22,8 @@ func (m *Model) View() string {
 		return m.viewSession()
 	case ScreenHelp:
 		return m.viewHelp()
+	case ScreenSettings:
+		return m.viewSettings()
 	}
 	return ""
 }
