@@ -21,6 +21,8 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/aibuild"
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
+	"github.com/theburrowhub/thaimaturgy/internal/bookpdf"
+	"github.com/theburrowhub/thaimaturgy/internal/dmbook"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/guitheme"
 	_ "github.com/theburrowhub/thaimaturgy/internal/imagefmt" // register TIFF/WebP/BMP decoders
@@ -120,6 +122,7 @@ func (e *editor) buildUI() fyne.CanvasObject {
 		translateCheck,
 		widget.NewButton("Save…", e.saveDialog),
 		widget.NewButton("Validate", e.validate),
+		widget.NewButton("DM book…", e.exportDMBook),
 	)
 
 	e.status = widget.NewLabel("")
@@ -754,6 +757,51 @@ func (e *editor) validate() {
 		sb.WriteString("• " + er.Error() + "\n")
 	}
 	go nativeui.Info("Validation", sb.String())
+}
+
+// exportDMBook renders the current adventure as a complete DM sourcebook and
+// saves it as Markdown or a print-ready PDF, chosen from a native dialog. It is
+// deterministic (no AI): a faithful, organized rendering of the module content.
+func (e *editor) exportDMBook() {
+	if e.adv == nil {
+		e.showErr(fmt.Errorf("open or create a module first"))
+		return
+	}
+	adv := e.adv
+	md := dmbook.Markdown(adv)
+	go func() {
+		switch nativeui.Choice("Export DM book", "Export the adventure sourcebook — which format?", "Markdown (.md)", "PDF (.pdf)") {
+		case 1:
+			dest, ok := nativeui.SaveFile("Save DM book", adv.ID+"-dmbook.md",
+				nativeui.Filter{Name: "Markdown", Patterns: []string{"*.md"}})
+			if !ok {
+				return
+			}
+			if err := os.WriteFile(dest, []byte(md), 0644); err != nil {
+				nativeui.Error("Export failed", err.Error())
+				return
+			}
+			nativeui.Info("DM book exported", "Saved:\n"+dest)
+			fyne.Do(func() { e.setStatus("Exported DM book: " + dest) })
+		case 2:
+			dest, ok := nativeui.SaveFile("Save DM book", adv.ID+"-dmbook.pdf",
+				nativeui.Filter{Name: "PDF", Patterns: []string{"*.pdf"}})
+			if !ok {
+				return
+			}
+			pdfBytes, err := bookpdf.FromMarkdown(adv.Title, "Dungeon Master's Sourcebook", md)
+			if err != nil {
+				nativeui.Error("Export failed", err.Error())
+				return
+			}
+			if err := os.WriteFile(dest, pdfBytes, 0644); err != nil {
+				nativeui.Error("Export failed", err.Error())
+				return
+			}
+			nativeui.Info("DM book exported", "Saved:\n"+dest)
+			fyne.Do(func() { e.setStatus("Exported DM book: " + dest) })
+		}
+	}()
 }
 
 // saveDialog flushes the current edits and saves the module either as an unpacked

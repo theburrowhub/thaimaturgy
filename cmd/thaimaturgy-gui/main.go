@@ -21,6 +21,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
+	"github.com/theburrowhub/thaimaturgy/internal/bookpdf"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/guitheme"
@@ -776,7 +777,7 @@ func (g *gui) exportNovel() {
 			if !ok {
 				return
 			}
-			pdfBytes, err := novel.MarkdownToPDF(adv.Title, subtitle, md)
+			pdfBytes, err := bookpdf.FromMarkdown(adv.Title, subtitle, md)
 			if err != nil {
 				g.showErr(err)
 				return

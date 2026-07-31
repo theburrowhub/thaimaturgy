@@ -1,4 +1,7 @@
-package novel
+// Package bookpdf lays out a book-style Markdown document as a print-ready PDF
+// (A5, serif body, title page, chapters on their own page, page numbers). It is
+// shared by the session novelization and the DM sourcebook exporters.
+package bookpdf
 
 import (
 	"bytes"
@@ -7,17 +10,15 @@ import (
 	"github.com/go-pdf/fpdf"
 )
 
-// MarkdownToPDF lays out the novelization Markdown as a book-like PDF (A5, serif
-// body, a title page, chapters starting on their own page, and page numbers). It
-// understands a small Markdown subset: "# " book title, "## " chapters, "### "
-// subheadings, and blank-line-separated paragraphs; inline * _ ` markers are
-// stripped for clean prose.
-func MarkdownToPDF(title, subtitle, md string) ([]byte, error) {
+// FromMarkdown renders a book-like PDF from a Markdown subset: "# " book title,
+// "## " chapters (new page), "### "/"#### " subheadings, "- "/"* " bullet lists,
+// "> " block quotes, and blank-line-separated paragraphs. Inline * _ ` markers are
+// stripped for clean printed prose.
+func FromMarkdown(title, subtitle, md string) ([]byte, error) {
 	pdf := fpdf.New("P", "mm", "A5", "")
 	pdf.SetMargins(18, 20, 18)
 	pdf.SetAutoPageBreak(true, 20)
 
-	// Page numbers (skip the title page).
 	pdf.SetFooterFunc(func() {
 		if pdf.PageNo() <= 1 {
 			return
@@ -38,16 +39,16 @@ func MarkdownToPDF(title, subtitle, md string) ([]byte, error) {
 		pdf.MultiCell(0, 8, tr(pdf, subtitle), "", "C", false)
 	}
 
-	bodyPageOpen := false
+	bodyOpen := false
 	ensureBody := func() {
-		if !bodyPageOpen {
+		if !bodyOpen {
 			pdf.AddPage()
-			bodyPageOpen = true
+			bodyOpen = true
 		}
 	}
 
 	para := &strings.Builder{}
-	flush := func() {
+	flushPara := func() {
 		text := strings.TrimSpace(para.String())
 		para.Reset()
 		if text == "" {
@@ -56,39 +57,63 @@ func MarkdownToPDF(title, subtitle, md string) ([]byte, error) {
 		ensureBody()
 		pdf.SetFont("Times", "", 12)
 		pdf.MultiCell(0, 6.2, tr(pdf, stripInline(text)), "", "J", false)
-		pdf.Ln(3)
+		pdf.Ln(2.5)
 	}
 
 	for _, raw := range strings.Split(md, "\n") {
 		line := strings.TrimRight(raw, " \t")
+		trimmed := strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "# "):
-			// Book title already on the title page; ignore further top-level titles.
-			flush()
+			flushPara() // book title is on the title page; ignore repeats
 		case strings.HasPrefix(line, "## "):
-			flush()
+			flushPara()
 			pdf.AddPage()
-			bodyPageOpen = true
-			pdf.Ln(10)
+			bodyOpen = true
+			pdf.Ln(8)
 			pdf.SetFont("Times", "B", 18)
 			pdf.MultiCell(0, 10, tr(pdf, stripInline(line[3:])), "", "C", false)
-			pdf.Ln(6)
+			pdf.Ln(5)
 		case strings.HasPrefix(line, "### "):
-			flush()
+			flushPara()
 			ensureBody()
-			pdf.SetFont("Times", "B", 13)
+			pdf.Ln(1)
+			pdf.SetFont("Times", "B", 14)
 			pdf.MultiCell(0, 8, tr(pdf, stripInline(line[4:])), "", "L", false)
-			pdf.Ln(2)
-		case strings.TrimSpace(line) == "":
-			flush()
+			pdf.Ln(1)
+		case strings.HasPrefix(line, "#### "):
+			flushPara()
+			ensureBody()
+			pdf.SetFont("Times", "B", 12)
+			pdf.MultiCell(0, 7, tr(pdf, stripInline(line[5:])), "", "L", false)
+		case strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* "):
+			flushPara()
+			ensureBody()
+			pdf.SetFont("Times", "", 12)
+			// Hanging bullet via a left indent.
+			left, _, _, _ := pdf.GetMargins()
+			pdf.SetLeftMargin(left + 5)
+			pdf.MultiCell(0, 6, tr(pdf, "• "+stripInline(strings.TrimSpace(trimmed[2:]))), "", "L", false)
+			pdf.SetLeftMargin(left)
+		case strings.HasPrefix(line, "> "):
+			flushPara()
+			ensureBody()
+			pdf.SetFont("Times", "I", 12)
+			left, _, _, _ := pdf.GetMargins()
+			pdf.SetLeftMargin(left + 5)
+			pdf.MultiCell(0, 6.2, tr(pdf, stripInline(line[2:])), "", "L", false)
+			pdf.SetLeftMargin(left)
+			pdf.Ln(1)
+		case trimmed == "":
+			flushPara()
 		default:
 			if para.Len() > 0 {
 				para.WriteByte(' ')
 			}
-			para.WriteString(strings.TrimSpace(line))
+			para.WriteString(trimmed)
 		}
 	}
-	flush()
+	flushPara()
 
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
@@ -97,7 +122,6 @@ func MarkdownToPDF(title, subtitle, md string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// firstLineTitle returns the "# " title from the markdown, or the fallback.
 func firstLineTitle(md, fallback string) string {
 	for _, line := range strings.Split(md, "\n") {
 		if strings.HasPrefix(line, "# ") {
@@ -107,14 +131,12 @@ func firstLineTitle(md, fallback string) string {
 	return fallback
 }
 
-// stripInline removes basic Markdown emphasis markers for clean printed prose.
 func stripInline(s string) string {
-	r := strings.NewReplacer("**", "", "__", "", "*", "", "`", "")
-	return r.Replace(s)
+	return strings.NewReplacer("**", "", "__", "", "*", "", "`", "").Replace(s)
 }
 
-// tr converts a UTF-8 string to the encoding fpdf's core fonts expect (cp1252),
-// so accented characters (á, ñ, …) render correctly.
+// tr converts UTF-8 to the cp1252 encoding fpdf's core fonts expect, so accented
+// characters render correctly.
 func tr(pdf *fpdf.Fpdf, s string) string {
 	return pdf.UnicodeTranslatorFromDescriptor("")(s)
 }
