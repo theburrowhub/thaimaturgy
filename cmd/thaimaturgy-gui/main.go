@@ -27,6 +27,7 @@ import (
 	_ "github.com/theburrowhub/thaimaturgy/internal/imagefmt" // register TIFF/WebP/BMP decoders
 	"github.com/theburrowhub/thaimaturgy/internal/mcptools"
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
+	"github.com/theburrowhub/thaimaturgy/internal/novel"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
@@ -356,6 +357,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 		container.NewHBox(
 			widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary),
 			widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save),
+			widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel),
 			title,
 			g.locLabel,
 		),
@@ -723,6 +725,70 @@ func (g *gui) save() {
 		return
 	}
 	g.appendTranscript("_Session saved._")
+}
+
+// exportNovel novelizes the session (via the LLM) and saves it as Markdown or a
+// print-ready PDF, chosen from a native dialog.
+func (g *gui) exportNovel() {
+	if g.session == nil {
+		return
+	}
+	if g.prov == nil {
+		g.showErr(fmt.Errorf("no AI provider configured; set an API key or use the Claude CLI backend"))
+		return
+	}
+	adv, st, model := g.session.Adventure, g.session.State, g.config.Model
+	subtitle := "A novelization of the play session"
+	if strings.HasPrefix(strings.ToLower(adv.Language), "es") {
+		subtitle = "Una novelización de la partida"
+	}
+	go func() {
+		choice := nativeui.Choice("Export novel", "Export the session as a novel — which format?", "Markdown (.md)", "PDF (.pdf)")
+		if choice == 0 {
+			return
+		}
+		fyne.Do(func() { g.appendTranscript("_Writing the novel from the session… this can take a minute._") })
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		md, err := novel.Generate(ctx, g.prov, model, adv, st)
+		if err != nil {
+			g.showErr(fmt.Errorf("novel generation failed: %w", err))
+			return
+		}
+
+		switch choice {
+		case 1: // Markdown
+			dest, ok := nativeui.SaveFile("Save novel", adv.ID+"-novel.md",
+				nativeui.Filter{Name: "Markdown", Patterns: []string{"*.md"}})
+			if !ok {
+				return
+			}
+			if err := os.WriteFile(dest, []byte(md), 0644); err != nil {
+				g.showErr(err)
+				return
+			}
+			nativeui.Info("Novel exported", "Saved:\n"+dest)
+			fyne.Do(func() { g.appendTranscript("_Novel exported to " + dest + "_") })
+		case 2: // PDF
+			dest, ok := nativeui.SaveFile("Save novel", adv.ID+"-novel.pdf",
+				nativeui.Filter{Name: "PDF", Patterns: []string{"*.pdf"}})
+			if !ok {
+				return
+			}
+			pdfBytes, err := novel.MarkdownToPDF(adv.Title, subtitle, md)
+			if err != nil {
+				g.showErr(err)
+				return
+			}
+			if err := os.WriteFile(dest, pdfBytes, 0644); err != nil {
+				g.showErr(err)
+				return
+			}
+			nativeui.Info("Novel exported", "Saved:\n"+dest)
+			fyne.Do(func() { g.appendTranscript("_Novel exported to " + dest + "_") })
+		}
+	}()
 }
 
 func (g *gui) appendTranscript(md string) {

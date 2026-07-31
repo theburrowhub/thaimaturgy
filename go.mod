@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/bubbles v0.18.0
 	github.com/charmbracelet/bubbletea v0.25.0
 	github.com/charmbracelet/lipgloss v0.10.0
+	github.com/go-pdf/fpdf v0.9.0
 	github.com/gopxl/beep/v2 v2.1.1
 	github.com/hhrutter/tiff v1.0.3
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
