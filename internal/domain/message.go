@@ -53,7 +53,10 @@ func (c *Conversation) Add(msg Message) {
 	}
 	c.Messages = append(c.Messages, msg)
 
-	if len(c.Messages) > c.MaxSize {
+	// MaxSize <= 0 means "keep everything" so the full session persists and can be
+	// reopened with complete context; the oracle sends only a recent window to the
+	// model (see Oracle.buildMessages).
+	if c.MaxSize > 0 && len(c.Messages) > c.MaxSize {
 		c.Messages = c.Messages[len(c.Messages)-c.MaxSize:]
 	}
 }

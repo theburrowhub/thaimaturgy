@@ -31,6 +31,8 @@ func (p *OpenAIProvider) Name() string {
 	return "openai"
 }
 
+func (p *OpenAIProvider) SupportsVision() bool { return true }
+
 func (p *OpenAIProvider) SupportsTools() bool {
 	return true
 }

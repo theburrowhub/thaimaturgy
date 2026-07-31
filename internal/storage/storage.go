@@ -175,6 +175,16 @@ func (s *Storage) LoadSession(name string) (*domain.SessionState, error) {
 		return nil, fmt.Errorf("failed to parse session file: %w", err)
 	}
 
+	// Keep the full history from here on (older saves may carry the legacy bounded
+	// caps). The oracle windows what it sends to the model, so this only affects
+	// how much context is retained for resuming.
+	if state.Log != nil {
+		state.Log.MaxSize = 0
+	}
+	if state.Conversation != nil {
+		state.Conversation.MaxSize = 0
+	}
+
 	return &state, nil
 }
 

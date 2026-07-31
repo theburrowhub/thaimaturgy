@@ -13,8 +13,10 @@ import (
 // the code is unaffected by the file layout.
 type fileConfig struct {
 	Provider struct {
-		Name            string  `yaml:"name"`  // openai | anthropic | gemini
-		Model           string  `yaml:"model"` // model id
+		Name            string  `yaml:"name"`       // openai | anthropic | gemini | claude-cli
+		Model           string  `yaml:"model"`      // default model id (both apps)
+		RunModel        string  `yaml:"run_model"`  // optional: model for the player/oracle
+		EditModel       string  `yaml:"edit_model"` // optional: model for the editor/import
 		Temperature     float64 `yaml:"temperature"`
 		MaxTokens       int     `yaml:"max_tokens"`
 		OpenAIAPIKey    string  `yaml:"openai_api_key"`    // optional; prefer env / local login
@@ -68,6 +70,8 @@ func fromConfig(c *domain.Config) fileConfig {
 	var fc fileConfig
 	fc.Provider.Name = string(c.Provider)
 	fc.Provider.Model = c.Model
+	fc.Provider.RunModel = c.RunModel
+	fc.Provider.EditModel = c.EditModel
 	fc.Provider.Temperature = c.Temperature
 	fc.Provider.MaxTokens = c.MaxTokens
 	fc.Provider.OpenAIAPIKey = c.OpenAIAPIKey
@@ -105,6 +109,8 @@ func fromConfig(c *domain.Config) fileConfig {
 func toConfig(fc *fileConfig, c *domain.Config) {
 	c.Provider = domain.ProviderType(fc.Provider.Name)
 	c.Model = fc.Provider.Model
+	c.RunModel = fc.Provider.RunModel
+	c.EditModel = fc.Provider.EditModel
 	c.Temperature = fc.Provider.Temperature
 	c.MaxTokens = fc.Provider.MaxTokens
 	c.OpenAIAPIKey = fc.Provider.OpenAIAPIKey

@@ -71,6 +71,9 @@ type Provider interface {
 	Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error)
 	Name() string
 	SupportsTools() bool
+	// SupportsVision reports whether the backend accepts inline image inputs
+	// (multimodal). Text-only backends (e.g. the Claude CLI) return false.
+	SupportsVision() bool
 }
 
 func ConvertToolCallToTypesFormat(tc ToolCallInfo) types.ToolCall {

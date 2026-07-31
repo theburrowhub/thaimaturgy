@@ -110,12 +110,19 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 	return resp
 }
 
+// conversationContextWindow bounds how many recent conversation messages are
+// sent to the model each turn (the full conversation is still persisted).
+const conversationContextWindow = 60
+
 func (o *Oracle) buildMessages() []providers.Message {
 	msgs := []providers.Message{{
 		Role:    providers.RoleSystem,
 		Content: o.buildSystemPrompt(),
 	}}
-	for _, m := range o.session.State.Conversation.Messages {
+	// Send only a recent window of the conversation to the model — the full
+	// history is persisted for resuming, but the prompt stays bounded. Older
+	// context is preserved via the running Summary in the system prompt.
+	for _, m := range o.session.State.Conversation.GetLast(conversationContextWindow) {
 		role := providers.RoleUser
 		switch m.Role {
 		case domain.RoleAssistant:

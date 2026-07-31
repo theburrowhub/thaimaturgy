@@ -55,6 +55,8 @@ func (p *AnthropicProvider) Name() string {
 	return "anthropic"
 }
 
+func (p *AnthropicProvider) SupportsVision() bool { return true }
+
 func (p *AnthropicProvider) SupportsTools() bool {
 	return true
 }

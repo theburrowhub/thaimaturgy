@@ -73,7 +73,7 @@ func limitsFrom(cfg *domain.Config) limits {
 }
 
 // FromPDF extracts a PDF and asks the model to build an adventure from it.
-func FromPDF(ctx context.Context, prov providers.Provider, cfg *domain.Config, pdfPath, workingDir, title string, progress Progress, confirm ConfirmFallback) (*domain.Adventure, error) {
+func FromPDF(ctx context.Context, prov providers.Provider, cfg *domain.Config, pdfPath, workingDir, title string, progress Progress, confirm ConfirmFallback, visionProv providers.Provider) (*domain.Adventure, error) {
 	if prov == nil {
 		return nil, fmt.Errorf("no AI provider configured; set an API key first")
 	}
@@ -86,12 +86,12 @@ func FromPDF(ctx context.Context, prov providers.Provider, cfg *domain.Config, p
 	if len(assets) == 0 {
 		report(progress, "No embedded images could be extracted (the PDF may use vector art or full-page scans). Proceeding with text only.")
 	}
-	return build(ctx, prov, cfg, title, text, assets, workingDir, progress, confirm)
+	return build(ctx, prov, cfg, title, text, assets, workingDir, progress, confirm, visionProv)
 }
 
 // FromImages copies a folder of images and asks the model to build an adventure
 // by interpreting them visually.
-func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config, srcDir, workingDir, title string, progress Progress, confirm ConfirmFallback) (*domain.Adventure, error) {
+func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config, srcDir, workingDir, title string, progress Progress, confirm ConfirmFallback, visionProv providers.Provider) (*domain.Adventure, error) {
 	if prov == nil {
 		return nil, fmt.Errorf("no AI provider configured; set an API key first")
 	}
@@ -101,7 +101,7 @@ func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config
 		return nil, err
 	}
 	report(progress, "Found %d image(s).", len(assets))
-	return build(ctx, prov, cfg, title, "", assets, workingDir, progress, confirm)
+	return build(ctx, prov, cfg, title, "", assets, workingDir, progress, confirm, visionProv)
 }
 
 // ConfirmFallback is consulted when the configured model is unavailable and the
@@ -111,7 +111,7 @@ func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config
 // silently (the provider's own fallback applies).
 type ConfirmFallback func(requested, served string) bool
 
-func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, title, docText string, assets []ingest.Asset, workingDir string, progress Progress, confirm ConfirmFallback) (*domain.Adventure, error) {
+func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, title, docText string, assets []ingest.Asset, workingDir string, progress Progress, confirm ConfirmFallback, visionProv providers.Provider) (*domain.Adventure, error) {
 	lim := limitsFrom(cfg)
 	model := ""
 	if cfg != nil {
@@ -134,17 +134,33 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 	}
 
 	// Curate the extracted images with vision: classify (map/portrait/scene/
-	// item/decorative), caption, and drop decorative junk.
-	if len(assets) > 0 {
-		report(progress, "Curating %d image(s) with vision…", len(assets))
+	// item/decorative), caption, and drop decorative junk. If the authoring model
+	// can't see images (e.g. the Claude CLI backend), use the separate vision
+	// provider for this step only; if none is available, skip curation.
+	visP := prov
+	if !prov.SupportsVision() {
+		visP = visionProv
 	}
-	curated := curateAssets(ctx, prov, model, workingDir, toAssets(assets), curationMaxBytes, progress)
-	if len(assets) > 0 {
+	curated := toAssets(assets)
+	switch {
+	case len(assets) == 0:
+		// nothing to curate
+	case visP != nil && visP.SupportsVision():
+		report(progress, "Curating %d image(s) with vision…", len(assets))
+		curated = curateAssets(ctx, visP, model, workingDir, curated, curationMaxBytes, progress)
 		report(progress, "Kept %d image(s) after curation.", len(curated))
+	default:
+		report(progress, "Vision unavailable on this backend; skipping image curation (%d image(s) kept as-is).", len(assets))
 	}
 
 	user := buildUserPrompt(title, docText, curated, lim.maxDocChars)
-	images := loadVisionImages(workingDir, curated, lim.visionMaxImages, lim.maxImageBytes)
+
+	// Inline images go to the authoring model only if IT can see them. With a
+	// text-only backend we rely on the curated captions carried in the prompt.
+	var images []providers.ImageData
+	if prov.SupportsVision() {
+		images = loadVisionImages(workingDir, curated, lim.visionMaxImages, lim.maxImageBytes)
+	}
 
 	sys := systemPrompt
 	if dir := importLanguageDirective(cfg); dir != "" {

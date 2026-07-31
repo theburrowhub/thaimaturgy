@@ -34,10 +34,14 @@ type editor struct {
 	app fyne.App
 	win fyne.Window
 
-	config  *domain.Config
-	prov    providers.Provider
-	model   string
-	authMsg string
+	config *domain.Config
+	prov   providers.Provider
+	// visionProv handles image curation during import when the primary backend is
+	// text-only (e.g. the Claude CLI). nil when the primary backend already sees
+	// images or no image-capable credential is available.
+	visionProv providers.Provider
+	model      string
+	authMsg    string
 
 	adv        *domain.Adventure
 	workingDir string // holds adventure.json + assets/
@@ -67,11 +71,15 @@ func main() {
 	}
 
 	authMsg := auth.AutoConfigure(config)
+	if config.EditModel != "" {
+		config.Model = config.EditModel // this app (the editor/import) may use its own model
+	}
 	if !store.ConfigExists() {
 		_ = store.SaveConfig(config) // generate config.yaml on first run
 	}
 
 	e := &editor{app: app.NewWithID("dev.theburrowhub.thaimaturgy.editor"), config: config, prov: providers.New(config), model: config.Model, authMsg: authMsg}
+	e.visionProv = buildVisionProvider(config)
 	e.app.Settings().SetTheme(guitheme.New())
 	e.win = e.app.NewWindow("thAImaturgy — Module Editor")
 	e.win.Resize(fyne.NewSize(1180, 820))
@@ -81,6 +89,22 @@ func main() {
 		e.setStatus(authMsg)
 	}
 	e.win.ShowAndRun()
+}
+
+// buildVisionProvider returns an image-capable provider used for import vision
+// curation when the primary backend can't see images (e.g. the Claude CLI). It
+// reuses a detected Anthropic login/key. Returns nil when the primary backend
+// already handles vision or no image-capable credential is available.
+func buildVisionProvider(cfg *domain.Config) providers.Provider {
+	if p := providers.New(cfg); p != nil && p.SupportsVision() {
+		return nil // primary backend already handles vision
+	}
+	vcfg := *cfg
+	vcfg.Provider = domain.ProviderAnthropic
+	vcfg.AnthropicOAuthToken = ""
+	vcfg.AnthropicAPIKey = ""
+	auth.AutoConfigure(&vcfg) // populate an Anthropic credential if one is detected locally
+	return providers.New(&vcfg)
 }
 
 // --- UI scaffold ---------------------------------------------------------
@@ -560,7 +584,7 @@ func (e *editor) importDialog() {
 			e.runIngest("Interpreting PDF with AI…", func(dir string) (*domain.Adventure, error) {
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 				defer cancel()
-				return aibuild.FromPDF(ctx, e.prov, e.importConfig(), src, dir, title, e.progress(), e.fallbackConfirm())
+				return aibuild.FromPDF(ctx, e.prov, e.importConfig(), src, dir, title, e.progress(), e.fallbackConfirm(), e.visionProv)
 			})
 		case 2:
 			src, ok := nativeui.OpenFolder("Choose a folder of images")
@@ -570,7 +594,7 @@ func (e *editor) importDialog() {
 			e.runIngest("Interpreting images with AI…", func(dir string) (*domain.Adventure, error) {
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 				defer cancel()
-				return aibuild.FromImages(ctx, e.prov, e.importConfig(), src, dir, filepath.Base(src), e.progress(), e.fallbackConfirm())
+				return aibuild.FromImages(ctx, e.prov, e.importConfig(), src, dir, filepath.Base(src), e.progress(), e.fallbackConfirm(), e.visionProv)
 			})
 		}
 	}()

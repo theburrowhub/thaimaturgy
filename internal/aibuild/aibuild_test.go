@@ -21,8 +21,9 @@ type stubProvider struct {
 	lastReq providers.ChatRequest
 }
 
-func (s *stubProvider) Name() string        { return "stub" }
-func (s *stubProvider) SupportsTools() bool { return false }
+func (s *stubProvider) Name() string         { return "stub" }
+func (s *stubProvider) SupportsTools() bool  { return false }
+func (s *stubProvider) SupportsVision() bool { return true }
 func (s *stubProvider) Chat(_ context.Context, req providers.ChatRequest) (*providers.ChatResponse, error) {
 	s.lastReq = req
 	return &providers.ChatResponse{Content: s.content}, nil
@@ -55,7 +56,7 @@ func TestFromImagesBuildsAndSanitizes(t *testing.T) {
 	  "npcs":[{"id":"villain","name":"Villain","default_location":"badroom"}]
 	}` + "\n```"}
 
-	adv, err := FromImages(context.Background(), stub, &domain.Config{Model: "gpt-4o"}, src, work, "Fallback Title", nil, nil)
+	adv, err := FromImages(context.Background(), stub, &domain.Config{Model: "gpt-4o"}, src, work, "Fallback Title", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("FromImages: %v", err)
 	}
@@ -91,7 +92,7 @@ func TestFromImagesBuildsAndSanitizes(t *testing.T) {
 }
 
 func TestFromImagesRequiresProvider(t *testing.T) {
-	if _, err := FromImages(context.Background(), nil, nil, t.TempDir(), t.TempDir(), "x", nil, nil); err == nil {
+	if _, err := FromImages(context.Background(), nil, nil, t.TempDir(), t.TempDir(), "x", nil, nil, nil); err == nil {
 		t.Fatal("expected an error when no provider is configured")
 	}
 }
@@ -102,8 +103,9 @@ type seqProvider struct {
 	calls int
 }
 
-func (s *seqProvider) Name() string        { return "seq" }
-func (s *seqProvider) SupportsTools() bool { return false }
+func (s *seqProvider) Name() string         { return "seq" }
+func (s *seqProvider) SupportsTools() bool  { return false }
+func (s *seqProvider) SupportsVision() bool { return true }
 func (s *seqProvider) Chat(_ context.Context, _ providers.ChatRequest) (*providers.ChatResponse, error) {
 	i := s.calls
 	if i >= len(s.resps) {
@@ -118,7 +120,7 @@ func TestBuildRepairsInvalidJSON(t *testing.T) {
 		{Content: "Here is your module: {\"id\":\"x\"", FinishReason: "stop"}, // unparseable
 		{Content: `{"id":"x","title":"X","zones":[{"id":"z","name":"Z"}]}`, FinishReason: "stop"},
 	}}
-	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil, nil)
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil, nil, nil)
 	if err != nil {
 		t.Fatalf("build should recover via repair: %v", err)
 	}
@@ -135,7 +137,7 @@ func TestBuildReportsTruncation(t *testing.T) {
 	stub := &seqProvider{resps: []*providers.ChatResponse{
 		{Content: "{\"id\":\"x\",", FinishReason: "max_tokens"},
 	}}
-	_, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil, nil)
+	_, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected an error for persistently truncated output")
 	}
@@ -154,7 +156,7 @@ func TestBuildContinuesTruncatedJSON(t *testing.T) {
 		{Content: `{"id":"x","title":"X","zones":[`, FinishReason: "max_tokens"},
 		{Content: `{"id":"z","name":"Z"}]}`, FinishReason: "stop"},
 	}}
-	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil, nil)
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", nil, t.TempDir(), nil, nil, nil)
 	if err != nil {
 		t.Fatalf("build should stitch continuations: %v", err)
 	}
@@ -181,7 +183,7 @@ func TestCurationClassifiesAndDropsDecorative(t *testing.T) {
 	}}
 
 	in := []ingest.Asset{{RelPath: "assets/art/a.png"}, {RelPath: "assets/art/b.png"}}
-	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", in, work, nil, nil)
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", in, work, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -223,7 +225,7 @@ func TestCurationBuildsImageIDReferences(t *testing.T) {
 	}}
 
 	in := []ingest.Asset{{RelPath: "assets/art/a.png"}}
-	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", in, work, nil, nil)
+	adv, err := build(context.Background(), stub, &domain.Config{Model: "m"}, "T", "doc", in, work, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

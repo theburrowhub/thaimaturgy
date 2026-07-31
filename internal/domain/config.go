@@ -9,6 +9,10 @@ const (
 	ProviderOpenAI    ProviderType = "openai"
 	ProviderAnthropic ProviderType = "anthropic"
 	ProviderGemini    ProviderType = "gemini"
+	// ProviderClaudeCLI runs inference through the official Claude Code CLI on the
+	// user's machine (the sanctioned client), rather than calling the API directly.
+	// Authentication is handled by the CLI's own login; no key/token is stored here.
+	ProviderClaudeCLI ProviderType = "claude-cli"
 )
 
 const (
@@ -39,6 +43,12 @@ type Config struct {
 	Model       string       `json:"model"`
 	Temperature float64      `json:"temperature"`
 	Language    Language     `json:"language"`
+
+	// Per-frontend model overrides. When non-empty they take precedence over Model
+	// for the player/oracle (RunModel) and the editor/import (EditModel), so the two
+	// apps can use different models — including under the claude-cli backend.
+	RunModel  string `json:"run_model,omitempty"`
+	EditModel string `json:"edit_model,omitempty"`
 
 	OpenAIAPIKey    string `json:"openai_api_key,omitempty"`
 	AnthropicAPIKey string `json:"anthropic_api_key,omitempty"`
@@ -138,6 +148,8 @@ func (c *Config) IsConfigured() bool {
 		return c.AnthropicAPIKey != "" || c.AnthropicOAuthToken != ""
 	case ProviderGemini:
 		return c.GeminiAPIKey != "" || c.GeminiOAuthToken != ""
+	case ProviderClaudeCLI:
+		return true // the CLI carries its own login; binary presence is checked when building the provider
 	}
 	return false
 }
@@ -151,6 +163,8 @@ func DefaultModel(p ProviderType) string {
 		return "claude-sonnet-5"
 	case ProviderGemini:
 		return "gemini-2.5-flash"
+	case ProviderClaudeCLI:
+		return "claude-sonnet-5"
 	}
 	return ""
 }

@@ -32,8 +32,9 @@ func NewGeminiOAuthProvider(token string) *GeminiProvider {
 	return &GeminiProvider{oauthToken: token, httpClient: newHTTPClient()}
 }
 
-func (p *GeminiProvider) Name() string        { return "gemini" }
-func (p *GeminiProvider) SupportsTools() bool { return true }
+func (p *GeminiProvider) Name() string         { return "gemini" }
+func (p *GeminiProvider) SupportsTools() bool  { return true }
+func (p *GeminiProvider) SupportsVision() bool { return true }
 
 type geminiRequest struct {
 	Contents          []geminiContent  `json:"contents"`

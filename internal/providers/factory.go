@@ -1,6 +1,10 @@
 package providers
 
-import "github.com/theburrowhub/thaimaturgy/internal/domain"
+import (
+	"os/exec"
+
+	"github.com/theburrowhub/thaimaturgy/internal/domain"
+)
 
 // New builds the Provider for the active configuration, using an API key or a
 // reused local OAuth token, whichever is present. Returns nil if the active
@@ -24,6 +28,10 @@ func New(c *domain.Config) Provider {
 		}
 		if c.GeminiOAuthToken != "" {
 			return NewGeminiOAuthProvider(c.GeminiOAuthToken)
+		}
+	case domain.ProviderClaudeCLI:
+		if bin, err := exec.LookPath("claude"); err == nil {
+			return NewClaudeCLIProvider(bin)
 		}
 	}
 	return nil

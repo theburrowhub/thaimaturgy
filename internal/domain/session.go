@@ -47,7 +47,9 @@ func (l *SessionLog) Add(entry LogEntry) {
 		entry.Timestamp = time.Now()
 	}
 	l.Entries = append(l.Entries, entry)
-	if len(l.Entries) > l.MaxSize {
+	// MaxSize <= 0 means "keep everything" so the full timeline persists across
+	// sessions; consumers that feed the model use GetLast to bound what they send.
+	if l.MaxSize > 0 && len(l.Entries) > l.MaxSize {
 		l.Entries = l.Entries[len(l.Entries)-l.MaxSize:]
 	}
 }
@@ -119,6 +121,27 @@ type SessionState struct {
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`
 	PlayTime  time.Duration `json:"play_time"`
+
+	// onLog, when set, is invoked for every timeline entry as it is added, so a
+	// frontend can persist an append-only journal of the game as it happens. It is
+	// unexported and therefore never serialized.
+	onLog func(LogEntry)
+}
+
+// SetLogHook registers a callback invoked for every timeline entry the moment it
+// is added — used to write a persistent, as-it-happens session journal.
+func (s *SessionState) SetLogHook(fn func(LogEntry)) { s.onLog = fn }
+
+// record adds an entry to the (bounded) in-memory timeline and notifies the log
+// hook (which may persist it to an unbounded journal).
+func (s *SessionState) record(e LogEntry) {
+	if e.Timestamp.IsZero() {
+		e.Timestamp = time.Now()
+	}
+	s.Log.Add(e)
+	if s.onLog != nil {
+		s.onLog(e)
+	}
 }
 
 // NewSessionState creates a fresh session for an adventure, defaulting the
@@ -132,10 +155,13 @@ func NewSessionState(name string, adv *Adventure) *SessionState {
 		TriggeredEvents: make(map[string]bool),
 		Flags:           make(map[string]bool),
 		Variables:       make(map[string]string),
-		Log:             NewSessionLog(500),
-		Conversation:    NewConversation(60),
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		// Unbounded (MaxSize 0): persist the complete timeline and conversation so a
+		// session can be reopened with full context. The oracle only sends a recent
+		// window to the model, so unbounded storage doesn't grow the prompt.
+		Log:          &SessionLog{Entries: []LogEntry{}, MaxSize: 0},
+		Conversation: &Conversation{Messages: []Message{}, MaxSize: 0},
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	if adv != nil {
 		s.AdventureID = adv.ID
@@ -165,7 +191,7 @@ func (s *SessionState) SetLocation(zoneID, roomID, roomName string) {
 	if label == "" {
 		label = roomID
 	}
-	s.Log.Add(LogEntry{Type: LogLocation, Message: "Entered " + label,
+	s.record(LogEntry{Type: LogLocation, Message: "Entered " + label,
 		Data: map[string]any{"zone": zoneID, "room": roomID}})
 	s.touch()
 }
@@ -183,7 +209,7 @@ func (s *SessionState) MeetNPC(id, name string) *NPCStatus {
 		if label == "" {
 			label = id
 		}
-		s.Log.Add(LogEntry{Type: LogNPC, Message: "Met " + label,
+		s.record(LogEntry{Type: LogNPC, Message: "Met " + label,
 			Data: map[string]any{"npc": id}})
 	}
 	s.touch()
@@ -210,7 +236,7 @@ func (s *SessionState) TriggerEvent(id, name string) {
 	if label == "" {
 		label = id
 	}
-	s.Log.Add(LogEntry{Type: LogEvent, Message: "Triggered event: " + label,
+	s.record(LogEntry{Type: LogEvent, Message: "Triggered event: " + label,
 		Data: map[string]any{"event": id}})
 	s.touch()
 }
@@ -218,7 +244,7 @@ func (s *SessionState) TriggerEvent(id, name string) {
 // SetFlag sets a boolean flag and logs it.
 func (s *SessionState) SetFlag(key string, value bool) {
 	s.Flags[key] = value
-	s.Log.Add(LogEntry{Type: LogFlag, Message: "Flag " + key + " set",
+	s.record(LogEntry{Type: LogFlag, Message: "Flag " + key + " set",
 		Data: map[string]any{"key": key, "value": value}})
 	s.touch()
 }
@@ -226,14 +252,14 @@ func (s *SessionState) SetFlag(key string, value bool) {
 // SetVariable sets a string variable and logs it.
 func (s *SessionState) SetVariable(key, value string) {
 	s.Variables[key] = value
-	s.Log.Add(LogEntry{Type: LogFlag, Message: "Variable " + key + " = " + value,
+	s.record(LogEntry{Type: LogFlag, Message: "Variable " + key + " = " + value,
 		Data: map[string]any{"key": key, "value": value}})
 	s.touch()
 }
 
 // AddNote appends a free-form DM note to the timeline.
 func (s *SessionState) AddNote(text string) {
-	s.Log.Add(LogEntry{Type: LogNote, Message: text})
+	s.record(LogEntry{Type: LogNote, Message: text})
 	s.touch()
 }
 
@@ -245,13 +271,13 @@ func (s *SessionState) AdvanceQuest(id, name, status string) {
 			if name != "" {
 				s.Quests[i].Name = name
 			}
-			s.Log.Add(LogEntry{Type: LogQuest, Message: "Quest '" + s.Quests[i].Name + "' → " + status})
+			s.record(LogEntry{Type: LogQuest, Message: "Quest '" + s.Quests[i].Name + "' → " + status})
 			s.touch()
 			return
 		}
 	}
 	s.Quests = append(s.Quests, QuestProgress{ID: id, Name: name, Status: status})
-	s.Log.Add(LogEntry{Type: LogQuest, Message: "New quest: " + name})
+	s.record(LogEntry{Type: LogQuest, Message: "New quest: " + name})
 	s.touch()
 }
 

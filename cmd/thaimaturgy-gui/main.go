@@ -40,6 +40,7 @@ type gui struct {
 	session *domain.Session
 	oracle  *engine.Oracle
 	cmd     *engine.CommandHandler
+	journal *storage.SessionJournal // append-only chronicle for the active session
 
 	// Session widgets.
 	transcript   *widget.RichText
@@ -78,6 +79,9 @@ func main() {
 		config: config,
 	}
 	g.authMsg = auth.AutoConfigure(config)
+	if config.RunModel != "" {
+		config.Model = config.RunModel // the player/oracle may use its own model
+	}
 	if !store.ConfigExists() {
 		_ = store.SaveConfig(config) // generate config.yaml on first run
 	}
@@ -92,6 +96,10 @@ func main() {
 // --- Library screen ------------------------------------------------------
 
 func (g *gui) showLibrary() {
+	if g.journal != nil {
+		_ = g.journal.Close()
+		g.journal = nil
+	}
 	g.session, g.oracle, g.cmd = nil, nil, nil
 
 	title := widget.NewLabelWithStyle("🐉  thAImaturgy", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
@@ -105,8 +113,11 @@ func (g *gui) showLibrary() {
 	if len(advs) > 0 {
 		list.Add(widget.NewLabelWithStyle("Adventures", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
 		for _, a := range advs {
-			id := a.ID
-			list.Add(widget.NewButton("▶  "+a.Title, func() { g.startSession(id) }))
+			id, titleTxt := a.ID, a.Title
+			play := widget.NewButton("▶  "+titleTxt, func() { g.startSession(id) })
+			del := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() { g.deleteAdventure(id, titleTxt) })
+			del.Importance = widget.LowImportance
+			list.Add(container.NewBorder(nil, nil, nil, del, play))
 		}
 	}
 
@@ -116,7 +127,10 @@ func (g *gui) showLibrary() {
 		for _, s := range sessions {
 			name := s.Name
 			label := fmt.Sprintf("↻  %s — %s", s.Name, s.AdventureTitle)
-			list.Add(widget.NewButton(label, func() { g.resumeSession(name) }))
+			resume := widget.NewButton(label, func() { g.resumeSession(name) })
+			del := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() { g.deleteSession(name) })
+			del.Importance = widget.LowImportance
+			list.Add(container.NewBorder(nil, nil, nil, del, resume))
 		}
 	}
 
@@ -157,6 +171,36 @@ func (g *gui) importDialog() {
 
 func (g *gui) showErr(err error) { go nativeui.Error("thAImaturgy", err.Error()) }
 
+// deleteAdventure removes an imported adventure (and its assets) after a native
+// confirmation, then refreshes the library.
+func (g *gui) deleteAdventure(id, title string) {
+	go func() {
+		if !nativeui.Confirm("Delete adventure", fmt.Sprintf("Delete %q and all its files?\nThis cannot be undone.", title)) {
+			return
+		}
+		if err := g.store.DeleteAdventure(id); err != nil {
+			g.showErr(err)
+			return
+		}
+		fyne.Do(func() { g.showLibrary() })
+	}()
+}
+
+// deleteSession removes a saved session after a native confirmation. Its
+// append-only journal file (if any) is left in place as a record.
+func (g *gui) deleteSession(name string) {
+	go func() {
+		if !nativeui.Confirm("Delete session", fmt.Sprintf("Delete saved session %q?\nThis cannot be undone.", name)) {
+			return
+		}
+		if err := g.store.DeleteSession(name); err != nil {
+			g.showErr(err)
+			return
+		}
+		fyne.Do(func() { g.showLibrary() })
+	}()
+}
+
 // --- Session screen ------------------------------------------------------
 
 func (g *gui) startSession(advID string) {
@@ -187,6 +231,16 @@ func (g *gui) resumeSession(name string) {
 }
 
 func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
+	// Open an append-only journal and stream every timeline entry to it as it
+	// happens, so the game is recorded continuously (not just on autosave).
+	if g.journal != nil {
+		_ = g.journal.Close()
+	}
+	g.journal, _ = g.store.OpenSessionJournal(state.Name)
+	if j := g.journal; j != nil {
+		state.SetLogHook(func(e domain.LogEntry) { j.Append(e) })
+	}
+
 	g.session = domain.NewSession(state, adv, g.config)
 	g.oracle = engine.NewOracle(g.session, g.prov)
 	g.cmd = engine.NewCommandHandler(g.session)
@@ -569,6 +623,9 @@ func (g *gui) ask(input string) {
 		return
 	}
 	g.appendTranscript("_Consulting the oracle…_")
+	if g.journal != nil {
+		g.journal.Note("oracle-q", input)
+	}
 	timeout := time.Duration(g.config.RequestTimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 90 * time.Second
@@ -583,6 +640,9 @@ func (g *gui) ask(input string) {
 				return
 			}
 			g.appendTranscript(resp.Answer)
+			if g.journal != nil {
+				g.journal.Note("oracle-a", resp.Answer)
+			}
 			g.refreshState()
 			g.refreshLog()
 			if g.config.AutoSave {
