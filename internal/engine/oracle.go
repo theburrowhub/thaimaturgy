@@ -2,11 +2,14 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/mcptools"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 )
 
@@ -46,6 +49,13 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 	if o.provider == nil {
 		resp.Error = fmt.Errorf("no AI provider configured")
 		return resp
+	}
+
+	// The Claude CLI backend can't drive our tool-calling loop through Chat (it's
+	// text-only); instead we let Claude Code run the loop, calling our tools via an
+	// MCP server. Everything else uses the direct API tool loop below.
+	if cli, ok := o.provider.(*providers.ClaudeCLIProvider); ok {
+		return o.askViaCLI(ctx, cli, input)
 	}
 
 	o.session.State.Conversation.AddUserMessage(input)
@@ -113,6 +123,134 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 // conversationContextWindow bounds how many recent conversation messages are
 // sent to the model each turn (the full conversation is still persisted).
 const conversationContextWindow = 60
+
+// askViaCLI runs the oracle turn through the Claude Code CLI: it exposes the
+// session tools over MCP (via this binary's tools subcommand), lets Claude Code
+// run the tool-calling loop, then merges the mutations the tools made back into
+// the live session state.
+func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider, input string) *Response {
+	resp := &Response{}
+	st := o.session.State
+	st.Conversation.AddUserMessage(input)
+
+	// Persist the current state to a temp file the tools subprocess loads/mutates.
+	sessPath, err := tempFile("thaim-oracle-session-*.json")
+	if err != nil {
+		resp.Error = err
+		return resp
+	}
+	defer os.Remove(sessPath)
+	if err := writeSessionFile(sessPath, st); err != nil {
+		resp.Error = err
+		return resp
+	}
+	oldLogLen := 0
+	if st.Log != nil {
+		oldLogLen = len(st.Log.Entries)
+	}
+
+	// MCP config pointing back at this binary's tools subcommand.
+	exe, err := os.Executable()
+	if err != nil {
+		resp.Error = err
+		return resp
+	}
+	cfg := map[string]any{"mcpServers": map[string]any{
+		mcptools.ServerName: map[string]any{
+			"command": exe,
+			"args":    []string{mcptools.SubcommandArg, "--adventure-id", st.AdventureID, "--session", sessPath},
+		},
+	}}
+	cfgPath, err := tempFile("thaim-mcp-*.json")
+	if err != nil {
+		resp.Error = err
+		return resp
+	}
+	defer os.Remove(cfgPath)
+	if b, e := json.Marshal(cfg); e != nil {
+		resp.Error = e
+		return resp
+	} else if e := os.WriteFile(cfgPath, b, 0644); e != nil {
+		resp.Error = e
+		return resp
+	}
+
+	var allowed []string
+	for _, d := range o.toolRouter.GetToolDefinitions() {
+		allowed = append(allowed, fmt.Sprintf("mcp__%s__%s", mcptools.ServerName, d.Name))
+	}
+
+	start := time.Now()
+	answer, err := cli.RunWithMCP(ctx, o.session.Config.Model, o.buildSystemPrompt(), input, cfgPath, allowed)
+	if err != nil {
+		resp.Error = fmt.Errorf("AI request failed: %w", err)
+		return resp
+	}
+	resp.LatencyMs = time.Since(start).Milliseconds()
+
+	// Merge tool mutations back into the live state (in place) and record the reply.
+	if merged, e := readSessionFile(sessPath); e == nil {
+		mergeSessionState(st, merged, oldLogLen)
+	}
+	st.Conversation.AddAssistantMessage(answer)
+	o.session.MarkModified()
+	resp.Answer = answer
+	return resp
+}
+
+func tempFile(pattern string) (string, error) {
+	f, err := os.CreateTemp("", pattern)
+	if err != nil {
+		return "", err
+	}
+	name := f.Name()
+	_ = f.Close()
+	return name, nil
+}
+
+func writeSessionFile(path string, st *domain.SessionState) error {
+	b, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, 0644)
+}
+
+func readSessionFile(path string) (*domain.SessionState, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var st domain.SessionState
+	if err := json.Unmarshal(b, &st); err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// mergeSessionState copies the mutable structured state from src into dst in
+// place (so holders of dst see the changes) and replays timeline entries added
+// beyond oldLogLen through dst.AppendLog, firing dst's log hook (journal).
+func mergeSessionState(dst, src *domain.SessionState, oldLogLen int) {
+	dst.CurrentZone = src.CurrentZone
+	dst.CurrentRoom = src.CurrentRoom
+	dst.VisitedRooms = src.VisitedRooms
+	dst.KnownNPCs = src.KnownNPCs
+	dst.TriggeredEvents = src.TriggeredEvents
+	dst.Flags = src.Flags
+	dst.Variables = src.Variables
+	dst.Party = src.Party
+	dst.Quests = src.Quests
+	if src.Log != nil {
+		entries := src.Log.Entries
+		if oldLogLen < 0 || oldLogLen > len(entries) {
+			oldLogLen = len(entries)
+		}
+		for _, e := range entries[oldLogLen:] {
+			dst.AppendLog(e)
+		}
+	}
+}
 
 func (o *Oracle) buildMessages() []providers.Message {
 	msgs := []providers.Message{{

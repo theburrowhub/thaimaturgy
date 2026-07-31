@@ -6,6 +6,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -23,6 +25,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/guitheme"
 	_ "github.com/theburrowhub/thaimaturgy/internal/imagefmt" // register TIFF/WebP/BMP decoders
+	"github.com/theburrowhub/thaimaturgy/internal/mcptools"
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
@@ -61,6 +64,16 @@ type gui struct {
 }
 
 func main() {
+	// When invoked as the MCP tools subprocess (by the oracle's CLI backend), serve
+	// the session tools over stdio and exit — never launch the GUI.
+	if len(os.Args) > 1 && os.Args[1] == mcptools.SubcommandArg {
+		if err := runMCPTools(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "mcp-tools:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	store, err := storage.New()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "storage: %v\n", err)
@@ -94,6 +107,42 @@ func main() {
 }
 
 // --- Library screen ------------------------------------------------------
+
+// runMCPTools serves the session tools over stdio MCP for the oracle's CLI
+// backend. It loads the adventure and the session-state temp file, exposes the
+// ToolRouter, and writes the (possibly mutated) state back after each tool call.
+func runMCPTools(args []string) error {
+	fs := flag.NewFlagSet("mcp-tools", flag.ContinueOnError)
+	advID := fs.String("adventure-id", "", "adventure id")
+	sessPath := fs.String("session", "", "session state json path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	store, err := storage.New()
+	if err != nil {
+		return err
+	}
+	adv, err := store.LoadAdventure(*advID)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(*sessPath)
+	if err != nil {
+		return err
+	}
+	var st domain.SessionState
+	if err := json.Unmarshal(data, &st); err != nil {
+		return err
+	}
+	session := domain.NewSession(&st, adv, domain.DefaultConfig())
+	router := engine.NewToolRouter(session)
+	save := func() {
+		if b, err := json.MarshalIndent(&st, "", "  "); err == nil {
+			_ = os.WriteFile(*sessPath, b, 0644)
+		}
+	}
+	return mcptools.Serve(os.Stdin, os.Stdout, router, save)
+}
 
 func (g *gui) showLibrary() {
 	if g.journal != nil {
@@ -249,6 +298,19 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.transcript.Wrapping = fyne.TextWrapWord
 	g.transScroll = container.NewVScroll(g.transcript)
 	g.transcriptMD = fmt.Sprintf("_Running **%s**. Ask a question or type a /command._\n\n", adv.Title)
+	// Restore the saved oracle chat when resuming a session so it isn't empty.
+	if state.Conversation != nil {
+		for _, m := range state.Conversation.Messages {
+			switch m.Role {
+			case domain.RoleUser:
+				g.transcriptMD += "**» " + m.Content + "**\n\n"
+			case domain.RoleAssistant:
+				if strings.TrimSpace(m.Content) != "" {
+					g.transcriptMD += m.Content + "\n\n"
+				}
+			}
+		}
+	}
 	g.transcript.ParseMarkdown(g.transcriptMD)
 
 	g.logText = widget.NewRichTextFromMarkdown("")

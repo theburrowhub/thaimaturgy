@@ -257,6 +257,14 @@ func (s *SessionState) SetVariable(key, value string) {
 	s.touch()
 }
 
+// AppendLog appends a pre-formed timeline entry — used to replay into the live
+// state mutations performed by an external tool process (e.g. the MCP tools
+// server) so the log hook (journal) fires for them too.
+func (s *SessionState) AppendLog(e LogEntry) {
+	s.record(e)
+	s.touch()
+}
+
 // AddNote appends a free-form DM note to the timeline.
 func (s *SessionState) AddNote(text string) {
 	s.record(LogEntry{Type: LogNote, Message: text})

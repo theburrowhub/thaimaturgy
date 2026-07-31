@@ -84,8 +84,47 @@ func (p *ClaudeCLIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 		args = append(args, "--system-prompt", s)
 	}
 
+	text, err := p.run(ctx, args, user.String())
+	if err != nil {
+		return nil, err
+	}
+	return &ChatResponse{Content: text, FinishReason: "stop", Model: req.Model}, nil
+}
+
+// RunWithMCP runs `claude -p` with an MCP server configuration and a set of
+// pre-approved tool names, letting Claude Code drive the tool-calling loop
+// itself (calling our MCP-exposed tools). It returns the final assistant text.
+// Used by the oracle for the CLI backend, where tool-calling can't go through the
+// plain Chat interface.
+func (p *ClaudeCLIProvider) RunWithMCP(ctx context.Context, model, system, prompt, mcpConfigPath string, allowedTools []string) (string, error) {
+	args := []string{
+		"-p",
+		"--output-format", "json",
+		"--permission-mode", "bypassPermissions",
+		"--strict-mcp-config",
+		"--mcp-config", mcpConfigPath,
+		// Restrict Claude Code's own agentic tools so it uses only our MCP tools.
+		"--disallowed-tools", "Bash", "Edit", "Write", "Read", "WebSearch", "WebFetch",
+	}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	if s := strings.TrimSpace(system); s != "" {
+		args = append(args, "--system-prompt", s)
+	}
+	if len(allowedTools) > 0 {
+		// Variadic flag; place last so the tool names aren't mistaken for other args.
+		args = append(args, "--allowedTools")
+		args = append(args, allowedTools...)
+	}
+	return p.run(ctx, args, prompt)
+}
+
+// run executes the claude binary with args, feeding stdin, and returns the parsed
+// result text.
+func (p *ClaudeCLIProvider) run(ctx context.Context, args []string, stdin string) (string, error) {
 	cmd := exec.CommandContext(ctx, p.bin, args...)
-	cmd.Stdin = strings.NewReader(user.String())
+	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -94,24 +133,18 @@ func (p *ClaudeCLIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 		if msg == "" {
 			msg = err.Error()
 		}
-		return nil, fmt.Errorf("claude CLI failed: %s", msg)
+		return "", fmt.Errorf("claude CLI failed: %s", msg)
 	}
-
 	var out claudeCLIResult
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-		return nil, fmt.Errorf("claude CLI: could not parse output: %w", err)
+		return "", fmt.Errorf("claude CLI: could not parse output: %w", err)
 	}
 	if out.IsError {
 		detail := out.Result
 		if detail == "" {
 			detail = out.Subtype
 		}
-		return nil, fmt.Errorf("claude CLI returned an error: %s", detail)
+		return "", fmt.Errorf("claude CLI returned an error: %s", detail)
 	}
-
-	return &ChatResponse{
-		Content:      out.Result,
-		FinishReason: "stop",
-		Model:        req.Model,
-	}, nil
+	return out.Result, nil
 }
