@@ -50,12 +50,14 @@ type gui struct {
 	cmd     *engine.CommandHandler
 	journal *storage.SessionJournal // append-only chronicle for the active session
 
-	// Session widgets.
-	transcriptEntry *widget.Entry // read-only (disabled) multi-line entry: selectable + copyable chat log
-	logText         *widget.RichText
-	logScroll       *container.Scroll
-	entry           *widget.Entry
-	transcriptMD    string // plain-text backing buffer shown in transcriptEntry
+	// Session widgets. The chat log is a column of per-message selectable Labels
+	// (Fyne's only selectable/copyable text widget), each styled by role, so the
+	// formatting is preserved while text can be selected and copied.
+	transcriptBox *fyne.Container
+	transScroll   *container.Scroll
+	logText       *widget.RichText
+	logScroll     *container.Scroll
+	entry         *widget.Entry
 
 	// Adventure browser + detail pane.
 	navTree       *widget.Tree
@@ -361,27 +363,25 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.oracle = engine.NewOracle(g.session, g.prov)
 	g.cmd = engine.NewCommandHandler(g.session)
 
-	// Chat log: a disabled multi-line entry so the text can be selected and copied
-	// (Fyne RichText can't be selected). It shows plain text (markdown markers
-	// stripped) and auto-scrolls to the newest line.
-	g.transcriptEntry = widget.NewMultiLineEntry()
-	g.transcriptEntry.Wrapping = fyne.TextWrapWord
-	g.transcriptMD = cleanMarkdown(fmt.Sprintf("Running %s. Ask a question or type a /command.", adv.Title)) + "\n\n"
+	// Chat log: a column of selectable Labels (one per message) inside a scroll.
+	// Fyne's RichText isn't selectable, but Label is (Selectable), so this keeps
+	// per-message formatting while allowing selection + copy.
+	g.transcriptBox = container.NewVBox()
+	g.transScroll = container.NewVScroll(g.transcriptBox)
+	g.appendTranscript(fmt.Sprintf("_Running **%s**. Ask a question or type a /command._", adv.Title))
 	// Restore the saved oracle chat when resuming a session so it isn't empty.
 	if state.Conversation != nil {
 		for _, m := range state.Conversation.Messages {
 			switch m.Role {
 			case domain.RoleUser:
-				g.transcriptMD += "» " + m.Content + "\n\n"
+				g.appendTranscript("**» " + m.Content + "**")
 			case domain.RoleAssistant:
 				if strings.TrimSpace(m.Content) != "" {
-					g.transcriptMD += cleanMarkdown(m.Content) + "\n\n"
+					g.appendTranscript(m.Content)
 				}
 			}
 		}
 	}
-	g.transcriptEntry.SetText(g.transcriptMD)
-	g.transcriptEntry.Disable() // read-only, but still selectable/copyable
 
 	g.logText = widget.NewRichTextFromMarkdown("")
 	g.logText.Wrapping = fyne.TextWrapWord
@@ -421,7 +421,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 
 	// Center: oracle transcript + input.
 	inputRow := container.NewBorder(nil, nil, nil, sendBtn, g.entry)
-	g.centerCard = widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transcriptEntry))
+	g.centerCard = widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transScroll))
 
 	// Right: detail of the selected zone/room/NPC/event/item — prose + navigable
 	// links (top, scrolls together) and the inline image (bottom).
@@ -982,18 +982,25 @@ func (g *gui) exportNovel() {
 	}()
 }
 
+// appendTranscript adds one chat message to the log as a selectable Label, styled
+// by role (bold question, italic status, plain narration), and scrolls to it.
 func (g *gui) appendTranscript(md string) {
-	if g.transcriptEntry == nil {
+	if g.transcriptBox == nil {
 		return
 	}
-	g.transcriptMD += cleanMarkdown(md) + "\n\n"
-	g.transcriptEntry.SetText(g.transcriptMD)
-	// Auto-scroll: park the (hidden) cursor on the last row so the entry's internal
-	// scroll follows it to the bottom. ensureCursorVisible runs on Refresh even
-	// while the entry is disabled.
-	g.transcriptEntry.CursorRow = strings.Count(g.transcriptMD, "\n")
-	g.transcriptEntry.CursorColumn = 0
-	g.transcriptEntry.Refresh()
+	style := fyne.TextStyle{}
+	t := strings.TrimSpace(md)
+	switch {
+	case strings.HasPrefix(t, "**» "): // the DM/player's own line
+		style.Bold = true
+	case len(t) >= 2 && strings.HasPrefix(t, "_") && strings.HasSuffix(t, "_"): // status line
+		style.Italic = true
+	}
+	lbl := widget.NewLabelWithStyle(cleanMarkdown(md), fyne.TextAlignLeading, style)
+	lbl.Wrapping = fyne.TextWrapWord
+	lbl.Selectable = true // enables mouse selection + copy (Cmd/Ctrl+C)
+	g.transcriptBox.Add(lbl)
+	g.transScroll.ScrollToBottom()
 }
 
 // modeIsDM reports whether the active session is running in virtual-DM mode.
