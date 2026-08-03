@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -124,6 +125,13 @@ func (p *ClaudeCLIProvider) RunWithMCP(ctx context.Context, model, system, promp
 // result text.
 func (p *ClaudeCLIProvider) run(ctx context.Context, args []string, stdin string) (string, error) {
 	cmd := exec.CommandContext(ctx, p.bin, args...)
+	// Run from a neutral directory rather than inheriting the app's working dir.
+	// If that dir is a repo with a .claude/settings.json (permissions.allow), the
+	// CLI blocks on an untrusted-workspace trust gate ("this workspace has not been
+	// trusted"). We drive the CLI entirely through explicit flags (bypassPermissions,
+	// an absolute --mcp-config, an explicit --allowedTools list), so the workspace's
+	// own settings are irrelevant and a neutral cwd sidesteps the gate.
+	cmd.Dir = os.TempDir()
 	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
