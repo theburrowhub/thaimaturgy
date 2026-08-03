@@ -40,7 +40,7 @@ func report(p Progress, format string, args ...any) {
 const (
 	defVisionMaxImages  = 10
 	defVisionMaxImageMB = 4
-	defMaxDocChars      = 90_000
+	defMaxDocChars      = 200_000
 	defMaxOutputTokens  = 32000
 )
 
@@ -100,8 +100,18 @@ func FromImages(ctx context.Context, prov providers.Provider, cfg *domain.Config
 	if err != nil {
 		return nil, err
 	}
-	report(progress, "Found %d image(s).", len(assets))
-	return build(ctx, prov, cfg, title, "", assets, workingDir, progress, confirm, visionProv)
+	report(progress, "Found %d page image(s).", len(assets))
+
+	// The images are scanned pages of a physical adventure book: transcribe each
+	// page's full text with vision (OCR) so authoring has the complete text, just
+	// as it would from a PDF's text layer.
+	model := ""
+	if cfg != nil {
+		model = cfg.Model
+	}
+	docText := transcribePages(ctx, visionProviderFor(prov, visionProv), model, workingDir, assets, curationMaxBytes, progress)
+
+	return build(ctx, prov, cfg, title, docText, assets, workingDir, progress, confirm, visionProv)
 }
 
 // ConfirmFallback is consulted when the configured model is unavailable and the

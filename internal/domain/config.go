@@ -114,7 +114,7 @@ func DefaultConfig() *Config {
 
 		ImportVisionMaxImages:  10,
 		ImportVisionMaxImageMB: 4,
-		ImportMaxDocChars:      90000,
+		ImportMaxDocChars:      200000,
 		ImportMaxOutputTokens:  64000,
 
 		TTS: TTSConfig{
