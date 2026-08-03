@@ -402,7 +402,7 @@ func (h *CommandHandler) handleRoll(cmd *Command, r *CommandResult) {
 	} else if roll.IsCriticalFail() {
 		msg += " FUMBLE!"
 	}
-	h.state().Log.Add(domain.LogEntry{Type: domain.LogRoll, Message: msg})
+	h.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: msg})
 	h.session.MarkModified()
 	r.Message = msg
 }

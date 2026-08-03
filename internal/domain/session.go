@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 )
@@ -499,6 +500,39 @@ func (s *SessionState) EnsurePC() bool {
 	}
 	s.PC = NewCharacter("Adventurer", "Human", "Fighter")
 	return true
+}
+
+// UpsertPartyMember creates or updates a tracked party member under the lock.
+// Non-nil pointers overwrite the corresponding field; a non-empty notes replaces
+// the note.
+func (s *SessionState) UpsertPartyMember(name string, currentHP, maxHP, ac *int, notes string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var pm *PartyMember
+	for _, m := range s.Party {
+		if strings.EqualFold(m.Name, name) {
+			pm = m
+			break
+		}
+	}
+	if pm == nil {
+		pm = &PartyMember{Name: name}
+		s.Party = append(s.Party, pm)
+	}
+	if currentHP != nil {
+		pm.CurrentHP = *currentHP
+	}
+	if maxHP != nil {
+		pm.MaxHP = *maxHP
+	}
+	if ac != nil {
+		pm.AC = *ac
+	}
+	if notes != "" {
+		pm.Notes = notes
+	}
+	s.record(LogEntry{Type: LogParty, Message: "Updated " + name})
+	s.touch()
 }
 
 // Session is the runtime wrapper binding a persisted SessionState to its loaded

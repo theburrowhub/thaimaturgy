@@ -31,6 +31,8 @@ func TestSessionStateConcurrentAccess(t *testing.T) {
 				st.MutatePC(func(c *Character) { c.AwardXP(1); c.SetHP(5); c.SetGold(3) })
 				st.SetNPCDisposition("n", "friendly")
 				st.SetNPCAlive("n", true)
+				hp := 7
+				st.UpsertPartyMember("Bob", &hp, &hp, nil, "note")
 				st.AddUserMessage("u")
 				st.AddAssistantMessage("a")
 				st.ToggleMode()

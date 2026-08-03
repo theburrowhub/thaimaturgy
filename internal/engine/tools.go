@@ -641,31 +641,18 @@ func (tr *ToolRouter) updatePartyMember(id string, args map[string]any) types.To
 	if name == "" {
 		return errResult(id, "missing name")
 	}
-	st := tr.state()
-	var pm *domain.PartyMember
-	for _, m := range st.Party {
-		if strings.EqualFold(m.Name, name) {
-			pm = m
-			break
-		}
-	}
-	if pm == nil {
-		pm = &domain.PartyMember{Name: name}
-		st.Party = append(st.Party, pm)
-	}
+	var chp, mhp, ac *int
 	if v, ok := intArg(args, "current_hp"); ok {
-		pm.CurrentHP = v
+		chp = &v
 	}
 	if v, ok := intArg(args, "max_hp"); ok {
-		pm.MaxHP = v
+		mhp = &v
 	}
 	if v, ok := intArg(args, "ac"); ok {
-		pm.AC = v
+		ac = &v
 	}
-	if notes, ok := args["notes"].(string); ok && notes != "" {
-		pm.Notes = notes
-	}
-	st.Log.Add(domain.LogEntry{Type: domain.LogParty, Message: "Updated " + name})
+	notes, _ := args["notes"].(string)
+	tr.state().UpsertPartyMember(name, chp, mhp, ac, notes)
 	tr.session.MarkModified()
 	return okResult(id, "party member updated: "+name)
 }
