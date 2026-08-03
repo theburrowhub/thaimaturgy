@@ -41,6 +41,9 @@ type gui struct {
 	prov    providers.Provider
 	authMsg string
 
+	// Editor view (nil until first opened); shares this window.
+	editor *editor
+
 	// Active session (nil on the library screen).
 	session *domain.Session
 	oracle  *engine.Oracle
@@ -156,7 +159,8 @@ func (g *gui) showLibrary() {
 	title := widget.NewLabelWithStyle("🐉  thAImaturgy", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	subtitle := widget.NewLabelWithStyle("An AI oracle for the Dungeon Master", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
-	importBtn := widget.NewButtonWithIcon("Import module (.tar.gz)…", theme.FolderOpenIcon(), g.importDialog)
+	newBtn := widget.NewButtonWithIcon("New / author…", theme.DocumentCreateIcon(), g.newAuthoring)
+	importBtn := widget.NewButtonWithIcon("Import (.tar.gz)…", theme.FolderOpenIcon(), g.importDialog)
 	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.showSettings)
 
 	list := container.NewVBox()
@@ -167,9 +171,11 @@ func (g *gui) showLibrary() {
 		for _, a := range advs {
 			id, titleTxt := a.ID, a.Title
 			play := widget.NewButton("▶  "+titleTxt, func() { g.startSession(id) })
+			edit := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() { g.editAdventure(id) })
+			edit.Importance = widget.LowImportance
 			del := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() { g.deleteAdventure(id, titleTxt) })
 			del.Importance = widget.LowImportance
-			list.Add(container.NewBorder(nil, nil, nil, del, play))
+			list.Add(container.NewBorder(nil, nil, nil, container.NewHBox(edit, del), play))
 		}
 	}
 
@@ -200,9 +206,44 @@ func (g *gui) showLibrary() {
 	}
 
 	top := container.NewVBox(title, subtitle, widget.NewSeparator(),
-		container.NewHBox(importBtn, settingsBtn), widget.NewSeparator())
+		container.NewHBox(newBtn, importBtn, settingsBtn), widget.NewSeparator())
 	content := container.NewBorder(top, bottom, nil, nil, widget.NewCard("Library", "", container.NewVScroll(list)))
 	g.win.SetContent(content)
+}
+
+// showEditor renders the editor view on the shared window.
+func (g *gui) showEditor() {
+	if g.editor == nil {
+		g.editor = newEditor(g)
+	}
+	g.win.SetContent(g.editor.buildUI())
+	g.editor.reload()
+}
+
+// editAdventure opens an installed adventure in the editor, editing it in place
+// (saves persist to ~/.thaimaturgy/adventures/<id>, so playing reflects them).
+func (g *gui) editAdventure(id string) {
+	adv, err := g.store.LoadAdventure(id)
+	if err != nil {
+		g.showErr(err)
+		return
+	}
+	if g.editor == nil {
+		g.editor = newEditor(g)
+	}
+	g.editor.adv = adv
+	g.editor.workingDir = g.store.AdventureDir(id)
+	g.editor.dirty = false
+	g.showEditor()
+}
+
+// newAuthoring opens the editor on a fresh template to author or AI-import.
+func (g *gui) newAuthoring() {
+	if g.editor == nil {
+		g.editor = newEditor(g)
+	}
+	g.editor.newAdventure()
+	g.showEditor()
 }
 
 func (g *gui) importDialog() {

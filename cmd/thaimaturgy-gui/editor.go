@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
@@ -24,8 +23,6 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/bookpdf"
 	"github.com/theburrowhub/thaimaturgy/internal/dmbook"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
-	"github.com/theburrowhub/thaimaturgy/internal/guitheme"
-	_ "github.com/theburrowhub/thaimaturgy/internal/imagefmt" // register TIFF/WebP/BMP decoders
 	"github.com/theburrowhub/thaimaturgy/internal/ingest"
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
@@ -33,8 +30,13 @@ import (
 )
 
 type editor struct {
-	app fyne.App
-	win fyne.Window
+	app   fyne.App
+	win   fyne.Window
+	store *storage.Storage
+
+	// Navigation callbacks into the unified app.
+	onBack func()       // return to the library
+	onPlay func(string) // start a play session for the given adventure id
 
 	config *domain.Config
 	prov   providers.Provider
@@ -59,38 +61,89 @@ type editor struct {
 	currentUID string
 }
 
-func main() {
-	store, err := storage.New()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "storage: %v\n", err)
-		os.Exit(1)
+// playCurrent saves the current adventure, ensures it's installed in the library,
+// and switches to a play session for it.
+func (e *editor) playCurrent() {
+	if e.adv == nil {
+		return
 	}
-	_ = store.LoadEnvFile()
-	config, err := store.LoadConfig()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "config: %v\n", err)
-		os.Exit(1)
+	if err := e.save(); err != nil {
+		return
 	}
+	if err := e.installToLibrary(); err != nil {
+		e.showErr(err)
+		return
+	}
+	if e.onPlay != nil {
+		e.onPlay(e.adv.ID)
+	}
+}
 
-	authMsg := auth.AutoConfigure(config)
-	if config.EditModel != "" {
-		config.Model = config.EditModel // this app (the editor/import) may use its own model
+// installToLibrary makes the current working module available in the player's
+// library (~/.thaimaturgy/adventures/<id>). If the editor is already working in
+// place on the installed copy, this is a no-op; otherwise it packages the working
+// dir and imports it, then points the editor at the installed copy so subsequent
+// saves are in place.
+func (e *editor) installToLibrary() error {
+	if e.adv == nil || e.store == nil {
+		return nil
 	}
-	if !store.ConfigExists() {
-		_ = store.SaveConfig(config) // generate config.yaml on first run
+	dest := e.store.AdventureDir(e.adv.ID)
+	if pathsEqual(e.workingDir, dest) {
+		return nil // already editing the installed copy
 	}
+	tgz, err := os.CreateTemp("", "thaim-install-*.tar.gz")
+	if err != nil {
+		return err
+	}
+	tgzPath := tgz.Name()
+	_ = tgz.Close()
+	defer os.Remove(tgzPath)
+	_ = os.Remove(tgzPath) // PackageModule recreates it
+	if err := storage.PackageModule(e.workingDir, tgzPath); err != nil {
+		return err
+	}
+	if _, err := e.store.ImportModule(tgzPath); err != nil {
+		return err
+	}
+	e.workingDir = dest // future saves go straight to the installed copy
+	e.dirty = false
+	return nil
+}
 
-	e := &editor{app: app.NewWithID("dev.theburrowhub.thaimaturgy.editor"), config: config, prov: providers.New(config), model: config.Model, authMsg: authMsg}
-	e.visionProv = buildVisionProvider(config)
-	e.app.Settings().SetTheme(guitheme.New())
-	e.win = e.app.NewWindow("thAImaturgy — Module Editor")
-	e.win.Resize(fyne.NewSize(1180, 820))
-	e.newAdventure() // start with a template
-	e.win.SetContent(e.buildUI())
-	if authMsg != "" {
-		e.setStatus(authMsg)
+func pathsEqual(a, b string) bool {
+	if a == "" || b == "" {
+		return false
 	}
-	e.win.ShowAndRun()
+	ca, _ := filepath.Abs(a)
+	cb, _ := filepath.Abs(b)
+	return filepath.Clean(ca) == filepath.Clean(cb)
+}
+
+// newEditor builds the editor as a view of the unified app, sharing the window
+// and store. It uses its own config copy with the edit-model override (which may
+// differ from the play/oracle model), and its own provider + vision provider.
+func newEditor(g *gui) *editor {
+	cfg := domain.DefaultConfig()
+	if loaded, err := g.store.LoadConfig(); err == nil && loaded != nil {
+		cfg = loaded
+	}
+	auth.AutoConfigure(cfg)
+	if cfg.EditModel != "" {
+		cfg.Model = cfg.EditModel
+	}
+	e := &editor{
+		app:        g.app,
+		win:        g.win,
+		store:      g.store,
+		config:     cfg,
+		prov:       providers.New(cfg),
+		model:      cfg.Model,
+		visionProv: buildVisionProvider(cfg),
+		onBack:     g.showLibrary,
+		onPlay:     func(id string) { g.startSession(id) },
+	}
+	return e
 }
 
 // buildVisionProvider returns an image-capable provider used for import vision
@@ -116,12 +169,17 @@ func (e *editor) buildUI() fyne.CanvasObject {
 	translateCheck.SetChecked(e.translate)
 
 	toolbar := container.NewHBox(
-		widget.NewButton("New", e.confirmNew),
-		widget.NewButton("Open…", e.openDialog),
+		widget.NewButton("← Library", func() {
+			if e.onBack != nil {
+				e.onBack()
+			}
+		}),
+		widget.NewButton("Save", func() { _ = e.save() }),
+		widget.NewButton("▶ Play", e.playCurrent),
 		widget.NewButton("Import…", e.importDialog),
 		translateCheck,
-		widget.NewButton("Save…", e.saveDialog),
 		widget.NewButton("Validate", e.validate),
+		widget.NewButton("Export .tar.gz…", e.saveDialog),
 		widget.NewButton("DM book…", e.exportDMBook),
 	)
 
@@ -996,13 +1054,6 @@ func (e *editor) setStatus(s string) {
 }
 func (e *editor) info(s string)     { go nativeui.Info("Editor", s) }
 func (e *editor) showErr(err error) { go nativeui.Error("Editor", err.Error()) }
-
-func labelOrID(name, id string) string {
-	if strings.TrimSpace(name) != "" {
-		return name
-	}
-	return id
-}
 
 func parseRoomUID(uid string) (zoneID, roomID string) {
 	body := strings.TrimPrefix(uid, "room:")
