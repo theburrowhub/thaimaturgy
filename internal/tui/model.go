@@ -800,7 +800,7 @@ func (m *Model) refreshLogPanel() {
 		return
 	}
 	var sb strings.Builder
-	for _, e := range m.session.State.Log.GetLast(60) {
+	for _, e := range m.session.State.RecentLog(60) {
 		ts := e.Timestamp.Format("15:04")
 		style := m.styles.EventLog
 		switch e.Type {

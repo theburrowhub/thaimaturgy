@@ -69,13 +69,17 @@ type gui struct {
 
 	// Mode toggle (Oracle ↔ Virtual DM) and the player-character panel shown in
 	// virtual-DM mode in place of the adventure browser.
-	modeBtn   *widget.Button
-	sendBtn   *widget.Button
-	diceBtn   *widget.Button
-	leftSplit *container.Split
-	navCard   *widget.Card
-	pcCard    *widget.Card
-	pcText    *widget.RichText
+	modeBtn    *widget.Button
+	sendBtn    *widget.Button
+	diceBtn    *widget.Button
+	saveBtn    *widget.Button
+	exportBtn  *widget.Button
+	libraryBtn *widget.Button
+	busy       bool // an oracle request is in flight; block state reads/mutations from the UI
+	leftSplit  *container.Split
+	navCard    *widget.Card
+	pcCard     *widget.Card
+	pcText     *widget.RichText
 
 	// Body layout, so virtual-DM mode can hide the detail pane (spoilers): in DM
 	// mode the body's trailing side is just centerCard; in oracle mode it is the
@@ -428,11 +432,14 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	title := widget.NewLabelWithStyle("🐉  "+adv.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	g.modeBtn = widget.NewButtonWithIcon("", theme.MediaPlayIcon(), g.toggleMode)
 	g.diceBtn = widget.NewButton("🎲 Dice", g.showDiceRoller)
+	g.libraryBtn = widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary)
+	g.saveBtn = widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save)
+	g.exportBtn = widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel)
 	toolbar := container.NewVBox(
 		container.NewHBox(
-			widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary),
-			widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save),
-			widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel),
+			g.libraryBtn,
+			g.saveBtn,
+			g.exportBtn,
 			g.diceBtn,
 			g.modeBtn,
 			title,
@@ -462,7 +469,12 @@ func (g *gui) buildAdvTree() *widget.Tree {
 			o.(*widget.Label).SetText(g.treeLabel(uid))
 		},
 	)
-	t.OnSelected = func(uid widget.TreeNodeID) { g.showDetail(uid) }
+	t.OnSelected = func(uid widget.TreeNodeID) {
+		if g.busy {
+			return
+		}
+		g.showDetail(uid)
+	}
 	t.OpenAllBranches()
 	return t
 }
@@ -698,6 +710,9 @@ func (g *gui) selectNode(uid widget.TreeNodeID) {
 }
 
 func (g *gui) movePartyHere(roomID string) {
+	if g.busy {
+		return
+	}
 	res := g.cmd.Execute(engine.ParseCommand("/goto " + roomID))
 	if !res.Success && res.Message != "" {
 		g.showErr(fmt.Errorf("%s", res.Message))
@@ -709,6 +724,9 @@ func (g *gui) movePartyHere(roomID string) {
 }
 
 func (g *gui) markNPCMet(id, name string) {
+	if g.busy {
+		return
+	}
 	g.session.State.MeetNPC(id, name)
 	g.session.MarkModified()
 	g.refreshState()
@@ -716,6 +734,9 @@ func (g *gui) markNPCMet(id, name string) {
 }
 
 func (g *gui) triggerEvent(id, name string) {
+	if g.busy {
+		return
+	}
 	g.session.State.TriggerEvent(id, name)
 	g.session.MarkModified()
 	g.refreshState()
@@ -725,6 +746,9 @@ func (g *gui) triggerEvent(id, name string) {
 // rollTable rolls on a table, shows the result in the oracle transcript, and
 // records it in the session log.
 func (g *gui) rollTable(id string) {
+	if g.busy {
+		return
+	}
 	t := g.session.Adventure.Table(id)
 	if t == nil {
 		return
@@ -810,6 +834,7 @@ func (g *gui) submit(raw string) {
 // state (dice roll, mode toggle, another query) concurrently with the oracle
 // goroutine that is mutating it.
 func (g *gui) setBusy(busy bool) {
+	g.busy = busy
 	toggle := func(b *widget.Button) {
 		if b == nil {
 			return
@@ -820,9 +845,15 @@ func (g *gui) setBusy(busy bool) {
 			b.Enable()
 		}
 	}
+	// Disable every control that reads or mutates session state, including Save /
+	// Export (which serialize it) and Library (which tears it down). Tree selection
+	// and detail-action buttons are gated separately via the g.busy flag.
 	toggle(g.sendBtn)
 	toggle(g.diceBtn)
 	toggle(g.modeBtn)
+	toggle(g.saveBtn)
+	toggle(g.exportBtn)
+	toggle(g.libraryBtn)
 	if g.entry != nil {
 		if busy {
 			g.entry.Disable()
@@ -1097,7 +1128,7 @@ func (g *gui) refreshLog() {
 		return
 	}
 	var sb strings.Builder
-	for _, e := range g.session.State.Log.GetLast(80) {
+	for _, e := range g.session.State.RecentLog(80) {
 		fmt.Fprintf(&sb, "- `%s` %s\n", e.Timestamp.Format("15:04"), e.Message)
 	}
 	g.logText.ParseMarkdown(sb.String())

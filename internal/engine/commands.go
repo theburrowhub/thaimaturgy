@@ -499,7 +499,7 @@ func (h *CommandHandler) statusText() string {
 	if room != nil {
 		fmt.Fprintf(&sb, "Room: %s\n", room.Name)
 	}
-	fmt.Fprintf(&sb, "Visited rooms: %d | Timeline entries: %d\n", len(st.VisitedRooms), st.Log.Len())
+	fmt.Fprintf(&sb, "Visited rooms: %d | Timeline entries: %d\n", len(st.VisitedRooms), st.LogLen())
 	return sb.String()
 }
 

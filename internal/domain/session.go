@@ -260,16 +260,110 @@ func (s *SessionState) MeetNPC(id, name string) *NPCStatus {
 	return st
 }
 
-// NPCState returns the tracked status for an NPC, creating a default if absent.
-func (s *SessionState) NPCState(id string) *NPCStatus {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// npcState is the lock-free core of NPCState, for callers already holding s.mu.
+func (s *SessionState) npcState(id string) *NPCStatus {
 	st := s.KnownNPCs[id]
 	if st == nil {
 		st = &NPCStatus{Alive: true}
 		s.KnownNPCs[id] = st
 	}
 	return st
+}
+
+// NPCState returns the tracked status for an NPC, creating a default if absent.
+func (s *SessionState) NPCState(id string) *NPCStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.npcState(id)
+}
+
+// SetNPCDisposition records an NPC's disposition under the lock (the caller must
+// not mutate the returned NPCStatus directly, which would bypass synchronization).
+func (s *SessionState) SetNPCDisposition(id, disposition string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.npcState(id).Disposition = disposition
+	s.record(LogEntry{Type: LogNPC, Message: id + " disposition → " + disposition,
+		Data: map[string]any{"npc": id}})
+	s.touch()
+}
+
+// SetNPCAlive records whether an NPC is alive under the lock.
+func (s *SessionState) SetNPCAlive(id string, alive bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.npcState(id).Alive = alive
+	status := "alive"
+	if !alive {
+		status = "dead"
+	}
+	s.record(LogEntry{Type: LogNPC, Message: id + " is now " + status,
+		Data: map[string]any{"npc": id}})
+	s.touch()
+}
+
+// MutatePC runs fn against the player character under the lock, creating the
+// default character first if needed. All PC-sheet mutations go through here so
+// they are synchronized against serialization.
+func (s *SessionState) MutatePC(fn func(*Character)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.PC == nil {
+		s.PC = NewCharacter("Adventurer", "Human", "Fighter")
+	}
+	fn(s.PC)
+	s.touch()
+}
+
+// AddUserMessage appends a user message to the conversation under the lock.
+func (s *SessionState) AddUserMessage(content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Conversation.AddUserMessage(content)
+}
+
+// AddAssistantMessage appends an assistant message to the conversation under the
+// lock.
+func (s *SessionState) AddAssistantMessage(content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Conversation.AddAssistantMessage(content)
+}
+
+// RecentLog returns a copy of the last n timeline entries under the lock, so a
+// reader (e.g. a UI panel) never iterates the slice while a writer appends.
+func (s *SessionState) RecentLog(n int) []LogEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	last := s.Log.GetLast(n)
+	out := make([]LogEntry, len(last))
+	copy(out, last)
+	return out
+}
+
+// LogLen returns the timeline length under the lock.
+func (s *SessionState) LogLen() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Log.Len()
+}
+
+// ImportStructured replaces the structured progress fields from src under the
+// lock. Used by the Claude-CLI merge path, where a subprocess mutated a copy of
+// the state; the timeline is replayed separately via AppendLog.
+func (s *SessionState) ImportStructured(src *SessionState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.CurrentZone = src.CurrentZone
+	s.CurrentRoom = src.CurrentRoom
+	s.VisitedRooms = src.VisitedRooms
+	s.KnownNPCs = src.KnownNPCs
+	s.TriggeredEvents = src.TriggeredEvents
+	s.Flags = src.Flags
+	s.Variables = src.Variables
+	s.Party = src.Party
+	s.Quests = src.Quests
+	s.PC = src.PC
 }
 
 // TriggerEvent records that a scripted event has fired.

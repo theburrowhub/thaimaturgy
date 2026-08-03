@@ -58,7 +58,7 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 		return o.askViaCLI(ctx, cli, input)
 	}
 
-	o.session.State.Conversation.AddUserMessage(input)
+	o.session.State.AddUserMessage(input)
 
 	req := providers.ChatRequest{
 		Messages:    o.buildMessages(),
@@ -88,7 +88,7 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 			resp.Answer = chat.Content
 			resp.LatencyMs = totalLatency
 			resp.TokensUsed = totalTokens
-			o.session.State.Conversation.AddAssistantMessage(chat.Content)
+			o.session.State.AddAssistantMessage(chat.Content)
 			o.session.MarkModified()
 			return resp
 		}
@@ -131,7 +131,7 @@ const conversationContextWindow = 60
 func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider, input string) *Response {
 	resp := &Response{}
 	st := o.session.State
-	st.Conversation.AddUserMessage(input)
+	st.AddUserMessage(input)
 
 	// Persist the current state to a temp file the tools subprocess loads/mutates.
 	sessPath, err := tempFile("thaim-oracle-session-*.json")
@@ -146,7 +146,7 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	}
 	oldLogLen := 0
 	if st.Log != nil {
-		oldLogLen = len(st.Log.Entries)
+		oldLogLen = st.LogLen()
 	}
 
 	// MCP config pointing back at this binary's tools subcommand.
@@ -192,7 +192,7 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	if merged, e := readSessionFile(sessPath); e == nil {
 		mergeSessionState(st, merged, oldLogLen)
 	}
-	st.Conversation.AddAssistantMessage(answer)
+	st.AddAssistantMessage(answer)
 	o.session.MarkModified()
 	resp.Answer = answer
 	return resp
@@ -232,16 +232,7 @@ func readSessionFile(path string) (*domain.SessionState, error) {
 // place (so holders of dst see the changes) and replays timeline entries added
 // beyond oldLogLen through dst.AppendLog, firing dst's log hook (journal).
 func mergeSessionState(dst, src *domain.SessionState, oldLogLen int) {
-	dst.CurrentZone = src.CurrentZone
-	dst.CurrentRoom = src.CurrentRoom
-	dst.VisitedRooms = src.VisitedRooms
-	dst.KnownNPCs = src.KnownNPCs
-	dst.TriggeredEvents = src.TriggeredEvents
-	dst.Flags = src.Flags
-	dst.Variables = src.Variables
-	dst.Party = src.Party
-	dst.Quests = src.Quests
-	dst.PC = src.PC
+	dst.ImportStructured(src)
 	if src.Log != nil {
 		entries := src.Log.Entries
 		if oldLogLen < 0 || oldLogLen > len(entries) {
@@ -374,7 +365,7 @@ func (o *Oracle) buildSystemPrompt() string {
 	if recentN <= 0 {
 		recentN = 15
 	}
-	recent := st.Log.GetLast(recentN)
+	recent := st.RecentLog(recentN)
 	if len(recent) > 0 {
 		sb.WriteString("\n=== RECENT TIMELINE ===\n")
 		for _, e := range recent {
@@ -409,13 +400,13 @@ func (o *Oracle) UpdateSummary(ctx context.Context) error {
 	if threshold <= 0 {
 		threshold = 20
 	}
-	if o.session.State.Log.Len() < threshold {
+	if o.session.State.LogLen() < threshold {
 		return nil
 	}
 
 	var sb strings.Builder
 	sb.WriteString("Summarize the following D&D session timeline into a concise recap (<300 words) of what the party has done, key decisions, and open threads:\n\n")
-	for _, e := range o.session.State.Log.Entries {
+	for _, e := range o.session.State.RecentLog(0) {
 		fmt.Fprintf(&sb, "- [%s] %s\n", e.Type, e.Message)
 	}
 
@@ -450,6 +441,6 @@ func (o *Oracle) Status() map[string]any {
 		"model":     o.session.Config.Model,
 		"adventure": o.session.Adventure.Title,
 		"room":      o.session.State.CurrentRoom,
-		"log":       o.session.State.Log.Len(),
+		"log":       o.session.State.LogLen(),
 	}
 }

@@ -304,6 +304,15 @@ func (c *Character) SetGold(gold int) {
 	c.Gold = gold
 }
 
+// AwardXP grants experience. Non-positive amounts are ignored so an errant call
+// can't reduce or negate the character's total.
+func (c *Character) AwardXP(amount int) {
+	if amount <= 0 {
+		return
+	}
+	c.XP += amount
+}
+
 func (c *Character) IsAlive() bool {
 	return c.CurrentHP > 0
 }

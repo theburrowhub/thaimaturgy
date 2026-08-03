@@ -126,6 +126,28 @@ func TestUpdateGoldTool(t *testing.T) {
 	}
 }
 
+// TestAwardXPTool verifies award_xp accumulates and ignores non-positive amounts.
+func TestAwardXPTool(t *testing.T) {
+	session := createTestSession()
+	session.State.SetMode(domain.ModeVirtualDM)
+	session.State.PC = domain.NewCharacter("Kael", "Elf", "Wizard")
+	tr := NewToolRouter(session)
+
+	call := func(amount int) types.ToolResult {
+		b, _ := json.Marshal(map[string]any{"amount": amount})
+		return tr.Execute(types.ToolCall{Name: "award_xp", Arguments: b})
+	}
+
+	call(100)
+	if session.State.PC.XP != 100 {
+		t.Errorf("XP after +100 = %d, want 100", session.State.PC.XP)
+	}
+	call(-500) // ignored, never reduces the total
+	if session.State.PC.XP != 100 {
+		t.Errorf("XP after -500 = %d, want 100 (non-positive ignored)", session.State.PC.XP)
+	}
+}
+
 // TestEnsurePC verifies the single default-character entry point.
 func TestEnsurePC(t *testing.T) {
 	st := domain.NewSessionState("t", nil)
