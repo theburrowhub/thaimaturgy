@@ -50,13 +50,14 @@ type gui struct {
 	cmd     *engine.CommandHandler
 	journal *storage.SessionJournal // append-only chronicle for the active session
 
-	// Session widgets.
-	transcript   *widget.RichText
-	transScroll  *container.Scroll
-	logText      *widget.RichText
-	logScroll    *container.Scroll
-	entry        *widget.Entry
-	transcriptMD string
+	// Session widgets. The chat log is a column of per-message selectable Labels
+	// (Fyne's only selectable/copyable text widget), each styled by role, so the
+	// formatting is preserved while text can be selected and copied.
+	transcriptBox *fyne.Container
+	transScroll   *container.Scroll
+	logText       *widget.RichText
+	logScroll     *container.Scroll
+	entry         *chatEntry
 
 	// Adventure browser + detail pane.
 	navTree       *widget.Tree
@@ -79,7 +80,8 @@ type gui struct {
 	leftSplit  *container.Split
 	navCard    *widget.Card
 	pcCard     *widget.Card
-	pcText     *widget.RichText
+	pcSheet    *fyne.Container // tabletop-style character sheet (rebuilt on refresh)
+	pcScroll   *container.Scroll
 
 	// Body layout, so virtual-DM mode can hide the detail pane (spoilers): in DM
 	// mode the body's trailing side is just centerCard; in oracle mode it is the
@@ -361,24 +363,25 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.oracle = engine.NewOracle(g.session, g.prov)
 	g.cmd = engine.NewCommandHandler(g.session)
 
-	g.transcript = widget.NewRichTextFromMarkdown("")
-	g.transcript.Wrapping = fyne.TextWrapWord
-	g.transScroll = container.NewVScroll(g.transcript)
-	g.transcriptMD = fmt.Sprintf("_Running **%s**. Ask a question or type a /command._\n\n", adv.Title)
+	// Chat log: a column of selectable Labels (one per message) inside a scroll.
+	// Fyne's RichText isn't selectable, but Label is (Selectable), so this keeps
+	// per-message formatting while allowing selection + copy.
+	g.transcriptBox = container.NewVBox()
+	g.transScroll = container.NewVScroll(g.transcriptBox)
+	g.appendTranscript(fmt.Sprintf("_Running **%s**. Ask a question or type a /command._", adv.Title))
 	// Restore the saved oracle chat when resuming a session so it isn't empty.
 	if state.Conversation != nil {
 		for _, m := range state.Conversation.Messages {
 			switch m.Role {
 			case domain.RoleUser:
-				g.transcriptMD += "**» " + m.Content + "**\n\n"
+				g.appendTranscript("**» " + m.Content + "**")
 			case domain.RoleAssistant:
 				if strings.TrimSpace(m.Content) != "" {
-					g.transcriptMD += m.Content + "\n\n"
+					g.appendTranscript(m.Content)
 				}
 			}
 		}
 	}
-	g.transcript.ParseMarkdown(g.transcriptMD)
 
 	g.logText = widget.NewRichTextFromMarkdown("")
 	g.logText.Wrapping = fyne.TextWrapWord
@@ -391,18 +394,21 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.detailActions = container.NewHBox()
 	g.navTree = g.buildAdvTree()
 
-	g.entry = widget.NewEntry()
-	g.entry.SetPlaceHolder("Ask the oracle, or type a /command…")
-	g.entry.OnSubmitted = func(s string) { g.submit(s) }
+	// Multi-line input with chat-style keys: Enter submits, Ctrl/Cmd+Enter inserts
+	// a newline. The Send button also submits.
+	g.entry = newChatEntry(func(s string) { g.submit(s) })
+	g.entry.SetMinRowsVisible(3)
+	g.entry.SetPlaceHolder("Ask the oracle, or type a /command… (Enter sends, ⌘/Ctrl+Enter = newline)")
 	g.sendBtn = widget.NewButton("Send", func() { g.submit(g.entry.Text) })
 	sendBtn := g.sendBtn
 
 	// Player-character panel, shown in virtual-DM mode in place of the adventure
-	// browser (which is hidden to avoid spoilers).
-	g.pcText = widget.NewRichTextFromMarkdown("")
-	g.pcText.Wrapping = fyne.TextWrapWord
+	// browser (which is hidden to avoid spoilers). Rebuilt as a tabletop-style
+	// sheet by refreshPCPanel.
+	g.pcSheet = container.NewVBox()
+	g.pcScroll = container.NewVScroll(g.pcSheet)
 	g.navCard = widget.NewCard("Adventure", "", g.navTree)
-	g.pcCard = widget.NewCard("Character", "", container.NewVScroll(g.pcText))
+	g.pcCard = widget.NewCard("Character", "", g.pcScroll)
 
 	// Left column: adventure browser / character sheet (top) + session log (bottom).
 	g.leftSplit = container.NewVSplit(
@@ -456,6 +462,23 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 		g.showDetail("room:" + g.session.State.CurrentZone + "::" + g.session.State.CurrentRoom)
 	}
 	g.win.Canvas().Focus(g.entry)
+	// Jump to the end of the history so a resumed session opens on the newest line.
+	g.scrollTranscriptToBottom()
+}
+
+// scrollTranscriptToBottom scrolls the chat log to the newest message. It scrolls
+// immediately and once more after a short delay, because at session-open time the
+// content size isn't laid out yet, so the first call alone would be a no-op.
+func (g *gui) scrollTranscriptToBottom() {
+	s := g.transScroll
+	if s == nil {
+		return
+	}
+	s.ScrollToBottom()
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		fyne.Do(func() { s.ScrollToBottom() })
+	}()
 }
 
 // --- Adventure browser ---------------------------------------------------
@@ -781,6 +804,9 @@ func splitRoomUID(uid string) (zoneID, roomID string) {
 }
 
 func (g *gui) submit(raw string) {
+	if g.busy { // an oracle request is in flight; ignore further submissions
+		return
+	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return
@@ -798,7 +824,9 @@ func (g *gui) submit(raw string) {
 		return
 	}
 	if result.Response != "" {
-		g.appendTranscript("**» " + raw + "**\n\n" + "```\n" + result.Response + "\n```")
+		// Two messages so only the command echo is bold, not the whole output.
+		g.appendTranscript("**» " + raw + "**")
+		g.appendTranscript(result.Response)
 	}
 
 	if result.NeedsUI {
@@ -975,9 +1003,24 @@ func (g *gui) exportNovel() {
 	}()
 }
 
+// appendTranscript adds one chat message to the log as a selectable Label, styled
+// by role (bold question, italic status, plain narration), and scrolls to it.
 func (g *gui) appendTranscript(md string) {
-	g.transcriptMD += md + "\n\n"
-	g.transcript.ParseMarkdown(g.transcriptMD)
+	if g.transcriptBox == nil {
+		return
+	}
+	style := fyne.TextStyle{}
+	t := strings.TrimSpace(md)
+	switch {
+	case strings.HasPrefix(t, "**» "): // the DM/player's own line
+		style.Bold = true
+	case len(t) >= 2 && strings.HasPrefix(t, "_") && strings.HasSuffix(t, "_"): // status line
+		style.Italic = true
+	}
+	lbl := widget.NewLabelWithStyle(cleanMarkdown(md), fyne.TextAlignLeading, style)
+	lbl.Wrapping = fyne.TextWrapWord
+	lbl.Selectable = true // enables mouse selection + copy (Cmd/Ctrl+C)
+	g.transcriptBox.Add(lbl)
 	g.transScroll.ScrollToBottom()
 }
 
@@ -1006,9 +1049,9 @@ func (g *gui) applyMode() {
 	}
 	if g.entry != nil {
 		if dm {
-			g.entry.SetPlaceHolder("What do you do? (you play the character; the AI is the DM)")
+			g.entry.SetPlaceHolder("What do you do?  (Enter sends · ⌘/Ctrl+Enter = newline)")
 		} else {
-			g.entry.SetPlaceHolder("Ask the oracle, or type a /command…")
+			g.entry.SetPlaceHolder("Ask the oracle, or type a /command…  (Enter sends · ⌘/Ctrl+Enter = newline)")
 		}
 	}
 	if g.leftSplit != nil {
@@ -1039,17 +1082,25 @@ func (g *gui) applyMode() {
 	g.refreshPCPanel()
 }
 
-// refreshPCPanel re-renders the player-character sheet shown in virtual-DM mode.
+// refreshPCPanel rebuilds the tabletop-style player-character sheet shown in
+// virtual-DM mode.
 func (g *gui) refreshPCPanel() {
-	if g.pcText == nil || g.session == nil {
+	if g.pcSheet == nil || g.session == nil {
 		return
 	}
 	pc := g.session.State.PC
 	if pc == nil {
-		g.pcText.ParseMarkdown("_No character yet._\n\nSwitch to **Virtual DM** and a default adventurer is created so you can start playing to test the module.")
-		return
+		g.pcSheet.Objects = []fyne.CanvasObject{
+			widget.NewLabelWithStyle("No character yet.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
+			widget.NewLabel("Switch to Virtual DM and a default adventurer is created so you can start playing to test the module."),
+		}
+	} else {
+		g.pcSheet.Objects = buildPCSheet(pc)
 	}
-	g.pcText.ParseMarkdown("```\n" + engine.FormatCharacter(pc) + "\n```")
+	g.pcSheet.Refresh()
+	if g.pcScroll != nil {
+		g.pcScroll.Refresh()
+	}
 }
 
 // toggleMode flips the session mode (toolbar button); onModeChanged then syncs
