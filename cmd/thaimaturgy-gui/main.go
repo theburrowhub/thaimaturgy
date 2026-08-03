@@ -74,6 +74,14 @@ type gui struct {
 	navCard   *widget.Card
 	pcCard    *widget.Card
 	pcText    *widget.RichText
+
+	// Body layout, so virtual-DM mode can hide the detail pane (spoilers): in DM
+	// mode the body's trailing side is just centerCard; in oracle mode it is the
+	// centerRight split (transcript + detail).
+	body        *container.Split
+	centerRight *container.Split
+	centerCard  *widget.Card
+	rightCard   *widget.Card
 }
 
 func main() {
@@ -399,17 +407,19 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 
 	// Center: oracle transcript + input.
 	inputRow := container.NewBorder(nil, nil, nil, sendBtn, g.entry)
-	center := widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transScroll))
+	g.centerCard = widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transScroll))
 
 	// Right: detail of the selected zone/room/NPC/event/item — prose + navigable
 	// links (top, scrolls together) and the inline image (bottom).
 	detailContent := container.NewVScroll(container.NewVBox(g.detailText, g.detailLinks))
 	detailBody := container.NewVSplit(detailContent, container.NewVScroll(g.detailImage))
 	detailBody.SetOffset(0.6)
-	right := widget.NewCard("Detail", "", container.NewBorder(g.detailActions, nil, nil, nil, detailBody))
+	g.rightCard = widget.NewCard("Detail", "", container.NewBorder(g.detailActions, nil, nil, nil, detailBody))
 
-	body := container.NewHSplit(left, container.NewHSplit(center, right))
-	body.SetOffset(0.24)
+	g.centerRight = container.NewHSplit(g.centerCard, g.rightCard)
+	g.body = container.NewHSplit(left, g.centerRight)
+	g.body.SetOffset(0.24)
+	body := g.body
 
 	g.locLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	title := widget.NewLabelWithStyle("🐉  "+adv.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -944,6 +954,23 @@ func (g *gui) applyMode() {
 			g.leftSplit.Leading = g.navCard
 		}
 		g.leftSplit.Refresh()
+	}
+	// In virtual-DM mode hide the detail pane (spoilers) so only the character
+	// sheet + log (left) and the DM narration (center) remain.
+	if g.body != nil {
+		if dm {
+			g.body.Trailing = g.centerCard
+		} else {
+			g.body.Trailing = g.centerRight
+		}
+		g.body.Refresh()
+	}
+	if g.centerCard != nil {
+		if dm {
+			g.centerCard.SetTitle("Dungeon Master")
+		} else {
+			g.centerCard.SetTitle("Oracle")
+		}
 	}
 	g.refreshPCPanel()
 }
