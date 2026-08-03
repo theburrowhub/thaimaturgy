@@ -126,10 +126,13 @@ func cleanMarkdown(s string) string {
 		if j > 0 {
 			ln = strings.TrimPrefix(ln[j:], " ")
 		}
-		// Unwrap a whole-line italic (_…_), used for status lines.
+		// Unwrap a whole-line italic (_…_), used for status lines — but only when
+		// the underscores are the single wrapping span (exactly two), so a line with
+		// two separate italics isn't mangled. Preserve the original indentation.
 		t := strings.TrimSpace(ln)
-		if len(t) >= 2 && strings.HasPrefix(t, "_") && strings.HasSuffix(t, "_") {
-			ln = strings.TrimSuffix(strings.TrimPrefix(t, "_"), "_")
+		if len(t) >= 2 && strings.HasPrefix(t, "_") && strings.HasSuffix(t, "_") && strings.Count(t, "_") == 2 {
+			indent := ln[:len(ln)-len(strings.TrimLeft(ln, " \t"))]
+			ln = indent + strings.TrimSuffix(strings.TrimPrefix(t, "_"), "_")
 		}
 		lines[i] = ln
 	}
