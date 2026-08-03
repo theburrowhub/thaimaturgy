@@ -61,6 +61,24 @@ var AvailableTools = []types.Tool{
 		}`),
 	},
 	{
+		Name:        "get_table",
+		Description: "Read a random/reference table (encounters, treasure, name lists, roll tables) by ID, including all its rows.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"table_id":{"type":"string"}},
+			"required":["table_id"]
+		}`),
+	},
+	{
+		Name:        "roll_table",
+		Description: "Roll on a random table by ID: rolls its dice and returns the resulting row. Use for wandering monsters, random treasure, etc.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"table_id":{"type":"string"}},
+			"required":["table_id"]
+		}`),
+	},
+	{
 		Name:        "search_module",
 		Description: "Search the whole adventure module (zones, rooms, NPCs, events, items, lore) for a keyword and return matching IDs with names.",
 		Parameters: json.RawMessage(`{
@@ -235,6 +253,10 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 		return tr.getEvent(call.ID, args)
 	case "get_item":
 		return tr.getItem(call.ID, args)
+	case "get_table":
+		return tr.getTable(call.ID, args)
+	case "roll_table":
+		return tr.rollTable(call.ID, args)
 	case "search_module":
 		return tr.searchModule(call.ID, args)
 	case "list_present_npcs":
@@ -321,6 +343,31 @@ func (tr *ToolRouter) getItem(id string, args map[string]any) types.ToolResult {
 		return errResult(id, "no item with id "+iid)
 	}
 	return okResult(id, FormatItem(tr.adv(), it))
+}
+
+func (tr *ToolRouter) getTable(id string, args map[string]any) types.ToolResult {
+	tid, _ := args["table_id"].(string)
+	t := tr.adv().Table(tid)
+	if t == nil {
+		return errResult(id, "no table with id "+tid)
+	}
+	return okResult(id, nameOrID(t.Name, t.ID)+"\n"+TableMarkdown(t))
+}
+
+func (tr *ToolRouter) rollTable(id string, args map[string]any) types.ToolResult {
+	tid, _ := args["table_id"].(string)
+	t := tr.adv().Table(tid)
+	if t == nil {
+		return errResult(id, "no table with id "+tid)
+	}
+	roll, row := RollTable(t)
+	result := RowText(row)
+	if result == "" {
+		result = "(no matching row)"
+	}
+	name := nameOrID(t.Name, t.ID)
+	tr.state().AddNote(fmt.Sprintf("Rolled %s (%d): %s", name, roll, result))
+	return okResult(id, fmt.Sprintf("Rolled %s → %d: %s", name, roll, result))
 }
 
 func (tr *ToolRouter) searchModule(id string, args map[string]any) types.ToolResult {

@@ -249,7 +249,7 @@ func extractTarGz(srcPath, destDir string) error {
 				return fmt.Errorf("failed to close file: %w", closeErr)
 			}
 			if n > maxDecompressedFileSize {
-				return fmt.Errorf("file %q exceeds maximum allowed size", hdr.Name)
+				return fmt.Errorf("%q is larger than the %d MB per-file limit — this .tar.gz does not look like an adventure module (a module holds adventure.json and small images); did you pick the wrong file?", hdr.Name, maxDecompressedFileSize>>20)
 			}
 		default:
 			// Skip symlinks, devices, etc. for safety.

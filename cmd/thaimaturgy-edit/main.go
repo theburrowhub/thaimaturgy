@@ -134,6 +134,7 @@ func (e *editor) buildUI() fyne.CanvasObject {
 		widget.NewButton("+NPC", e.addNPC),
 		widget.NewButton("+Event", e.addEvent),
 		widget.NewButton("+Item", e.addItem),
+		widget.NewButton("+Table", e.addTable),
 		widget.NewButton("+Image", e.addImage),
 		widget.NewButton("Delete", e.deleteSelected),
 	)
@@ -167,7 +168,7 @@ func (e *editor) buildTree() *widget.Tree {
 func (e *editor) childUIDs(uid widget.TreeNodeID) []widget.TreeNodeID {
 	switch {
 	case uid == "":
-		return []widget.TreeNodeID{"meta", "zones", "npcs", "events", "items", "images"}
+		return []widget.TreeNodeID{"meta", "zones", "npcs", "events", "items", "tables", "images"}
 	case uid == "images":
 		var out []widget.TreeNodeID
 		for _, img := range e.adv.Images {
@@ -198,6 +199,12 @@ func (e *editor) childUIDs(uid widget.TreeNodeID) []widget.TreeNodeID {
 			out = append(out, "item:"+it.ID)
 		}
 		return out
+	case uid == "tables":
+		var out []widget.TreeNodeID
+		for _, t := range e.adv.Tables {
+			out = append(out, "table:"+t.ID)
+		}
+		return out
 	case strings.HasPrefix(uid, "zone:"):
 		zid := strings.TrimPrefix(uid, "zone:")
 		z := e.adv.Zone(zid)
@@ -214,7 +221,7 @@ func (e *editor) childUIDs(uid widget.TreeNodeID) []widget.TreeNodeID {
 
 func (e *editor) isBranch(uid widget.TreeNodeID) bool {
 	switch uid {
-	case "", "zones", "npcs", "events", "items", "images":
+	case "", "zones", "npcs", "events", "items", "tables", "images":
 		return true
 	}
 	return strings.HasPrefix(uid, "zone:")
@@ -232,6 +239,8 @@ func (e *editor) nodeLabel(uid widget.TreeNodeID) string {
 		return "⚡ Events"
 	case "items":
 		return "💎 Items"
+	case "tables":
+		return "🎲 Tables"
 	case "images":
 		return "🖼 Images"
 	}
@@ -256,6 +265,10 @@ func (e *editor) nodeLabel(uid widget.TreeNodeID) string {
 	case strings.HasPrefix(uid, "item:"):
 		if it := e.adv.Item(strings.TrimPrefix(uid, "item:")); it != nil {
 			return labelOrID(it.Name, it.ID)
+		}
+	case strings.HasPrefix(uid, "table:"):
+		if t := e.adv.Table(strings.TrimPrefix(uid, "table:")); t != nil {
+			return labelOrID(t.Name, t.ID)
 		}
 	case strings.HasPrefix(uid, "img:"):
 		if img := e.adv.ImageByID(strings.TrimPrefix(uid, "img:")); img != nil {
@@ -296,6 +309,10 @@ func (e *editor) showForm(uid widget.TreeNodeID) {
 	case strings.HasPrefix(uid, "item:"):
 		if it := e.adv.Item(strings.TrimPrefix(uid, "item:")); it != nil {
 			form = e.itemForm(it)
+		}
+	case strings.HasPrefix(uid, "table:"):
+		if t := e.adv.Table(strings.TrimPrefix(uid, "table:")); t != nil {
+			form = e.tableForm(t)
 		}
 	case strings.HasPrefix(uid, "img:"):
 		if img := e.adv.ImageByID(strings.TrimPrefix(uid, "img:")); img != nil {
@@ -377,6 +394,14 @@ func (e *editor) addImage() {
 	e.showForm("img:" + id)
 }
 
+func (e *editor) addTable() {
+	id := uniqueID("table", func(s string) bool { return e.adv.Table(s) != nil })
+	e.adv.Tables = append(e.adv.Tables, domain.Table{ID: id, Name: "New Table", Dice: "d20"})
+	e.dirty = true
+	e.refreshTree()
+	e.showForm("table:" + id)
+}
+
 func (e *editor) deleteSelected() {
 	uid := e.currentUID
 	if uid == "" || e.isBranch(uid) && !strings.HasPrefix(uid, "zone:") {
@@ -415,6 +440,9 @@ func (e *editor) removeByUID(uid string) {
 	case strings.HasPrefix(uid, "event:"):
 		id := strings.TrimPrefix(uid, "event:")
 		e.adv.Events = filterEvents(e.adv.Events, func(ev domain.Event) bool { return ev.ID != id })
+	case strings.HasPrefix(uid, "table:"):
+		id := strings.TrimPrefix(uid, "table:")
+		e.adv.Tables = filterTables(e.adv.Tables, func(t domain.Table) bool { return t.ID != id })
 	case strings.HasPrefix(uid, "item:"):
 		id := strings.TrimPrefix(uid, "item:")
 		e.adv.Items = filterItems(e.adv.Items, func(it domain.Item) bool { return it.ID != id })
@@ -585,7 +613,7 @@ func (e *editor) importDialog() {
 			}
 			title := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
 			e.runIngest("Interpreting PDF with AI…", func(dir string) (*domain.Adventure, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 				defer cancel()
 				return aibuild.FromPDF(ctx, e.prov, e.importConfig(), src, dir, title, e.progress(), e.fallbackConfirm(), e.visionProv)
 			})
@@ -595,7 +623,7 @@ func (e *editor) importDialog() {
 				return
 			}
 			e.runIngest("Interpreting images with AI…", func(dir string) (*domain.Adventure, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 				defer cancel()
 				return aibuild.FromImages(ctx, e.prov, e.importConfig(), src, dir, filepath.Base(src), e.progress(), e.fallbackConfirm(), e.visionProv)
 			})
@@ -863,14 +891,26 @@ func copyTree(src, dst string) error {
 		if rel == "." {
 			return os.MkdirAll(dst, 0755)
 		}
-		base := filepath.Base(p)
-		if strings.HasPrefix(base, ".") {
+		// Copy ONLY the canonical module layout: adventure.json + the assets/ tree.
+		// Never copy anything else in the working dir — this both keeps the saved
+		// folder clean and prevents runaway/recursive copies when the working dir
+		// points at a folder full of unrelated files.
+		slash := filepath.ToSlash(rel)
+		top := slash
+		if i := strings.IndexByte(slash, '/'); i >= 0 {
+			top = slash[:i]
+		}
+		if top != storage.AdventureFile && top != "assets" {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if base == "_import_raw.txt" {
+		base := filepath.Base(p)
+		if strings.HasPrefix(base, ".") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		target := filepath.Join(dst, rel)
@@ -1018,6 +1058,16 @@ func filterEvents(s []domain.Event, keep func(domain.Event) bool) []domain.Event
 	return out
 }
 func filterItems(s []domain.Item, keep func(domain.Item) bool) []domain.Item {
+	out := s[:0]
+	for _, v := range s {
+		if keep(v) {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func filterTables(s []domain.Table, keep func(domain.Table) bool) []domain.Table {
 	out := s[:0]
 	for _, v := range s {
 		if keep(v) {

@@ -22,6 +22,12 @@ type Adventure struct {
 	Language      string `json:"language,omitempty"`
 	Summary       string `json:"summary,omitempty"`
 
+	// Context positions the adventure for the DM: its setting and tone, the
+	// recommended character level and party, how to fit it into a larger campaign,
+	// prerequisites, and general running advice. Distinct from Background (which is
+	// the in-world history); Context is meta guidance for placing/running it.
+	Context string `json:"context,omitempty"`
+
 	// Background is the hidden lore/context for the DM: why things are the way
 	// they are, the villain's plan, the true history behind the adventure.
 	Background string `json:"background,omitempty"`
@@ -36,6 +42,7 @@ type Adventure struct {
 	NPCs     []NPC       `json:"npcs,omitempty"`
 	Events   []Event     `json:"events,omitempty"`
 	Items    []Item      `json:"items,omitempty"`
+	Tables   []Table     `json:"tables,omitempty"`
 	Factions []Faction   `json:"factions,omitempty"`
 	Lore     []LoreEntry `json:"lore,omitempty"`
 	Images   []ImageRef  `json:"images,omitempty"`
@@ -177,6 +184,27 @@ type Item struct {
 	ImageIDs    []string `json:"image_ids,omitempty"` // references into Adventure.Images
 }
 
+// Table is a lookup or random table from the adventure — random encounters,
+// treasure, name lists, "roll a d20" result tables, etc. When Dice is set the
+// table is rollable: roll the dice and the row whose Roll range contains the
+// result is the outcome. Reference tables (no Dice) are just structured data.
+type Table struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"` // what the table is for / when to use it
+	Dice        string     `json:"dice,omitempty"`        // e.g. "d20", "2d6", "d100"; set ⇒ rollable
+	Headers     []string   `json:"headers,omitempty"`     // column headers (optional)
+	Rows        []TableRow `json:"rows,omitempty"`
+}
+
+// TableRow is one row of a Table. Roll is the matching roll range for rollable
+// tables (e.g. "1", "1-3", "18-20", "01-05"); Cells holds the row's values, one
+// per Headers column (or a single result cell).
+type TableRow struct {
+	Roll  string   `json:"roll,omitempty"`
+	Cells []string `json:"cells,omitempty"`
+}
+
 // Faction is an organization or group with goals in the adventure.
 type Faction struct {
 	ID          string `json:"id"`
@@ -249,6 +277,16 @@ func (a *Adventure) Item(id string) *Item {
 	for i := range a.Items {
 		if a.Items[i].ID == id {
 			return &a.Items[i]
+		}
+	}
+	return nil
+}
+
+// Table returns the table with the given ID, or nil.
+func (a *Adventure) Table(id string) *Table {
+	for i := range a.Tables {
+		if a.Tables[i].ID == id {
+			return &a.Tables[i]
 		}
 	}
 	return nil
@@ -401,6 +439,17 @@ func ValidateAdventure(a *Adventure, imageExists func(relPath string) bool) []er
 			add("event: duplicate id %q", e.ID)
 		}
 		eventIDs[e.ID] = true
+	}
+	tableIDs := make(map[string]bool)
+	for _, t := range a.Tables {
+		if t.ID == "" {
+			add("table %q: 'id' is required", t.Name)
+			continue
+		}
+		if tableIDs[t.ID] {
+			add("table: duplicate id %q", t.ID)
+		}
+		tableIDs[t.ID] = true
 	}
 	for _, z := range a.Zones {
 		if z.ID == "" {

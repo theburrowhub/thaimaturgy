@@ -63,6 +63,30 @@ func mdQuote(label, value string) string {
 	return sb.String()
 }
 
+// adventureMarkdown renders the module's front-matter (summary, positioning
+// context, DM background, introduction, conclusion, hooks) for the browser's
+// "Adventure" node, so the DM can read the trasfondo during play.
+func adventureMarkdown(adv *domain.Adventure) string {
+	var sb strings.Builder
+	sb.WriteString(mdHeading(adv.Title, adv.ID))
+	if adv.System != "" {
+		sb.WriteString(mdField("System", adv.System))
+	}
+	sb.WriteString(mdField("Summary", adv.Summary))
+	sb.WriteString(mdField("Context", adv.Context))
+	sb.WriteString(mdField("Background", adv.Background))
+	sb.WriteString(mdField("Introduction", adv.Introduction))
+	sb.WriteString(mdField("Conclusion", adv.Conclusion))
+	if len(adv.Hooks) > 0 {
+		sb.WriteString("**Hooks**\n\n")
+		for _, h := range adv.Hooks {
+			sb.WriteString("- " + h + "\n")
+		}
+		sb.WriteString("\n")
+	}
+	return strings.TrimSpace(sb.String())
+}
+
 func zoneMarkdown(z *domain.Zone) string {
 	var sb strings.Builder
 	sb.WriteString(mdHeading(z.Name, z.ID))

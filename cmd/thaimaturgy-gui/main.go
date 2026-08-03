@@ -396,7 +396,7 @@ func (g *gui) treeChildren(uid widget.TreeNodeID) []widget.TreeNodeID {
 	adv := g.session.Adventure
 	switch {
 	case uid == "":
-		return []widget.TreeNodeID{"zones", "npcs", "events", "items"}
+		return []widget.TreeNodeID{"about", "zones", "npcs", "events", "items", "tables"}
 	case uid == "zones":
 		out := []widget.TreeNodeID{}
 		for _, z := range adv.Zones {
@@ -421,6 +421,12 @@ func (g *gui) treeChildren(uid widget.TreeNodeID) []widget.TreeNodeID {
 			out = append(out, "item:"+it.ID)
 		}
 		return out
+	case uid == "tables":
+		out := []widget.TreeNodeID{}
+		for _, t := range adv.Tables {
+			out = append(out, "table:"+t.ID)
+		}
+		return out
 	case strings.HasPrefix(uid, "zone:"):
 		z := adv.Zone(strings.TrimPrefix(uid, "zone:"))
 		out := []widget.TreeNodeID{}
@@ -436,7 +442,7 @@ func (g *gui) treeChildren(uid widget.TreeNodeID) []widget.TreeNodeID {
 
 func (g *gui) treeIsBranch(uid widget.TreeNodeID) bool {
 	switch uid {
-	case "", "zones", "npcs", "events", "items":
+	case "", "zones", "npcs", "events", "items", "tables":
 		return true
 	}
 	return strings.HasPrefix(uid, "zone:")
@@ -445,6 +451,8 @@ func (g *gui) treeIsBranch(uid widget.TreeNodeID) bool {
 func (g *gui) treeLabel(uid widget.TreeNodeID) string {
 	adv, st := g.session.Adventure, g.session.State
 	switch uid {
+	case "about":
+		return "📖 Adventure"
 	case "zones":
 		return "🗺 Zones"
 	case "npcs":
@@ -453,6 +461,8 @@ func (g *gui) treeLabel(uid widget.TreeNodeID) string {
 		return "⚡ Events"
 	case "items":
 		return "💎 Items"
+	case "tables":
+		return "🎲 Tables"
 	}
 	switch {
 	case strings.HasPrefix(uid, "zone:"):
@@ -490,6 +500,10 @@ func (g *gui) treeLabel(uid widget.TreeNodeID) string {
 		if it := adv.Item(strings.TrimPrefix(uid, "item:")); it != nil {
 			return labelOrID(it.Name, it.ID)
 		}
+	case strings.HasPrefix(uid, "table:"):
+		if t := adv.Table(strings.TrimPrefix(uid, "table:")); t != nil {
+			return "🎲 " + labelOrID(t.Name, t.ID)
+		}
 	}
 	return uid
 }
@@ -505,6 +519,8 @@ func (g *gui) showDetail(uid widget.TreeNodeID) {
 	var images []string // resolved relative paths (image_ids + legacy paths)
 
 	switch {
+	case uid == "about":
+		md = adventureMarkdown(adv)
 	case strings.HasPrefix(uid, "zone:"):
 		if z := adv.Zone(strings.TrimPrefix(uid, "zone:")); z != nil {
 			md = zoneMarkdown(z)
@@ -539,8 +555,16 @@ func (g *gui) showDetail(uid widget.TreeNodeID) {
 			md = itemMarkdown(it)
 			images = adv.ItemImages(it)
 		}
+	case strings.HasPrefix(uid, "table:"):
+		if t := adv.Table(strings.TrimPrefix(uid, "table:")); t != nil {
+			md = "## " + labelOrID(t.Name, t.ID) + "\n\n" + engine.TableMarkdown(t)
+			if len(t.Rows) > 0 {
+				id := t.ID
+				actions = append(actions, widget.NewButton("🎲 Roll on table", func() { g.rollTable(id) }))
+			}
+		}
 	default:
-		md = "_Select a zone, room, NPC, event, or item on the left to view it._"
+		md = "_Select a zone, room, NPC, event, item or table on the left to view it._"
 	}
 
 	// One "Show" button per referenced image; show the first inline by default.
@@ -618,6 +642,26 @@ func (g *gui) markNPCMet(id, name string) {
 
 func (g *gui) triggerEvent(id, name string) {
 	g.session.State.TriggerEvent(id, name)
+	g.session.MarkModified()
+	g.refreshState()
+	g.autosave()
+}
+
+// rollTable rolls on a table, shows the result in the oracle transcript, and
+// records it in the session log.
+func (g *gui) rollTable(id string) {
+	t := g.session.Adventure.Table(id)
+	if t == nil {
+		return
+	}
+	roll, row := engine.RollTable(t)
+	result := engine.RowText(row)
+	if result == "" {
+		result = "(no matching row)"
+	}
+	name := labelOrID(t.Name, t.ID)
+	g.appendTranscript(fmt.Sprintf("**🎲 %s — rolled %d:** %s", name, roll, result))
+	g.session.State.AddNote(fmt.Sprintf("Rolled %s (%d): %s", name, roll, result))
 	g.session.MarkModified()
 	g.refreshState()
 	g.autosave()

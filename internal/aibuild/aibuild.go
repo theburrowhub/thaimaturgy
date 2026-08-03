@@ -376,7 +376,7 @@ const systemPrompt = `You are an expert tabletop RPG (D&D 5e) module designer. Y
 Output ONLY a JSON object (no prose, no markdown fences) with this shape:
 {
   "schema_version":"1.0","id":"kebab-case-id","title":"...","author":"","system":"D&D 5e","language":"en",
-  "summary":"...","background":"hidden DM lore","introduction":"how it starts","conclusion":"possible endings","hooks":["..."],
+  "summary":"...","context":"how to position/run it: setting, tone, recommended level & party, campaign fit, prerequisites","background":"the FULL in-world history/backstory for the DM (keep every paragraph)","introduction":"how it starts","conclusion":"possible endings","hooks":["..."],
   "images":[{"id":"<image_id>","kind":"map|art","description":"..."}],
   "zones":[{"id":"...","name":"...","overview":"DM summary","description":"...","image_ids":["<image_id>"],"connections":["zoneId"],
     "rooms":[{"id":"...","name":"...","read_aloud":"boxed text for players","dm_notes":"secrets/what happens","image_ids":["<image_id>"],
@@ -390,12 +390,15 @@ Output ONLY a JSON object (no prose, no markdown fences) with this shape:
       "skills":["..."],"traits":["..."],"actions":[{"name":"...","to_hit":"+4","damage":"1d8+2 slashing","description":"..."}]}}],
   "events":[{"id":"...","name":"...","trigger":"...","description":"...","read_aloud":"...","dm_notes":"...","consequences":"...",
     "outcomes":[{"condition":"...","result":"..."}]}],
-  "items":[{"id":"...","name":"...","description":"...","rarity":"...","mechanics":"...","image_ids":["<image_id>"]}]
+  "items":[{"id":"...","name":"...","description":"...","rarity":"...","mechanics":"...","image_ids":["<image_id>"]}],
+  "tables":[{"id":"...","name":"...","description":"what it is for / when to roll it","dice":"d20","headers":["Result"],"rows":[{"roll":"1-3","cells":["outcome text"]}]}]
 }
 
 RULES:
 - Ground everything in the provided material; do not invent a different adventure. Preserve names, places, NPCs, and plot.
+- Capture the adventure's framing COMPLETELY and faithfully — never drop the front-matter. Put the in-world history/backstory in "background" and keep it FULL (multiple paragraphs if the source has them; do NOT compress it to a sentence). Put the positioning/running context — setting and tone, recommended character level and party size, how to fit it into a larger campaign, prerequisites, and running advice — in "context". If the source separates these, keep them separate; if it only has one, fill that one.
 - Split the content into coherent zones and rooms. Give NPCs motivations, secrets and voice for roleplay, plus a stat block when the source implies combat.
+- TABLES: whenever the source has a table — random encounters, treasure, roll-a-d20 result lists, name lists, price/reference tables — reproduce it in "tables". Put the die in "dice" (e.g. "d20", "2d6", "d100") when it is a roll table, the column titles in "headers", and one entry per row in "rows" with its "roll" range (e.g. "1", "1-3", "18-20") and "cells". Transcribe every row faithfully; do not summarize or drop rows.
 - IMAGES: you are given a list of extracted images, each with an image_id, a kind, and a caption. Reference them by id in the "image_ids" arrays: put kind=map images in the matching zone's image_ids; put kind=portrait/scene/item in the matching NPC, room, or item's image_ids, guided by the caption. Use ONLY image_ids from the provided list — never invent ids or file paths. You do not need to output the top-level "images" catalog; it is filled in automatically.
 - Every id must be unique and kebab-case. Every reference (npc_ids, event_ids, exit "to", default_location, image_ids) must point to an id that exists.
 - Return valid JSON only.`

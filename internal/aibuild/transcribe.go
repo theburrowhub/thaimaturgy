@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/theburrowhub/thaimaturgy/internal/ingest"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
@@ -15,6 +17,11 @@ import (
 // transcribePageMaxTokens bounds a single page's transcription. A dense page is
 // well under this; the generous ceiling avoids cutting off text.
 const transcribePageMaxTokens = 16000
+
+// transcribeConcurrency bounds how many pages are OCR'd at once. Whole books have
+// many pages, so transcribing them one-by-one is slow; a small pool cuts the
+// wall-clock without hammering the provider's rate limits.
+const transcribeConcurrency = 4
 
 const transcribeSystemPrompt = `You are a meticulous OCR and layout transcriber for scanned pages of a tabletop RPG (D&D) sourcebook. Transcribe EVERYTHING on the page, VERBATIM and COMPLETELY — lose no text.
 
@@ -47,37 +54,64 @@ func transcribePages(ctx context.Context, vp providers.Provider, model, workingD
 		return ""
 	}
 
+	// Order the pages (by filename), keeping only vision-eligible images.
 	ordered := append([]ingest.Asset(nil), assets...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].RelPath < ordered[j].RelPath })
+	var pages []ingest.Asset
+	for _, a := range ordered {
+		if mediaType(a.RelPath) != "" {
+			pages = append(pages, a)
+		}
+	}
+	if len(pages) == 0 {
+		return ""
+	}
+
+	results := make([]string, len(pages))
+	sem := make(chan struct{}, transcribeConcurrency)
+	var wg sync.WaitGroup
+	var done int64
+	for i := range pages {
+		i, a := i, pages[i]
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			data, err := os.ReadFile(filepath.Join(workingDir, filepath.FromSlash(a.RelPath)))
+			if err != nil || len(data) == 0 || len(data) > maxBytes {
+				atomic.AddInt64(&done, 1)
+				return
+			}
+			resp, cerr := vp.Chat(ctx, providers.ChatRequest{
+				Model:     model,
+				MaxTokens: transcribePageMaxTokens,
+				Messages: []providers.Message{
+					{Role: providers.RoleSystem, Content: transcribeSystemPrompt},
+					{Role: providers.RoleUser, Content: "Transcribe this page completely and verbatim.",
+						Images: []providers.ImageData{{MediaType: mediaType(a.RelPath), Data: data}}},
+				},
+			})
+			n := atomic.AddInt64(&done, 1)
+			report(progress, "Transcribing pages… %d/%d", n, len(pages))
+			if cerr != nil {
+				report(progress, "Page %d transcription failed: %v", i+1, cerr)
+				return
+			}
+			results[i] = strings.TrimSpace(resp.Content)
+		}()
+	}
+	wg.Wait()
 
 	var sb strings.Builder
 	page := 0
-	for _, a := range ordered {
-		mt := mediaType(a.RelPath)
-		if mt == "" {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(workingDir, filepath.FromSlash(a.RelPath)))
-		if err != nil || len(data) == 0 || len(data) > maxBytes {
+	for i, a := range pages {
+		if results[i] == "" {
 			continue
 		}
 		page++
-		report(progress, "Transcribing page %d of %d…", page, len(ordered))
-		resp, err := vp.Chat(ctx, providers.ChatRequest{
-			Model:     model,
-			MaxTokens: transcribePageMaxTokens,
-			Messages: []providers.Message{
-				{Role: providers.RoleSystem, Content: transcribeSystemPrompt},
-				{Role: providers.RoleUser, Content: "Transcribe this page completely and verbatim.",
-					Images: []providers.ImageData{{MediaType: mt, Data: data}}},
-			},
-		})
-		if err != nil {
-			report(progress, "Page %d transcription failed: %v", page, err)
-			continue
-		}
-		fmt.Fprintf(&sb, "\n\n=== PAGE %d (%s) ===\n%s", page, filepath.Base(a.RelPath), strings.TrimSpace(resp.Content))
+		fmt.Fprintf(&sb, "\n\n=== PAGE %d (%s) ===\n%s", page, filepath.Base(a.RelPath), results[i])
 	}
-	report(progress, "Transcribed %d page(s) (%d characters).", page, sb.Len())
+	report(progress, "Transcribed %d of %d page(s) (%d characters).", page, len(pages), sb.Len())
 	return strings.TrimSpace(sb.String())
 }

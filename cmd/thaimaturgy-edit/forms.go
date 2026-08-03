@@ -58,6 +58,7 @@ func (e *editor) metaForm() fyne.CanvasObject {
 		field("System", e.sEntry(&a.System)),
 		field("Language (en/es)", e.sEntry(&a.Language)),
 		field("Summary", e.mEntry(&a.Summary)),
+		field("Context / positioning (setting, level, campaign fit)", e.mEntry(&a.Context)),
 		field("Background (DM-only)", e.mEntry(&a.Background)),
 		field("Introduction", e.mEntry(&a.Introduction)),
 		field("Conclusion", e.mEntry(&a.Conclusion)),
@@ -185,6 +186,18 @@ func (e *editor) itemForm(it *domain.Item) fyne.CanvasObject {
 		field("Image IDs — catalog (one per line)", e.listEntry(&it.ImageIDs)),
 	)
 	return e.withPreview(box, e.adv.ItemImages(it))
+}
+
+func (e *editor) tableForm(t *domain.Table) fyne.CanvasObject {
+	return container.NewVBox(
+		heading("Table"),
+		field("ID", e.treeStr(&t.ID, "table:", true)),
+		field("Name", e.treeStr(&t.Name, "", false)),
+		field("Description", e.mEntry(&t.Description)),
+		field("Dice (e.g. d20, 2d6; blank = pick a row at random)", e.sEntry(&t.Dice)),
+		field("Column headers (one per line, optional)", e.listEntry(&t.Headers)),
+		field("Rows — one per line: roll | cell | cell…", e.rowsEntry(&t.Rows)),
+	)
 }
 
 // imageForm edits a catalog image entry. Other entities reference it by its ID
@@ -353,6 +366,51 @@ func (e *editor) listEntry(p *[]string) *widget.Entry {
 	ent.SetText(strings.Join(*p, "\n"))
 	ent.OnChanged = func(s string) { *p = splitLines(s); e.dirty = true }
 	return ent
+}
+
+// rowsEntry edits a table's rows as one line each: "roll | cell | cell…".
+func (e *editor) rowsEntry(p *[]domain.TableRow) *widget.Entry {
+	ent := widget.NewMultiLineEntry()
+	ent.Wrapping = fyne.TextWrapWord
+	ent.SetMinRowsVisible(6)
+	ent.SetText(formatTableRows(*p))
+	ent.OnChanged = func(s string) { *p = parseTableRows(s); e.dirty = true }
+	return ent
+}
+
+func formatTableRows(rows []domain.TableRow) string {
+	lines := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if r.Roll == "" && len(r.Cells) <= 1 {
+			if len(r.Cells) == 1 {
+				lines = append(lines, r.Cells[0])
+			} else {
+				lines = append(lines, "")
+			}
+			continue
+		}
+		lines = append(lines, strings.Join(append([]string{r.Roll}, r.Cells...), " | "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func parseTableRows(s string) []domain.TableRow {
+	var rows []domain.TableRow
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.Split(line, "|")
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		if len(parts) == 1 {
+			rows = append(rows, domain.TableRow{Cells: []string{parts[0]}})
+		} else {
+			rows = append(rows, domain.TableRow{Roll: parts[0], Cells: parts[1:]})
+		}
+	}
+	return rows
 }
 
 // treeStr edits a struct field that appears in the navigation tree, refreshing

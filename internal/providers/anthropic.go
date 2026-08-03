@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/types"
@@ -29,7 +30,7 @@ type AnthropicProvider struct {
 	apiKey        string
 	oauthToken    string // reused from a local Claude Code login (OAuth bearer)
 	fallbackModel string
-	omitTemp      bool // set once a model reports temperature as deprecated
+	omitTemp      atomic.Bool // set once a model reports temperature as deprecated (concurrency-safe)
 	httpClient    *http.Client
 }
 
@@ -127,10 +128,13 @@ type anthropicResponse struct {
 func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	resp, err := p.chatOnce(ctx, req)
 
-	// Some newer models reject an explicit temperature ("deprecated"). Drop it
-	// for the rest of this session and retry.
-	if err != nil && !p.omitTemp && temperatureDeprecated(err) {
-		p.omitTemp = true
+	// Some newer models reject an explicit temperature ("deprecated"). Drop it for
+	// the rest of this session and retry THIS request without it. We retry whenever
+	// we see the error (not only the first time): under concurrency several requests
+	// may have already been built with a temperature before the flag was set, and
+	// each must still be retried, or its result is lost.
+	if err != nil && temperatureDeprecated(err) {
+		p.omitTemp.Store(true)
 		resp, err = p.chatOnce(ctx, req)
 	}
 
@@ -300,7 +304,7 @@ func (p *AnthropicProvider) convertRequest(req ChatRequest) anthropicRequest {
 		System:    systemPrompt,
 		MaxTokens: maxTokens,
 	}
-	if !p.omitTemp {
+	if !p.omitTemp.Load() {
 		t := req.Temperature
 		anthropicReq.Temperature = &t
 	}

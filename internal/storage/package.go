@@ -45,8 +45,23 @@ func PackageModule(srcDir, destPath string) error {
 		if rel == "." {
 			return nil
 		}
+		slash := filepath.ToSlash(rel)
+		// Package ONLY the canonical module layout: adventure.json at the root and
+		// the assets/ tree. Anything else in the working directory is ignored, so a
+		// polluted working dir (e.g. one that ended up pointing at a folder full of
+		// unrelated files) never bloats the archive.
+		top := slash
+		if i := strings.IndexByte(slash, '/'); i >= 0 {
+			top = slash[:i]
+		}
+		if top != AdventureFile && top != "assets" {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		// Skip hidden files/dirs anywhere in the path.
-		for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		for _, part := range strings.Split(slash, "/") {
 			if strings.HasPrefix(part, ".") {
 				if info.IsDir() {
 					return filepath.SkipDir

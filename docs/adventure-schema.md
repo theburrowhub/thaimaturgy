@@ -31,6 +31,7 @@ my-adventure.tar.gz
 | `system` | string | no | e.g. `"D&D 5e"`. |
 | `language` | string | no | `"en"`, `"es"`, … |
 | `summary` | string | no | Short pitch; always sent to the LLM. |
+| `context` | string | no | Positioning/running context: setting, tone, recommended level & party, how to fit it into a campaign, prerequisites, running advice. |
 | `background` | string | no | Hidden lore / the "truth" behind the adventure (DM-only). |
 | `introduction` | string | no | How the adventure starts (hook, opening scene). |
 | `conclusion` | string | no | Possible endings and how to resolve them. |
@@ -39,6 +40,7 @@ my-adventure.tar.gz
 | `npcs` | NPC[] | no | Characters, with stats and roleplay. |
 | `events` | Event[] | no | Scripted moments / branching decisions. |
 | `items` | Item[] | no | Treasure and notable objects. |
+| `tables` | Table[] | no | Random/reference tables (encounters, treasure, roll-a-d20 results…). Rollable when `dice` is set. |
 | `factions` | Faction[] | no | Organizations with goals. |
 | `lore` | LoreEntry[] | no | World background entries. |
 | `images` | ImageRef[] | no | Catalog of image assets; entities reference these by ID via `image_ids`. |
@@ -158,7 +160,7 @@ Import fails (with a listed reason) if any of these do not hold:
 
 ## How the module reaches the LLM
 
-The oracle always receives: the adventure `summary` + `background`, the **current room**
+The oracle always receives: the adventure `summary` + `context` + `background`, the **current room**
 in full (read-aloud + DM notes), the **NPCs present** (dossier + stat block), tracked
 session state, and the recent timeline. Everything else (other rooms, NPCs, events,
 items, lore) is pulled on demand through retrieval tools (`get_room`, `get_npc`,

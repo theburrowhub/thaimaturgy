@@ -297,7 +297,15 @@ func (o *Oracle) buildSystemPrompt() string {
 	}
 	sb.WriteString("\n")
 	writeSection(&sb, "Summary", adv.Summary)
+	writeSection(&sb, "Context", adv.Context)
 	writeSection(&sb, "Background (DM eyes only)", adv.Background)
+	if len(adv.Tables) > 0 {
+		names := make([]string, 0, len(adv.Tables))
+		for i := range adv.Tables {
+			names = append(names, fmt.Sprintf("%s [%s]", nameOrID(adv.Tables[i].Name, adv.Tables[i].ID), adv.Tables[i].ID))
+		}
+		fmt.Fprintf(&sb, "Tables (use get_table / roll_table): %s\n", strings.Join(names, ", "))
+	}
 
 	sb.WriteString("\n=== CURRENT SITUATION ===\n")
 	if room, zone := adv.Room(st.CurrentRoom); room != nil {

@@ -29,6 +29,7 @@ func Markdown(adv *domain.Adventure) string {
 	}
 	w("\n")
 	writeField(&b, "", adv.Summary)
+	writeSection(&b, "Context", adv.Context)
 	writeSection(&b, "Background (DM only)", adv.Background)
 	writeSection(&b, "Introduction", adv.Introduction)
 	if len(adv.Hooks) > 0 {
@@ -81,7 +82,42 @@ func Markdown(adv *domain.Adventure) string {
 		}
 	}
 
+	// --- Tables ---
+	if len(adv.Tables) > 0 {
+		w("## Tables\n\n")
+		for i := range adv.Tables {
+			writeTable(&b, &adv.Tables[i])
+		}
+	}
+
 	return b.String()
+}
+
+func writeTable(b *strings.Builder, t *domain.Table) {
+	fmt.Fprintf(b, "### %s\n\n", nz(t.Name, t.ID))
+	writeField(b, "", t.Description)
+	if t.Dice != "" {
+		fmt.Fprintf(b, "**Roll:** %s\n\n", t.Dice)
+	}
+	if len(t.Headers) > 0 {
+		fmt.Fprintf(b, "*Columns: %s*\n\n", strings.Join(t.Headers, " · "))
+	}
+	for i := range t.Rows {
+		r := &t.Rows[i]
+		var cells []string
+		for _, c := range r.Cells {
+			if strings.TrimSpace(c) != "" {
+				cells = append(cells, strings.TrimSpace(c))
+			}
+		}
+		result := strings.Join(cells, " · ")
+		if strings.TrimSpace(r.Roll) != "" {
+			fmt.Fprintf(b, "- **%s** — %s\n", r.Roll, result)
+		} else {
+			fmt.Fprintf(b, "- %s\n", result)
+		}
+	}
+	b.WriteString("\n")
 }
 
 func writeRoom(b *strings.Builder, adv *domain.Adventure, r *domain.Room) {

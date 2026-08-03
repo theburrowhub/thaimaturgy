@@ -10,6 +10,8 @@ package nativeui
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 
 	"github.com/ncruces/zenity"
 )
@@ -45,11 +47,46 @@ func OpenFolder(title string) (path string, ok bool) {
 func SaveFile(title, defaultName string, filters ...Filter) (path string, ok bool) {
 	opts := append([]zenity.Option{
 		zenity.Title(title),
-		zenity.Filename(defaultName),
+		zenity.Filename(saveTarget(defaultName)),
 		zenity.ConfirmOverwrite(),
 	}, filterOptions(filters)...)
 	p, err := zenity.SelectFileSave(opts...)
 	return p, err == nil && p != ""
+}
+
+// saveTarget resolves the initial path for a save dialog. If defaultName has no
+// directory, or its directory no longer exists, it falls back to a guaranteed
+// system location (the user's Documents, else home) so the dialog never opens in
+// a missing directory and errors out.
+func saveTarget(defaultName string) string {
+	dir, base := filepath.Split(defaultName)
+	dir = filepath.Clean(dir)
+	if base == "" {
+		base = "untitled"
+	}
+	if defaultName == base || !dirExists(dir) {
+		dir = defaultSaveDir()
+	}
+	return filepath.Join(dir, base)
+}
+
+func defaultSaveDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		if wd, werr := os.Getwd(); werr == nil {
+			return wd
+		}
+		return "."
+	}
+	if docs := filepath.Join(home, "Documents"); dirExists(docs) {
+		return docs
+	}
+	return home
+}
+
+func dirExists(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.IsDir()
 }
 
 // Info shows a native informational dialog.
