@@ -70,6 +70,8 @@ type gui struct {
 	// Mode toggle (Oracle ↔ Virtual DM) and the player-character panel shown in
 	// virtual-DM mode in place of the adventure browser.
 	modeBtn   *widget.Button
+	sendBtn   *widget.Button
+	diceBtn   *widget.Button
 	leftSplit *container.Split
 	navCard   *widget.Card
 	pcCard    *widget.Card
@@ -388,7 +390,8 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.entry = widget.NewEntry()
 	g.entry.SetPlaceHolder("Ask the oracle, or type a /command…")
 	g.entry.OnSubmitted = func(s string) { g.submit(s) }
-	sendBtn := widget.NewButton("Send", func() { g.submit(g.entry.Text) })
+	g.sendBtn = widget.NewButton("Send", func() { g.submit(g.entry.Text) })
+	sendBtn := g.sendBtn
 
 	// Player-character panel, shown in virtual-DM mode in place of the adventure
 	// browser (which is hidden to avoid spoilers).
@@ -424,12 +427,13 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.locLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	title := widget.NewLabelWithStyle("🐉  "+adv.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	g.modeBtn = widget.NewButtonWithIcon("", theme.MediaPlayIcon(), g.toggleMode)
+	g.diceBtn = widget.NewButton("🎲 Dice", g.showDiceRoller)
 	toolbar := container.NewVBox(
 		container.NewHBox(
 			widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary),
 			widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save),
 			widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel),
-			widget.NewButton("🎲 Dice", g.showDiceRoller),
+			g.diceBtn,
 			g.modeBtn,
 			title,
 			g.locLabel,
@@ -801,6 +805,33 @@ func (g *gui) submit(raw string) {
 	g.refreshLog()
 }
 
+// setBusy enables/disables the session input controls. While an oracle request
+// is in flight the controls are disabled so the user can't mutate the session
+// state (dice roll, mode toggle, another query) concurrently with the oracle
+// goroutine that is mutating it.
+func (g *gui) setBusy(busy bool) {
+	toggle := func(b *widget.Button) {
+		if b == nil {
+			return
+		}
+		if busy {
+			b.Disable()
+		} else {
+			b.Enable()
+		}
+	}
+	toggle(g.sendBtn)
+	toggle(g.diceBtn)
+	toggle(g.modeBtn)
+	if g.entry != nil {
+		if busy {
+			g.entry.Disable()
+		} else {
+			g.entry.Enable()
+		}
+	}
+}
+
 func (g *gui) ask(input string) {
 	if g.oracle == nil || g.prov == nil {
 		g.showErr(fmt.Errorf("no AI provider configured; set an API key"))
@@ -814,11 +845,13 @@ func (g *gui) ask(input string) {
 	if timeout <= 0 {
 		timeout = 90 * time.Second
 	}
+	g.setBusy(true)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		resp := g.oracle.Ask(ctx, input)
 		fyne.Do(func() {
+			g.setBusy(false)
 			if resp.Error != nil {
 				g.showErr(resp.Error)
 				return
@@ -1007,9 +1040,9 @@ func (g *gui) onModeChanged() {
 		return
 	}
 	dm := g.modeIsDM()
-	firstTime := dm && g.session.State.PC == nil
-	if dm && g.session.State.PC == nil {
-		g.session.State.PC = domain.NewCharacter("Adventurer", "Human", "Fighter")
+	firstTime := false
+	if dm {
+		firstTime = g.session.State.EnsurePC()
 	}
 	g.applyMode()
 	g.refreshLog()

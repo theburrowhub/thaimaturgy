@@ -93,6 +93,58 @@ func TestUpdateHPTool(t *testing.T) {
 	if session.State.PC.CurrentHP != 20 {
 		t.Errorf("HP after set 100 = %d, want 20 (capped)", session.State.PC.CurrentHP)
 	}
+	call(map[string]any{"set": -10}) // clamped at 0, never negative
+	if session.State.PC.CurrentHP != 0 {
+		t.Errorf("HP after set -10 = %d, want 0 (clamped)", session.State.PC.CurrentHP)
+	}
+}
+
+// TestUpdateGoldTool verifies the update_gold tool clamps negatives on both the
+// delta and set paths.
+func TestUpdateGoldTool(t *testing.T) {
+	session := createTestSession()
+	session.State.SetMode(domain.ModeVirtualDM)
+	session.State.PC = domain.NewCharacter("Kael", "Elf", "Wizard")
+	tr := NewToolRouter(session)
+
+	call := func(args map[string]any) types.ToolResult {
+		b, _ := json.Marshal(args)
+		return tr.Execute(types.ToolCall{Name: "update_gold", Arguments: b})
+	}
+
+	call(map[string]any{"set": 50})
+	if session.State.PC.Gold != 50 {
+		t.Errorf("gold after set 50 = %d, want 50", session.State.PC.Gold)
+	}
+	call(map[string]any{"delta": -80}) // would go negative → clamped at 0
+	if session.State.PC.Gold != 0 {
+		t.Errorf("gold after -80 = %d, want 0 (clamped)", session.State.PC.Gold)
+	}
+	call(map[string]any{"set": -25}) // negative set → clamped at 0
+	if session.State.PC.Gold != 0 {
+		t.Errorf("gold after set -25 = %d, want 0 (clamped)", session.State.PC.Gold)
+	}
+}
+
+// TestEnsurePC verifies the single default-character entry point.
+func TestEnsurePC(t *testing.T) {
+	st := domain.NewSessionState("t", nil)
+	if st.PC != nil {
+		t.Fatal("new session should have no PC")
+	}
+	if !st.EnsurePC() {
+		t.Error("EnsurePC should report creation the first time")
+	}
+	if st.PC == nil {
+		t.Fatal("EnsurePC should create a PC")
+	}
+	first := st.PC
+	if st.EnsurePC() {
+		t.Error("EnsurePC should report false when a PC already exists")
+	}
+	if st.PC != first {
+		t.Error("EnsurePC must not replace an existing PC")
+	}
 }
 
 // TestGMSystemPromptSelected verifies the oracle's base prompt switches with mode.

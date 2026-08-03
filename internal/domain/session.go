@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"encoding/json"
+	"sync"
+	"time"
+)
 
 // LogEntryType classifies an entry in the session timeline.
 type LogEntryType string
@@ -145,6 +149,23 @@ type SessionState struct {
 	// frontend can persist an append-only journal of the game as it happens. It is
 	// unexported and therefore never serialized.
 	onLog func(LogEntry)
+
+	// mu guards concurrent mutation and serialization of the state. The oracle
+	// runs in its own goroutine mutating the state through the tool router while a
+	// frontend may read/serialize it (autosave); every exported mutator and the
+	// JSON marshaller take this lock. Unexported (never serialized) and, being a
+	// mutex, must not be copied — callers pass *SessionState.
+	mu sync.Mutex
+}
+
+// MarshalJSON serializes the state under the mutex so an autosave can't race a
+// concurrent mutation from the oracle goroutine (which would otherwise risk a
+// "concurrent map iteration and map write" panic).
+func (s *SessionState) MarshalJSON() ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	type alias SessionState
+	return json.Marshal((*alias)(s))
 }
 
 // SetLogHook registers a callback invoked for every timeline entry the moment it
@@ -201,6 +222,8 @@ func (s *SessionState) touch() { s.UpdatedAt = time.Now() }
 // SetLocation records the party's current zone and room, marking the room
 // visited and logging the move.
 func (s *SessionState) SetLocation(zoneID, roomID, roomName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.CurrentZone = zoneID
 	s.CurrentRoom = roomID
 	if roomID != "" {
@@ -217,6 +240,8 @@ func (s *SessionState) SetLocation(zoneID, roomID, roomName string) {
 
 // MeetNPC marks an NPC as met (creating status if needed) and returns it.
 func (s *SessionState) MeetNPC(id, name string) *NPCStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	st := s.KnownNPCs[id]
 	if st == nil {
 		st = &NPCStatus{Alive: true}
@@ -237,6 +262,8 @@ func (s *SessionState) MeetNPC(id, name string) *NPCStatus {
 
 // NPCState returns the tracked status for an NPC, creating a default if absent.
 func (s *SessionState) NPCState(id string) *NPCStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	st := s.KnownNPCs[id]
 	if st == nil {
 		st = &NPCStatus{Alive: true}
@@ -247,6 +274,8 @@ func (s *SessionState) NPCState(id string) *NPCStatus {
 
 // TriggerEvent records that a scripted event has fired.
 func (s *SessionState) TriggerEvent(id, name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.TriggeredEvents[id] {
 		return
 	}
@@ -262,6 +291,8 @@ func (s *SessionState) TriggerEvent(id, name string) {
 
 // SetFlag sets a boolean flag and logs it.
 func (s *SessionState) SetFlag(key string, value bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Flags[key] = value
 	s.record(LogEntry{Type: LogFlag, Message: "Flag " + key + " set",
 		Data: map[string]any{"key": key, "value": value}})
@@ -270,6 +301,8 @@ func (s *SessionState) SetFlag(key string, value bool) {
 
 // SetVariable sets a string variable and logs it.
 func (s *SessionState) SetVariable(key, value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Variables[key] = value
 	s.record(LogEntry{Type: LogFlag, Message: "Variable " + key + " = " + value,
 		Data: map[string]any{"key": key, "value": value}})
@@ -280,18 +313,24 @@ func (s *SessionState) SetVariable(key, value string) {
 // state mutations performed by an external tool process (e.g. the MCP tools
 // server) so the log hook (journal) fires for them too.
 func (s *SessionState) AppendLog(e LogEntry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.record(e)
 	s.touch()
 }
 
 // AddNote appends a free-form DM note to the timeline.
 func (s *SessionState) AddNote(text string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.record(LogEntry{Type: LogNote, Message: text})
 	s.touch()
 }
 
 // AdvanceQuest creates or updates a quest's progress.
 func (s *SessionState) AdvanceQuest(id, name, status string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i := range s.Quests {
 		if s.Quests[i].ID == id {
 			s.Quests[i].Status = status
@@ -308,18 +347,28 @@ func (s *SessionState) AdvanceQuest(id, name, status string) {
 	s.touch()
 }
 
-// EffectiveMode returns the session mode, treating the empty zero value as the
-// default assistant mode.
-func (s *SessionState) EffectiveMode() SessionMode {
+// effectiveMode is the lock-free core of EffectiveMode, for callers that already
+// hold s.mu.
+func (s *SessionState) effectiveMode() SessionMode {
 	if s.Mode == "" {
 		return ModeAssistant
 	}
 	return s.Mode
 }
 
+// EffectiveMode returns the session mode, treating the empty zero value as the
+// default assistant mode.
+func (s *SessionState) EffectiveMode() SessionMode {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.effectiveMode()
+}
+
 // SetMode switches the session to the given mode and logs the change.
 func (s *SessionState) SetMode(m SessionMode) {
-	if s.EffectiveMode() == m {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.effectiveMode() == m {
 		return
 	}
 	s.Mode = m
@@ -332,7 +381,9 @@ func (s *SessionState) SetMode(m SessionMode) {
 	s.touch()
 }
 
-// ToggleMode flips between assistant and virtual-DM mode and returns the new mode.
+// ToggleMode flips between assistant and virtual-DM mode and returns the new
+// mode. It delegates to the (locking) EffectiveMode/SetMode, so it takes no lock
+// itself.
 func (s *SessionState) ToggleMode() SessionMode {
 	if s.EffectiveMode() == ModeVirtualDM {
 		s.SetMode(ModeAssistant)
@@ -340,6 +391,20 @@ func (s *SessionState) ToggleMode() SessionMode {
 		s.SetMode(ModeVirtualDM)
 	}
 	return s.EffectiveMode()
+}
+
+// EnsurePC guarantees a player character exists (creating the default adventurer
+// used by virtual-DM mode) and reports whether it created one just now. This is
+// the single place the default sheet is defined, so both frontends and the tool
+// router share it instead of duplicating the literal.
+func (s *SessionState) EnsurePC() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.PC != nil {
+		return false
+	}
+	s.PC = NewCharacter("Adventurer", "Human", "Fighter")
+	return true
 }
 
 // Session is the runtime wrapper binding a persisted SessionState to its loaded
@@ -365,5 +430,7 @@ func NewSession(state *SessionState, adv *Adventure, config *Config) *Session {
 // MarkModified flags the session dirty and touches the timestamp.
 func (s *Session) MarkModified() {
 	s.IsModified = true
+	s.State.mu.Lock()
 	s.State.touch()
+	s.State.mu.Unlock()
 }

@@ -284,6 +284,26 @@ func (c *Character) Heal(amount int) {
 	}
 }
 
+// SetHP sets current HP directly, clamping to the valid [0, MaxHP] range so an
+// explicit set can never persist invalid domain state.
+func (c *Character) SetHP(hp int) {
+	if hp < 0 {
+		hp = 0
+	}
+	if hp > c.MaxHP {
+		hp = c.MaxHP
+	}
+	c.CurrentHP = hp
+}
+
+// SetGold sets gold directly, clamping negatives to zero.
+func (c *Character) SetGold(gold int) {
+	if gold < 0 {
+		gold = 0
+	}
+	c.Gold = gold
+}
+
 func (c *Character) IsAlive() bool {
 	return c.CurrentHP > 0
 }

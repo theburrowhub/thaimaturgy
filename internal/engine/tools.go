@@ -565,7 +565,7 @@ func (tr *ToolRouter) setNPCDisposition(id string, args map[string]any) types.To
 	disp, _ := args["disposition"].(string)
 	st := tr.state().NPCState(nid)
 	st.Disposition = disp
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogNPC, Message: nid + " disposition → " + disp})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogNPC, Message: nid + " disposition → " + disp})
 	tr.session.MarkModified()
 	return okResult(id, "disposition updated")
 }
@@ -579,7 +579,7 @@ func (tr *ToolRouter) setNPCAlive(id string, args map[string]any) types.ToolResu
 	if !alive {
 		status = "dead"
 	}
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogNPC, Message: nid + " is now " + status})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogNPC, Message: nid + " is now " + status})
 	tr.session.MarkModified()
 	return okResult(id, nid+" is now "+status)
 }
@@ -676,13 +676,12 @@ func (tr *ToolRouter) updatePartyMember(id string, args map[string]any) types.To
 
 // --- Player character (virtual-DM mode) ----------------------------------
 
-// pc returns the session's player character, creating a placeholder if the
-// virtual DM starts mutating the sheet before one was set up.
+// pc returns the session's player character, creating the default one (via the
+// single domain entry point) if the virtual DM starts mutating the sheet before
+// one was set up.
 func (tr *ToolRouter) pc() *domain.Character {
 	st := tr.state()
-	if st.PC == nil {
-		st.PC = domain.NewCharacter("Adventurer", "Human", "Fighter")
-	}
+	st.EnsurePC()
 	return st.PC
 }
 
@@ -690,10 +689,7 @@ func (tr *ToolRouter) updateHP(id string, args map[string]any) types.ToolResult 
 	c := tr.pc()
 	reason, _ := args["reason"].(string)
 	if v, ok := intArg(args, "set"); ok {
-		c.CurrentHP = v
-		if c.CurrentHP > c.MaxHP {
-			c.CurrentHP = c.MaxHP
-		}
+		c.SetHP(v)
 	} else if delta, ok := intArg(args, "delta"); ok {
 		if delta < 0 {
 			c.TakeDamage(-delta)
@@ -707,7 +703,7 @@ func (tr *ToolRouter) updateHP(id string, args map[string]any) types.ToolResult 
 	if reason != "" {
 		msg = reason + " — " + msg
 	}
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogParty, Message: msg})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: msg})
 	tr.session.MarkModified()
 	return okResult(id, msg)
 }
@@ -724,7 +720,7 @@ func (tr *ToolRouter) addItem(id string, args map[string]any) types.ToolResult {
 	equipped, _ := args["equipped"].(bool)
 	c := tr.pc()
 	c.AddItem(domain.InventoryItem{Name: name, Quantity: qty, Equipped: equipped})
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s gained %s x%d", c.Name, name, qty)})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s gained %s x%d", c.Name, name, qty)})
 	tr.session.MarkModified()
 	return okResult(id, fmt.Sprintf("added %s x%d", name, qty))
 }
@@ -742,7 +738,7 @@ func (tr *ToolRouter) removeItem(id string, args map[string]any) types.ToolResul
 	if !c.RemoveItem(name, qty) {
 		return errResult(id, "item not found: "+name)
 	}
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s lost %s x%d", c.Name, name, qty)})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s lost %s x%d", c.Name, name, qty)})
 	tr.session.MarkModified()
 	return okResult(id, fmt.Sprintf("removed %s x%d", name, qty))
 }
@@ -754,7 +750,7 @@ func (tr *ToolRouter) setCondition(id string, args map[string]any) types.ToolRes
 	}
 	c := tr.pc()
 	c.AddCondition(domain.Condition(cond))
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogParty, Message: c.Name + " is now " + cond})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: c.Name + " is now " + cond})
 	tr.session.MarkModified()
 	return okResult(id, c.Name+" gained condition: "+cond)
 }
@@ -766,7 +762,7 @@ func (tr *ToolRouter) removeCondition(id string, args map[string]any) types.Tool
 	}
 	c := tr.pc()
 	c.RemoveCondition(domain.Condition(cond))
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogParty, Message: c.Name + " no longer " + cond})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: c.Name + " no longer " + cond})
 	tr.session.MarkModified()
 	return okResult(id, c.Name+" lost condition: "+cond)
 }
@@ -774,16 +770,13 @@ func (tr *ToolRouter) removeCondition(id string, args map[string]any) types.Tool
 func (tr *ToolRouter) updateGold(id string, args map[string]any) types.ToolResult {
 	c := tr.pc()
 	if v, ok := intArg(args, "set"); ok {
-		c.Gold = v
+		c.SetGold(v)
 	} else if delta, ok := intArg(args, "delta"); ok {
-		c.Gold += delta
-		if c.Gold < 0 {
-			c.Gold = 0
-		}
+		c.SetGold(c.Gold + delta)
 	} else {
 		return errResult(id, "provide 'delta' or 'set'")
 	}
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s gold: %d", c.Name, c.Gold)})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s gold: %d", c.Name, c.Gold)})
 	tr.session.MarkModified()
 	return okResult(id, fmt.Sprintf("%s gold: %d", c.Name, c.Gold))
 }
@@ -795,7 +788,7 @@ func (tr *ToolRouter) awardXP(id string, args map[string]any) types.ToolResult {
 	}
 	c := tr.pc()
 	c.XP += amount
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s gained %d XP (total %d)", c.Name, amount, c.XP)})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s gained %d XP (total %d)", c.Name, amount, c.XP)})
 	tr.session.MarkModified()
 	return okResult(id, fmt.Sprintf("%s XP: %d", c.Name, c.XP))
 }
@@ -822,7 +815,7 @@ func (tr *ToolRouter) rollDice(id string, args map[string]any) types.ToolResult 
 	if reason != "" {
 		logMsg = reason + " — " + msg
 	}
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogRoll, Message: logMsg})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: logMsg})
 	tr.session.MarkModified()
 	return okResult(id, msg)
 }
@@ -850,7 +843,7 @@ func (tr *ToolRouter) abilityCheck(id string, args map[string]any) types.ToolRes
 	if label != "" {
 		msg = label + " — " + msg
 	}
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogRoll, Message: msg})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: msg})
 	tr.session.MarkModified()
 	return okResult(id, msg)
 }

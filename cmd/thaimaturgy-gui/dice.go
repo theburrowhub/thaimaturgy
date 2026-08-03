@@ -7,7 +7,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -60,7 +59,12 @@ func (g *gui) showDiceRoller() {
 	rollBtn := widget.NewButton("Roll", func() { roll(notation.Text) })
 	notationRow := container.NewBorder(nil, nil, nil, rollBtn, notation)
 
+	var pop *widget.PopUp
+	closeBtn := widget.NewButton("Close", func() { pop.Hide() })
+
 	content := container.NewVBox(
+		widget.NewLabelWithStyle("🎲 Dice", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+		widget.NewSeparator(),
 		widget.NewLabelWithStyle("Quick roll", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		qtyRow,
 		diceGrid,
@@ -69,11 +73,15 @@ func (g *gui) showDiceRoller() {
 		notationRow,
 		widget.NewSeparator(),
 		result,
+		widget.NewSeparator(),
+		closeBtn,
 	)
 
-	d := dialog.NewCustom("🎲 Dice", "Close", content, g.win)
-	d.Resize(fyne.NewSize(360, 420))
-	d.Show()
+	// Use a core-widget modal popup rather than the dialog package so the feature
+	// pulls in no extra module dependency.
+	pop = widget.NewModalPopUp(container.NewPadded(content), g.win.Canvas())
+	pop.Resize(fyne.NewSize(380, 460))
+	pop.Show()
 }
 
 // composeNotation builds a dice notation string from the quantity/sides/modifier
