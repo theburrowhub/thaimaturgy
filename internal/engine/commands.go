@@ -33,6 +33,7 @@ const (
 	CmdRoll
 	CmdSearch
 	CmdStatus
+	CmdMode   // switch between oracle (assistant) and virtual-DM mode
 	CmdOracle // free-form query to the oracle (no slash prefix)
 )
 
@@ -109,6 +110,8 @@ func ParseCommand(input string) *Command {
 		cmd.Type = CmdSearch
 	case "status", "st":
 		cmd.Type = CmdStatus
+	case "mode", "dm", "dj", "gm":
+		cmd.Type = CmdMode
 	default:
 		cmd.Type = CmdUnknown
 	}
@@ -202,6 +205,8 @@ func (h *CommandHandler) Execute(cmd *Command) *CommandResult {
 		h.handleRoll(cmd, r)
 	case CmdSearch:
 		h.handleSearch(cmd, r)
+	case CmdMode:
+		h.handleMode(cmd, r)
 	case CmdUnknown:
 		r.Success = false
 		r.Message = "Unknown command: " + cmd.Raw + ". Type /help."
@@ -416,6 +421,34 @@ func (h *CommandHandler) handleSearch(cmd *Command, r *CommandResult) {
 	r.Response = res.Content
 }
 
+// handleMode switches between oracle (assistant) and virtual-DM mode. With no
+// argument it toggles; "oracle"/"dm" set it explicitly. It signals the frontend
+// (UIAction "mode") so it can re-render its panels for the new mode.
+func (h *CommandHandler) handleMode(cmd *Command, r *CommandResult) {
+	st := h.state()
+	var target domain.SessionMode
+	if len(cmd.Args) > 0 {
+		switch strings.ToLower(cmd.Args[0]) {
+		case "dm", "dj", "gm", "virtual", "player":
+			target = domain.ModeVirtualDM
+		case "oracle", "assistant", "help":
+			target = domain.ModeAssistant
+		default:
+			r.Success, r.Message = false, "Usage: /mode [oracle|dm]"
+			return
+		}
+		st.SetMode(target)
+	} else {
+		target = st.ToggleMode()
+	}
+	label := "Oracle (assistant to the human DM)"
+	if target == domain.ModeVirtualDM {
+		label = "Virtual DM (the AI runs the game; you play)"
+	}
+	r.Message = "Mode: " + label
+	r.NeedsUI, r.UIAction, r.UIArg = true, "mode", string(target)
+}
+
 func (h *CommandHandler) presentNPCsText() string {
 	room, _ := h.adv().Room(h.state().CurrentRoom)
 	if room == nil || len(room.NPCIDs) == 0 {
@@ -497,6 +530,8 @@ SESSION STATE:
   /party               Show tracked player characters
   /roll <dice>         Roll dice (e.g. /roll 2d6+3)
   /status              Session status
+  /mode [oracle|dm]    Toggle Oracle ↔ Virtual DM (AI runs the game; you play)
 
-Type any text without '/' to ask the oracle about the adventure.`
+Type any text without '/' to ask the oracle about the adventure.
+In Virtual DM mode, type what your character does instead.`
 }

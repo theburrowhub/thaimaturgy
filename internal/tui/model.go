@@ -652,6 +652,21 @@ func (m *Model) handleSessionInput(raw string) tea.Cmd {
 			m.importInput.Focus()
 		case "image":
 			m.openImage(result.UIArg)
+		case "mode":
+			m.statusMsg = result.Message
+			st := m.session.State
+			if st.EffectiveMode() == domain.ModeVirtualDM {
+				firstTime := st.PC == nil
+				if firstTime {
+					st.PC = domain.NewCharacter("Adventurer", "Human", "Fighter")
+				}
+				m.appendOracle("🎲 Virtual DM mode — the AI runs the game; type what your character does.")
+				if firstTime {
+					return m.askOracle(domain.DMKickoffPrompt(m.config.Language))
+				}
+			} else {
+				m.appendOracle("📖 Oracle mode — the AI assists you as the human DM.")
+			}
 		}
 	}
 

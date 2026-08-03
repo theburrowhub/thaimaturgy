@@ -240,6 +240,53 @@ func FormatItem(adv *domain.Adventure, it *domain.Item) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+// FormatCharacter renders a player character sheet used by the virtual-DM mode.
+func FormatCharacter(c *domain.Character) string {
+	if c == nil {
+		return "(no character)"
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%s — Level %d %s %s", c.Name, c.Level, c.Race, c.Class)
+	if c.Background != "" {
+		fmt.Fprintf(&sb, " (%s)", c.Background)
+	}
+	sb.WriteString("\n")
+	fmt.Fprintf(&sb, "HP: %d/%d", c.CurrentHP, c.MaxHP)
+	if c.TempHP > 0 {
+		fmt.Fprintf(&sb, " (+%d temp)", c.TempHP)
+	}
+	fmt.Fprintf(&sb, " | AC: %d | Speed: %d | Prof: +%d\n", c.AC, c.Speed, c.ProficiencyBonus)
+	a := c.Abilities
+	fmt.Fprintf(&sb, "STR %d (%s)  DEX %d (%s)  CON %d (%s)  INT %d (%s)  WIS %d (%s)  CHA %d (%s)\n",
+		a.STR, domain.ModifierString(a.STR), a.DEX, domain.ModifierString(a.DEX),
+		a.CON, domain.ModifierString(a.CON), a.INT, domain.ModifierString(a.INT),
+		a.WIS, domain.ModifierString(a.WIS), a.CHA, domain.ModifierString(a.CHA))
+	fmt.Fprintf(&sb, "Gold: %d | XP: %d\n", c.Gold, c.XP)
+	if len(c.Conditions) > 0 {
+		conds := make([]string, len(c.Conditions))
+		for i, cd := range c.Conditions {
+			conds[i] = string(cd)
+		}
+		sb.WriteString("Conditions: " + strings.Join(conds, ", ") + "\n")
+	}
+	if len(c.Inventory) > 0 {
+		items := make([]string, 0, len(c.Inventory))
+		for _, it := range c.Inventory {
+			s := it.Name
+			if it.Quantity > 1 {
+				s = fmt.Sprintf("%s x%d", it.Name, it.Quantity)
+			}
+			if it.Equipped {
+				s += " (equipped)"
+			}
+			items = append(items, s)
+		}
+		sb.WriteString("Inventory: " + strings.Join(items, ", ") + "\n")
+	}
+	writeField(&sb, "Notes", c.Notes)
+	return strings.TrimRight(sb.String(), "\n")
+}
+
 func writeField(sb *strings.Builder, label, value string) {
 	if strings.TrimSpace(value) == "" {
 		return

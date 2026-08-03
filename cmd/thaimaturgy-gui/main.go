@@ -66,6 +66,14 @@ type gui struct {
 	detailActions *fyne.Container
 	locLabel      *widget.Label
 	currentUID    string
+
+	// Mode toggle (Oracle ↔ Virtual DM) and the player-character panel shown in
+	// virtual-DM mode in place of the adventure browser.
+	modeBtn   *widget.Button
+	leftSplit *container.Split
+	navCard   *widget.Card
+	pcCard    *widget.Card
+	pcText    *widget.RichText
 }
 
 func main() {
@@ -374,12 +382,20 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.entry.OnSubmitted = func(s string) { g.submit(s) }
 	sendBtn := widget.NewButton("Send", func() { g.submit(g.entry.Text) })
 
-	// Left column: adventure browser (top) + session log (bottom).
-	left := container.NewVSplit(
-		widget.NewCard("Adventure", "", g.navTree),
+	// Player-character panel, shown in virtual-DM mode in place of the adventure
+	// browser (which is hidden to avoid spoilers).
+	g.pcText = widget.NewRichTextFromMarkdown("")
+	g.pcText.Wrapping = fyne.TextWrapWord
+	g.navCard = widget.NewCard("Adventure", "", g.navTree)
+	g.pcCard = widget.NewCard("Character", "", container.NewVScroll(g.pcText))
+
+	// Left column: adventure browser / character sheet (top) + session log (bottom).
+	g.leftSplit = container.NewVSplit(
+		g.navCard,
 		widget.NewCard("Session Log", "", g.logScroll),
 	)
-	left.SetOffset(0.62)
+	g.leftSplit.SetOffset(0.62)
+	left := g.leftSplit
 
 	// Center: oracle transcript + input.
 	inputRow := container.NewBorder(nil, nil, nil, sendBtn, g.entry)
@@ -397,11 +413,14 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 
 	g.locLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	title := widget.NewLabelWithStyle("🐉  "+adv.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	g.modeBtn = widget.NewButtonWithIcon("", theme.MediaPlayIcon(), g.toggleMode)
 	toolbar := container.NewVBox(
 		container.NewHBox(
 			widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary),
 			widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save),
 			widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel),
+			widget.NewButton("🎲 Dice", g.showDiceRoller),
+			g.modeBtn,
 			title,
 			g.locLabel,
 		),
@@ -409,6 +428,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	)
 
 	g.win.SetContent(container.NewBorder(toolbar, nil, nil, nil, body))
+	g.applyMode() // reflect the (possibly restored) session mode in the UI
 	g.refreshState()
 	// Show the current room in the detail pane to start.
 	if g.session.State.CurrentRoom != "" {
@@ -756,6 +776,8 @@ func (g *gui) submit(raw string) {
 			g.importDialog()
 		case "load":
 			g.showLibrary()
+		case "mode":
+			g.onModeChanged()
 		}
 	} else if result.Message != "" {
 		if !result.Success {
@@ -885,6 +907,96 @@ func (g *gui) appendTranscript(md string) {
 	g.transScroll.ScrollToBottom()
 }
 
+// modeIsDM reports whether the active session is running in virtual-DM mode.
+func (g *gui) modeIsDM() bool {
+	return g.session != nil && g.session.State.EffectiveMode() == domain.ModeVirtualDM
+}
+
+// applyMode reflects the session's current mode in the UI: the toggle button
+// label, the input placeholder, and whether the left panel shows the adventure
+// browser (oracle) or the player-character sheet (virtual DM, tree hidden to
+// avoid spoilers).
+func (g *gui) applyMode() {
+	if g.session == nil {
+		return
+	}
+	dm := g.modeIsDM()
+	if g.modeBtn != nil {
+		if dm {
+			g.modeBtn.SetText("Mode: Virtual DM")
+			g.modeBtn.SetIcon(theme.MediaReplayIcon())
+		} else {
+			g.modeBtn.SetText("Mode: Oracle")
+			g.modeBtn.SetIcon(theme.MediaPlayIcon())
+		}
+	}
+	if g.entry != nil {
+		if dm {
+			g.entry.SetPlaceHolder("What do you do? (you play the character; the AI is the DM)")
+		} else {
+			g.entry.SetPlaceHolder("Ask the oracle, or type a /command…")
+		}
+	}
+	if g.leftSplit != nil {
+		if dm {
+			g.leftSplit.Leading = g.pcCard
+		} else {
+			g.leftSplit.Leading = g.navCard
+		}
+		g.leftSplit.Refresh()
+	}
+	g.refreshPCPanel()
+}
+
+// refreshPCPanel re-renders the player-character sheet shown in virtual-DM mode.
+func (g *gui) refreshPCPanel() {
+	if g.pcText == nil || g.session == nil {
+		return
+	}
+	pc := g.session.State.PC
+	if pc == nil {
+		g.pcText.ParseMarkdown("_No character yet._\n\nSwitch to **Virtual DM** and a default adventurer is created so you can start playing to test the module.")
+		return
+	}
+	g.pcText.ParseMarkdown("```\n" + engine.FormatCharacter(pc) + "\n```")
+}
+
+// toggleMode flips the session mode (toolbar button); onModeChanged then syncs
+// the UI. The /mode command mutates the mode in the handler and reaches the same
+// onModeChanged via the "mode" UI action, so both paths behave identically.
+func (g *gui) toggleMode() {
+	if g.session == nil {
+		return
+	}
+	g.session.State.ToggleMode()
+	g.onModeChanged()
+}
+
+// onModeChanged reconciles the UI with the session's (already updated) mode:
+// swaps panels, ensures a player character exists in virtual-DM mode, narrates
+// the opening scene the first time, and posts a status line.
+func (g *gui) onModeChanged() {
+	if g.session == nil {
+		return
+	}
+	dm := g.modeIsDM()
+	firstTime := dm && g.session.State.PC == nil
+	if dm && g.session.State.PC == nil {
+		g.session.State.PC = domain.NewCharacter("Adventurer", "Human", "Fighter")
+	}
+	g.applyMode()
+	g.refreshLog()
+	if dm {
+		g.appendTranscript("_🎲 **Virtual DM mode** — the AI now runs the game and you play the character. Type what you do; toggle back to Oracle any time._")
+		if firstTime {
+			g.ask(domain.DMKickoffPrompt(g.config.Language))
+		}
+	} else {
+		g.appendTranscript("_📖 **Oracle mode** — the AI assists you as the human DM again._")
+	}
+	g.autosave()
+}
+
 // refreshState re-renders the browser tree, the current-location label, the log
 // and (if something is selected) the detail pane after state changes.
 func (g *gui) refreshState() {
@@ -896,6 +1008,9 @@ func (g *gui) refreshState() {
 	}
 	g.refreshCurrentLabel()
 	g.refreshLog()
+	if g.modeIsDM() {
+		g.refreshPCPanel()
+	}
 	if g.currentUID != "" {
 		g.showDetail(g.currentUID)
 	}

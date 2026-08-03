@@ -65,6 +65,19 @@ func (l *SessionLog) GetLast(n int) []LogEntry {
 // Len returns the number of entries.
 func (l *SessionLog) Len() int { return len(l.Entries) }
 
+// SessionMode selects how the oracle behaves during a session.
+type SessionMode string
+
+const (
+	// ModeAssistant is the default: the AI is an oracle assisting a human DM who
+	// runs the game for real players.
+	ModeAssistant SessionMode = "assistant"
+	// ModeVirtualDM turns the AI into the Dungeon Master running the game for a
+	// solo player. Its primary use is to playtest / debug an adventure by playing
+	// through it. The mode is toggleable in-session.
+	ModeVirtualDM SessionMode = "dm"
+)
+
 // NPCStatus tracks the running state of an NPC the party has interacted with.
 type NPCStatus struct {
 	Met         bool   `json:"met"`
@@ -110,6 +123,12 @@ type SessionState struct {
 	Variables       map[string]string     `json:"variables,omitempty"`
 	Party           []*PartyMember        `json:"party,omitempty"`
 	Quests          []QuestProgress       `json:"quests,omitempty"`
+
+	// Mode selects oracle behaviour: assistant (default) or virtual DM. It can be
+	// toggled at any point during a session. PC holds the player character used in
+	// virtual-DM mode (nil in assistant mode).
+	Mode SessionMode `json:"mode,omitempty"`
+	PC   *Character  `json:"pc,omitempty"`
 
 	// Free-form timeline and running summary.
 	Log     *SessionLog `json:"log"`
@@ -287,6 +306,40 @@ func (s *SessionState) AdvanceQuest(id, name, status string) {
 	s.Quests = append(s.Quests, QuestProgress{ID: id, Name: name, Status: status})
 	s.record(LogEntry{Type: LogQuest, Message: "New quest: " + name})
 	s.touch()
+}
+
+// EffectiveMode returns the session mode, treating the empty zero value as the
+// default assistant mode.
+func (s *SessionState) EffectiveMode() SessionMode {
+	if s.Mode == "" {
+		return ModeAssistant
+	}
+	return s.Mode
+}
+
+// SetMode switches the session to the given mode and logs the change.
+func (s *SessionState) SetMode(m SessionMode) {
+	if s.EffectiveMode() == m {
+		return
+	}
+	s.Mode = m
+	label := "Oracle (assistant to human DM)"
+	if m == ModeVirtualDM {
+		label = "Virtual DM (AI runs the game)"
+	}
+	s.record(LogEntry{Type: LogSystem, Message: "Mode switched to " + label,
+		Data: map[string]any{"mode": string(m)}})
+	s.touch()
+}
+
+// ToggleMode flips between assistant and virtual-DM mode and returns the new mode.
+func (s *SessionState) ToggleMode() SessionMode {
+	if s.EffectiveMode() == ModeVirtualDM {
+		s.SetMode(ModeAssistant)
+	} else {
+		s.SetMode(ModeVirtualDM)
+	}
+	return s.EffectiveMode()
 }
 
 // Session is the runtime wrapper binding a persisted SessionState to its loaded

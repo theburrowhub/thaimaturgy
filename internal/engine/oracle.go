@@ -241,6 +241,7 @@ func mergeSessionState(dst, src *domain.SessionState, oldLogLen int) {
 	dst.Variables = src.Variables
 	dst.Party = src.Party
 	dst.Quests = src.Quests
+	dst.PC = src.PC
 	if src.Log != nil {
 		entries := src.Log.Entries
 		if oldLogLen < 0 || oldLogLen > len(entries) {
@@ -289,7 +290,7 @@ func (o *Oracle) buildSystemPrompt() string {
 	adv := o.session.Adventure
 	st := o.session.State
 
-	sb.WriteString(o.session.Config.GetSystemPrompt())
+	sb.WriteString(o.systemPromptBase())
 	sb.WriteString("\n\n=== ADVENTURE ===\n")
 	fmt.Fprintf(&sb, "Title: %s", adv.Title)
 	if adv.System != "" {
@@ -357,6 +358,12 @@ func (o *Oracle) buildSystemPrompt() string {
 		fmt.Fprintf(&sb, "PC %s: HP %d/%d AC %d %s\n", p.Name, p.CurrentHP, p.MaxHP, p.AC, p.Notes)
 	}
 
+	if st.EffectiveMode() == domain.ModeVirtualDM && st.PC != nil {
+		sb.WriteString("\n=== PLAYER CHARACTER (you are the DM; never act for them) ===\n")
+		sb.WriteString(FormatCharacter(st.PC))
+		sb.WriteString("\n")
+	}
+
 	if st.Summary != "" {
 		sb.WriteString("\n=== STORY SO FAR ===\n")
 		sb.WriteString(st.Summary)
@@ -376,6 +383,16 @@ func (o *Oracle) buildSystemPrompt() string {
 	}
 
 	return sb.String()
+}
+
+// systemPromptBase returns the base instructions for the session's current mode:
+// the virtual-DM (AI-as-DM) prompt in ModeVirtualDM, otherwise the assistant
+// oracle prompt (honouring any user override).
+func (o *Oracle) systemPromptBase() string {
+	if o.session.State.EffectiveMode() == domain.ModeVirtualDM {
+		return domain.GMSystemPrompt(o.session.Config.Language)
+	}
+	return o.session.Config.GetSystemPrompt()
 }
 
 func writeSection(sb *strings.Builder, label, value string) {
