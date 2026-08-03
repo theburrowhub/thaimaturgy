@@ -7,14 +7,17 @@ import (
 )
 
 // chatEntry is a multi-line entry with chat-style Enter handling: plain Enter
-// submits and Ctrl/Cmd+Enter inserts a newline (the opposite of Fyne's default).
+// submits, while Shift+Enter and Ctrl/Cmd+Enter insert a newline (the opposite
+// of Fyne's default).
 //
-// The GLFW driver routes a modifier+key combo through TypedShortcut (as a
-// desktop.CustomShortcut) and a plain key through TypedKey, so the two cases are
-// handled in those two methods respectively.
+// The GLFW driver routes a Control/Super+key combo through TypedShortcut (as a
+// desktop.CustomShortcut) and everything else through TypedKey; Shift+key stays
+// in TypedKey, so shift state is tracked from KeyDown/KeyUp (KeyEvent carries no
+// modifier flags).
 type chatEntry struct {
 	widget.Entry
-	onSubmit func(string)
+	onSubmit  func(string)
+	shiftDown bool
 }
 
 func newChatEntry(onSubmit func(string)) *chatEntry {
@@ -25,10 +28,38 @@ func newChatEntry(onSubmit func(string)) *chatEntry {
 	return e
 }
 
-// TypedKey submits on a plain Return/Enter (no modifier — a modifier+Enter is
-// delivered to TypedShortcut instead, never here).
+func isShiftKey(name fyne.KeyName) bool {
+	return name == desktop.KeyShiftLeft || name == desktop.KeyShiftRight
+}
+
+func (e *chatEntry) KeyDown(key *fyne.KeyEvent) {
+	if isShiftKey(key.Name) {
+		e.shiftDown = true
+	}
+	e.Entry.KeyDown(key)
+}
+
+func (e *chatEntry) KeyUp(key *fyne.KeyEvent) {
+	if isShiftKey(key.Name) {
+		e.shiftDown = false
+	}
+	e.Entry.KeyUp(key)
+}
+
+// TypedKey submits on a plain Return/Enter and inserts a newline on Shift+Enter.
+// When the entry is disabled (e.g. an oracle request is in flight) it delegates
+// to the base widget so a keystroke can't bypass the busy guard and fire another
+// submission — disabling a widget doesn't remove keyboard focus in Fyne.
 func (e *chatEntry) TypedKey(key *fyne.KeyEvent) {
+	if e.Disabled() {
+		e.Entry.TypedKey(key)
+		return
+	}
 	if key.Name == fyne.KeyReturn || key.Name == fyne.KeyEnter {
+		if e.shiftDown {
+			e.Entry.TypedKey(key) // Shift+Enter → newline
+			return
+		}
 		if e.onSubmit != nil {
 			e.onSubmit(e.Text)
 		}
@@ -38,13 +69,15 @@ func (e *chatEntry) TypedKey(key *fyne.KeyEvent) {
 }
 
 // TypedShortcut turns Ctrl/Cmd+Enter into a newline; every other shortcut (copy,
-// cut, paste, select-all, …) passes through to the embedded Entry.
+// cut, paste, select-all, …) passes through. Disabled entries delegate untouched.
 func (e *chatEntry) TypedShortcut(s fyne.Shortcut) {
-	if cs, ok := s.(*desktop.CustomShortcut); ok &&
-		(cs.KeyName == fyne.KeyReturn || cs.KeyName == fyne.KeyEnter) &&
-		cs.Modifier&(fyne.KeyModifierControl|fyne.KeyModifierSuper) != 0 {
-		e.Entry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}) // default multi-line behaviour: insert newline
-		return
+	if !e.Disabled() {
+		if cs, ok := s.(*desktop.CustomShortcut); ok &&
+			(cs.KeyName == fyne.KeyReturn || cs.KeyName == fyne.KeyEnter) &&
+			cs.Modifier&(fyne.KeyModifierControl|fyne.KeyModifierSuper) != 0 {
+			e.Entry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}) // insert newline
+			return
+		}
 	}
 	e.Entry.TypedShortcut(s)
 }

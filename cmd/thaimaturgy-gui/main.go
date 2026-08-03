@@ -804,6 +804,9 @@ func splitRoomUID(uid string) (zoneID, roomID string) {
 }
 
 func (g *gui) submit(raw string) {
+	if g.busy { // an oracle request is in flight; ignore further submissions
+		return
+	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return
@@ -821,7 +824,9 @@ func (g *gui) submit(raw string) {
 		return
 	}
 	if result.Response != "" {
-		g.appendTranscript("**» " + raw + "**\n\n" + "```\n" + result.Response + "\n```")
+		// Two messages so only the command echo is bold, not the whole output.
+		g.appendTranscript("**» " + raw + "**")
+		g.appendTranscript(result.Response)
 	}
 
 	if result.NeedsUI {
