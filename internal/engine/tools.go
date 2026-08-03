@@ -217,6 +217,81 @@ var AvailableTools = []types.Tool{
 	},
 }
 
+// playerCharacterTools mutate the player character. They are only exposed to the
+// model in virtual-DM mode (ModeVirtualDM), where the AI runs the game for a solo
+// player and must keep that character's sheet current.
+var playerCharacterTools = []types.Tool{
+	{
+		Name:        "update_hp",
+		Description: "Change the player character's hit points. Use 'delta' for damage (negative) or healing (positive), or 'set' to set current HP directly.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"delta":{"type":"integer","description":"Amount to add (heal) or subtract (damage)"},
+				"set":{"type":"integer","description":"Set current HP to this exact value"},
+				"reason":{"type":"string"}
+			}
+		}`),
+	},
+	{
+		Name:        "add_item",
+		Description: "Add an item to the player character's inventory.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"name":{"type":"string"},
+				"quantity":{"type":"integer"},
+				"equipped":{"type":"boolean"}
+			},
+			"required":["name"]
+		}`),
+	},
+	{
+		Name:        "remove_item",
+		Description: "Remove a quantity of an item from the player character's inventory.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"name":{"type":"string"},"quantity":{"type":"integer"}},
+			"required":["name"]
+		}`),
+	},
+	{
+		Name:        "set_condition",
+		Description: "Apply a status condition to the player character (e.g. Poisoned, Prone, Frightened).",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"condition":{"type":"string"}},
+			"required":["condition"]
+		}`),
+	},
+	{
+		Name:        "remove_condition",
+		Description: "Remove a status condition from the player character.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"condition":{"type":"string"}},
+			"required":["condition"]
+		}`),
+	},
+	{
+		Name:        "update_gold",
+		Description: "Change the player character's gold. Use 'delta' to add/subtract or 'set' for an exact amount.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"delta":{"type":"integer"},"set":{"type":"integer"}}
+		}`),
+	},
+	{
+		Name:        "award_xp",
+		Description: "Grant experience points to the player character.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"amount":{"type":"integer"}},
+			"required":["amount"]
+		}`),
+	},
+}
+
 // ToolRouter executes oracle tool calls against a running session.
 type ToolRouter struct {
 	session *domain.Session
@@ -227,8 +302,17 @@ func NewToolRouter(session *domain.Session) *ToolRouter {
 	return &ToolRouter{session: session}
 }
 
-// GetToolDefinitions returns the tool schema sent to the LLM.
-func (tr *ToolRouter) GetToolDefinitions() []types.Tool { return AvailableTools }
+// GetToolDefinitions returns the tool schema sent to the LLM. In virtual-DM mode
+// it also exposes the player-character mutation tools.
+func (tr *ToolRouter) GetToolDefinitions() []types.Tool {
+	if tr.session.State.EffectiveMode() == domain.ModeVirtualDM {
+		tools := make([]types.Tool, 0, len(AvailableTools)+len(playerCharacterTools))
+		tools = append(tools, AvailableTools...)
+		tools = append(tools, playerCharacterTools...)
+		return tools
+	}
+	return AvailableTools
+}
 
 func (tr *ToolRouter) adv() *domain.Adventure      { return tr.session.Adventure }
 func (tr *ToolRouter) state() *domain.SessionState { return tr.session.State }
@@ -285,6 +369,20 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 		return tr.rollDice(call.ID, args)
 	case "ability_check":
 		return tr.abilityCheck(call.ID, args)
+	case "update_hp":
+		return tr.updateHP(call.ID, args)
+	case "add_item":
+		return tr.addItem(call.ID, args)
+	case "remove_item":
+		return tr.removeItem(call.ID, args)
+	case "set_condition":
+		return tr.setCondition(call.ID, args)
+	case "remove_condition":
+		return tr.removeCondition(call.ID, args)
+	case "update_gold":
+		return tr.updateGold(call.ID, args)
+	case "award_xp":
+		return tr.awardXP(call.ID, args)
 	default:
 		return errResult(call.ID, "unknown tool: "+call.Name)
 	}
@@ -465,9 +563,7 @@ func (tr *ToolRouter) markNPCMet(id string, args map[string]any) types.ToolResul
 func (tr *ToolRouter) setNPCDisposition(id string, args map[string]any) types.ToolResult {
 	nid, _ := args["npc_id"].(string)
 	disp, _ := args["disposition"].(string)
-	st := tr.state().NPCState(nid)
-	st.Disposition = disp
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogNPC, Message: nid + " disposition → " + disp})
+	tr.state().SetNPCDisposition(nid, disp)
 	tr.session.MarkModified()
 	return okResult(id, "disposition updated")
 }
@@ -475,14 +571,12 @@ func (tr *ToolRouter) setNPCDisposition(id string, args map[string]any) types.To
 func (tr *ToolRouter) setNPCAlive(id string, args map[string]any) types.ToolResult {
 	nid, _ := args["npc_id"].(string)
 	alive, _ := args["alive"].(bool)
-	st := tr.state().NPCState(nid)
-	st.Alive = alive
+	tr.state().SetNPCAlive(nid, alive)
+	tr.session.MarkModified()
 	status := "alive"
 	if !alive {
 		status = "dead"
 	}
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogNPC, Message: nid + " is now " + status})
-	tr.session.MarkModified()
 	return okResult(id, nid+" is now "+status)
 }
 
@@ -547,33 +641,159 @@ func (tr *ToolRouter) updatePartyMember(id string, args map[string]any) types.To
 	if name == "" {
 		return errResult(id, "missing name")
 	}
-	st := tr.state()
-	var pm *domain.PartyMember
-	for _, m := range st.Party {
-		if strings.EqualFold(m.Name, name) {
-			pm = m
-			break
-		}
-	}
-	if pm == nil {
-		pm = &domain.PartyMember{Name: name}
-		st.Party = append(st.Party, pm)
-	}
+	var chp, mhp, ac *int
 	if v, ok := intArg(args, "current_hp"); ok {
-		pm.CurrentHP = v
+		chp = &v
 	}
 	if v, ok := intArg(args, "max_hp"); ok {
-		pm.MaxHP = v
+		mhp = &v
 	}
 	if v, ok := intArg(args, "ac"); ok {
-		pm.AC = v
+		ac = &v
 	}
-	if notes, ok := args["notes"].(string); ok && notes != "" {
-		pm.Notes = notes
-	}
-	st.Log.Add(domain.LogEntry{Type: domain.LogParty, Message: "Updated " + name})
+	notes, _ := args["notes"].(string)
+	tr.state().UpsertPartyMember(name, chp, mhp, ac, notes)
 	tr.session.MarkModified()
 	return okResult(id, "party member updated: "+name)
+}
+
+// --- Player character (virtual-DM mode) ----------------------------------
+
+func (tr *ToolRouter) updateHP(id string, args map[string]any) types.ToolResult {
+	reason, _ := args["reason"].(string)
+	vSet, hasSet := intArg(args, "set")
+	delta, hasDelta := intArg(args, "delta")
+	if !hasSet && !hasDelta {
+		return errResult(id, "provide 'delta' or 'set'")
+	}
+	var msg string
+	tr.state().MutatePC(func(c *domain.Character) {
+		switch {
+		case hasSet:
+			c.SetHP(vSet)
+		case delta < 0:
+			c.TakeDamage(-delta)
+		default:
+			c.Heal(delta)
+		}
+		msg = fmt.Sprintf("%s HP: %d/%d", c.Name, c.CurrentHP, c.MaxHP)
+	})
+	if reason != "" {
+		msg = reason + " — " + msg
+	}
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: msg})
+	tr.session.MarkModified()
+	return okResult(id, msg)
+}
+
+func (tr *ToolRouter) addItem(id string, args map[string]any) types.ToolResult {
+	name, _ := args["name"].(string)
+	if name == "" {
+		return errResult(id, "missing 'name'")
+	}
+	qty, ok := intArg(args, "quantity")
+	if !ok || qty <= 0 {
+		qty = 1
+	}
+	equipped, _ := args["equipped"].(bool)
+	var owner string
+	tr.state().MutatePC(func(c *domain.Character) {
+		c.AddItem(domain.InventoryItem{Name: name, Quantity: qty, Equipped: equipped})
+		owner = c.Name
+	})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s gained %s x%d", owner, name, qty)})
+	tr.session.MarkModified()
+	return okResult(id, fmt.Sprintf("added %s x%d", name, qty))
+}
+
+func (tr *ToolRouter) removeItem(id string, args map[string]any) types.ToolResult {
+	name, _ := args["name"].(string)
+	if name == "" {
+		return errResult(id, "missing 'name'")
+	}
+	qty, ok := intArg(args, "quantity")
+	if !ok || qty <= 0 {
+		qty = 1
+	}
+	var owner string
+	var removed bool
+	tr.state().MutatePC(func(c *domain.Character) {
+		removed = c.RemoveItem(name, qty)
+		owner = c.Name
+	})
+	if !removed {
+		return errResult(id, "item not found: "+name)
+	}
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s lost %s x%d", owner, name, qty)})
+	tr.session.MarkModified()
+	return okResult(id, fmt.Sprintf("removed %s x%d", name, qty))
+}
+
+func (tr *ToolRouter) setCondition(id string, args map[string]any) types.ToolResult {
+	cond, _ := args["condition"].(string)
+	if cond == "" {
+		return errResult(id, "missing 'condition'")
+	}
+	var owner string
+	tr.state().MutatePC(func(c *domain.Character) {
+		c.AddCondition(domain.Condition(cond))
+		owner = c.Name
+	})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: owner + " is now " + cond})
+	tr.session.MarkModified()
+	return okResult(id, owner+" gained condition: "+cond)
+}
+
+func (tr *ToolRouter) removeCondition(id string, args map[string]any) types.ToolResult {
+	cond, _ := args["condition"].(string)
+	if cond == "" {
+		return errResult(id, "missing 'condition'")
+	}
+	var owner string
+	tr.state().MutatePC(func(c *domain.Character) {
+		c.RemoveCondition(domain.Condition(cond))
+		owner = c.Name
+	})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: owner + " no longer " + cond})
+	tr.session.MarkModified()
+	return okResult(id, owner+" lost condition: "+cond)
+}
+
+func (tr *ToolRouter) updateGold(id string, args map[string]any) types.ToolResult {
+	vSet, hasSet := intArg(args, "set")
+	delta, hasDelta := intArg(args, "delta")
+	if !hasSet && !hasDelta {
+		return errResult(id, "provide 'delta' or 'set'")
+	}
+	var owner string
+	var gold int
+	tr.state().MutatePC(func(c *domain.Character) {
+		if hasSet {
+			c.SetGold(vSet)
+		} else {
+			c.SetGold(c.Gold + delta)
+		}
+		owner, gold = c.Name, c.Gold
+	})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s gold: %d", owner, gold)})
+	tr.session.MarkModified()
+	return okResult(id, fmt.Sprintf("%s gold: %d", owner, gold))
+}
+
+func (tr *ToolRouter) awardXP(id string, args map[string]any) types.ToolResult {
+	amount, ok := intArg(args, "amount")
+	if !ok {
+		return errResult(id, "missing 'amount'")
+	}
+	var owner string
+	var xp int
+	tr.state().MutatePC(func(c *domain.Character) {
+		c.AwardXP(amount) // ignores non-positive amounts
+		owner, xp = c.Name, c.XP
+	})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: fmt.Sprintf("%s gained %d XP (total %d)", owner, amount, xp)})
+	tr.session.MarkModified()
+	return okResult(id, fmt.Sprintf("%s XP: %d", owner, xp))
 }
 
 // --- Dice ----------------------------------------------------------------
@@ -598,7 +818,7 @@ func (tr *ToolRouter) rollDice(id string, args map[string]any) types.ToolResult 
 	if reason != "" {
 		logMsg = reason + " — " + msg
 	}
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogRoll, Message: logMsg})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: logMsg})
 	tr.session.MarkModified()
 	return okResult(id, msg)
 }
@@ -626,7 +846,7 @@ func (tr *ToolRouter) abilityCheck(id string, args map[string]any) types.ToolRes
 	if label != "" {
 		msg = label + " — " + msg
 	}
-	tr.state().Log.Add(domain.LogEntry{Type: domain.LogRoll, Message: msg})
+	tr.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: msg})
 	tr.session.MarkModified()
 	return okResult(id, msg)
 }

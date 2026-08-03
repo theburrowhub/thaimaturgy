@@ -66,6 +66,28 @@ type gui struct {
 	detailActions *fyne.Container
 	locLabel      *widget.Label
 	currentUID    string
+
+	// Mode toggle (Oracle ↔ Virtual DM) and the player-character panel shown in
+	// virtual-DM mode in place of the adventure browser.
+	modeBtn    *widget.Button
+	sendBtn    *widget.Button
+	diceBtn    *widget.Button
+	saveBtn    *widget.Button
+	exportBtn  *widget.Button
+	libraryBtn *widget.Button
+	busy       bool // an oracle request is in flight; block state reads/mutations from the UI
+	leftSplit  *container.Split
+	navCard    *widget.Card
+	pcCard     *widget.Card
+	pcText     *widget.RichText
+
+	// Body layout, so virtual-DM mode can hide the detail pane (spoilers): in DM
+	// mode the body's trailing side is just centerCard; in oracle mode it is the
+	// centerRight split (transcript + detail).
+	body        *container.Split
+	centerRight *container.Split
+	centerCard  *widget.Card
+	rightCard   *widget.Card
 }
 
 func main() {
@@ -372,36 +394,54 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.entry = widget.NewEntry()
 	g.entry.SetPlaceHolder("Ask the oracle, or type a /command…")
 	g.entry.OnSubmitted = func(s string) { g.submit(s) }
-	sendBtn := widget.NewButton("Send", func() { g.submit(g.entry.Text) })
+	g.sendBtn = widget.NewButton("Send", func() { g.submit(g.entry.Text) })
+	sendBtn := g.sendBtn
 
-	// Left column: adventure browser (top) + session log (bottom).
-	left := container.NewVSplit(
-		widget.NewCard("Adventure", "", g.navTree),
+	// Player-character panel, shown in virtual-DM mode in place of the adventure
+	// browser (which is hidden to avoid spoilers).
+	g.pcText = widget.NewRichTextFromMarkdown("")
+	g.pcText.Wrapping = fyne.TextWrapWord
+	g.navCard = widget.NewCard("Adventure", "", g.navTree)
+	g.pcCard = widget.NewCard("Character", "", container.NewVScroll(g.pcText))
+
+	// Left column: adventure browser / character sheet (top) + session log (bottom).
+	g.leftSplit = container.NewVSplit(
+		g.navCard,
 		widget.NewCard("Session Log", "", g.logScroll),
 	)
-	left.SetOffset(0.62)
+	g.leftSplit.SetOffset(0.62)
+	left := g.leftSplit
 
 	// Center: oracle transcript + input.
 	inputRow := container.NewBorder(nil, nil, nil, sendBtn, g.entry)
-	center := widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transScroll))
+	g.centerCard = widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transScroll))
 
 	// Right: detail of the selected zone/room/NPC/event/item — prose + navigable
 	// links (top, scrolls together) and the inline image (bottom).
 	detailContent := container.NewVScroll(container.NewVBox(g.detailText, g.detailLinks))
 	detailBody := container.NewVSplit(detailContent, container.NewVScroll(g.detailImage))
 	detailBody.SetOffset(0.6)
-	right := widget.NewCard("Detail", "", container.NewBorder(g.detailActions, nil, nil, nil, detailBody))
+	g.rightCard = widget.NewCard("Detail", "", container.NewBorder(g.detailActions, nil, nil, nil, detailBody))
 
-	body := container.NewHSplit(left, container.NewHSplit(center, right))
-	body.SetOffset(0.24)
+	g.centerRight = container.NewHSplit(g.centerCard, g.rightCard)
+	g.body = container.NewHSplit(left, g.centerRight)
+	g.body.SetOffset(0.24)
+	body := g.body
 
 	g.locLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	title := widget.NewLabelWithStyle("🐉  "+adv.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	g.modeBtn = widget.NewButtonWithIcon("", theme.MediaPlayIcon(), g.toggleMode)
+	g.diceBtn = widget.NewButton("🎲 Dice", g.showDiceRoller)
+	g.libraryBtn = widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary)
+	g.saveBtn = widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save)
+	g.exportBtn = widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel)
 	toolbar := container.NewVBox(
 		container.NewHBox(
-			widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary),
-			widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save),
-			widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel),
+			g.libraryBtn,
+			g.saveBtn,
+			g.exportBtn,
+			g.diceBtn,
+			g.modeBtn,
 			title,
 			g.locLabel,
 		),
@@ -409,6 +449,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	)
 
 	g.win.SetContent(container.NewBorder(toolbar, nil, nil, nil, body))
+	g.applyMode() // reflect the (possibly restored) session mode in the UI
 	g.refreshState()
 	// Show the current room in the detail pane to start.
 	if g.session.State.CurrentRoom != "" {
@@ -428,7 +469,12 @@ func (g *gui) buildAdvTree() *widget.Tree {
 			o.(*widget.Label).SetText(g.treeLabel(uid))
 		},
 	)
-	t.OnSelected = func(uid widget.TreeNodeID) { g.showDetail(uid) }
+	t.OnSelected = func(uid widget.TreeNodeID) {
+		if g.busy {
+			return
+		}
+		g.showDetail(uid)
+	}
 	t.OpenAllBranches()
 	return t
 }
@@ -664,6 +710,9 @@ func (g *gui) selectNode(uid widget.TreeNodeID) {
 }
 
 func (g *gui) movePartyHere(roomID string) {
+	if g.busy {
+		return
+	}
 	res := g.cmd.Execute(engine.ParseCommand("/goto " + roomID))
 	if !res.Success && res.Message != "" {
 		g.showErr(fmt.Errorf("%s", res.Message))
@@ -675,6 +724,9 @@ func (g *gui) movePartyHere(roomID string) {
 }
 
 func (g *gui) markNPCMet(id, name string) {
+	if g.busy {
+		return
+	}
 	g.session.State.MeetNPC(id, name)
 	g.session.MarkModified()
 	g.refreshState()
@@ -682,6 +734,9 @@ func (g *gui) markNPCMet(id, name string) {
 }
 
 func (g *gui) triggerEvent(id, name string) {
+	if g.busy {
+		return
+	}
 	g.session.State.TriggerEvent(id, name)
 	g.session.MarkModified()
 	g.refreshState()
@@ -691,6 +746,9 @@ func (g *gui) triggerEvent(id, name string) {
 // rollTable rolls on a table, shows the result in the oracle transcript, and
 // records it in the session log.
 func (g *gui) rollTable(id string) {
+	if g.busy {
+		return
+	}
 	t := g.session.Adventure.Table(id)
 	if t == nil {
 		return
@@ -756,6 +814,8 @@ func (g *gui) submit(raw string) {
 			g.importDialog()
 		case "load":
 			g.showLibrary()
+		case "mode":
+			g.onModeChanged()
 		}
 	} else if result.Message != "" {
 		if !result.Success {
@@ -767,6 +827,40 @@ func (g *gui) submit(raw string) {
 
 	g.refreshState()
 	g.refreshLog()
+}
+
+// setBusy enables/disables the session input controls. While an oracle request
+// is in flight the controls are disabled so the user can't mutate the session
+// state (dice roll, mode toggle, another query) concurrently with the oracle
+// goroutine that is mutating it.
+func (g *gui) setBusy(busy bool) {
+	g.busy = busy
+	toggle := func(b *widget.Button) {
+		if b == nil {
+			return
+		}
+		if busy {
+			b.Disable()
+		} else {
+			b.Enable()
+		}
+	}
+	// Disable every control that reads or mutates session state, including Save /
+	// Export (which serialize it) and Library (which tears it down). Tree selection
+	// and detail-action buttons are gated separately via the g.busy flag.
+	toggle(g.sendBtn)
+	toggle(g.diceBtn)
+	toggle(g.modeBtn)
+	toggle(g.saveBtn)
+	toggle(g.exportBtn)
+	toggle(g.libraryBtn)
+	if g.entry != nil {
+		if busy {
+			g.entry.Disable()
+		} else {
+			g.entry.Enable()
+		}
+	}
 }
 
 func (g *gui) ask(input string) {
@@ -782,11 +876,13 @@ func (g *gui) ask(input string) {
 	if timeout <= 0 {
 		timeout = 90 * time.Second
 	}
+	g.setBusy(true)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		resp := g.oracle.Ask(ctx, input)
 		fyne.Do(func() {
+			g.setBusy(false)
 			if resp.Error != nil {
 				g.showErr(resp.Error)
 				return
@@ -885,6 +981,113 @@ func (g *gui) appendTranscript(md string) {
 	g.transScroll.ScrollToBottom()
 }
 
+// modeIsDM reports whether the active session is running in virtual-DM mode.
+func (g *gui) modeIsDM() bool {
+	return g.session != nil && g.session.State.EffectiveMode() == domain.ModeVirtualDM
+}
+
+// applyMode reflects the session's current mode in the UI: the toggle button
+// label, the input placeholder, and whether the left panel shows the adventure
+// browser (oracle) or the player-character sheet (virtual DM, tree hidden to
+// avoid spoilers).
+func (g *gui) applyMode() {
+	if g.session == nil {
+		return
+	}
+	dm := g.modeIsDM()
+	if g.modeBtn != nil {
+		if dm {
+			g.modeBtn.SetText("Mode: Virtual DM")
+			g.modeBtn.SetIcon(theme.MediaReplayIcon())
+		} else {
+			g.modeBtn.SetText("Mode: Oracle")
+			g.modeBtn.SetIcon(theme.MediaPlayIcon())
+		}
+	}
+	if g.entry != nil {
+		if dm {
+			g.entry.SetPlaceHolder("What do you do? (you play the character; the AI is the DM)")
+		} else {
+			g.entry.SetPlaceHolder("Ask the oracle, or type a /command…")
+		}
+	}
+	if g.leftSplit != nil {
+		if dm {
+			g.leftSplit.Leading = g.pcCard
+		} else {
+			g.leftSplit.Leading = g.navCard
+		}
+		g.leftSplit.Refresh()
+	}
+	// In virtual-DM mode hide the detail pane (spoilers) so only the character
+	// sheet + log (left) and the DM narration (center) remain.
+	if g.body != nil {
+		if dm {
+			g.body.Trailing = g.centerCard
+		} else {
+			g.body.Trailing = g.centerRight
+		}
+		g.body.Refresh()
+	}
+	if g.centerCard != nil {
+		if dm {
+			g.centerCard.SetTitle("Dungeon Master")
+		} else {
+			g.centerCard.SetTitle("Oracle")
+		}
+	}
+	g.refreshPCPanel()
+}
+
+// refreshPCPanel re-renders the player-character sheet shown in virtual-DM mode.
+func (g *gui) refreshPCPanel() {
+	if g.pcText == nil || g.session == nil {
+		return
+	}
+	pc := g.session.State.PC
+	if pc == nil {
+		g.pcText.ParseMarkdown("_No character yet._\n\nSwitch to **Virtual DM** and a default adventurer is created so you can start playing to test the module.")
+		return
+	}
+	g.pcText.ParseMarkdown("```\n" + engine.FormatCharacter(pc) + "\n```")
+}
+
+// toggleMode flips the session mode (toolbar button); onModeChanged then syncs
+// the UI. The /mode command mutates the mode in the handler and reaches the same
+// onModeChanged via the "mode" UI action, so both paths behave identically.
+func (g *gui) toggleMode() {
+	if g.session == nil {
+		return
+	}
+	g.session.State.ToggleMode()
+	g.onModeChanged()
+}
+
+// onModeChanged reconciles the UI with the session's (already updated) mode:
+// swaps panels, ensures a player character exists in virtual-DM mode, narrates
+// the opening scene the first time, and posts a status line.
+func (g *gui) onModeChanged() {
+	if g.session == nil {
+		return
+	}
+	dm := g.modeIsDM()
+	firstTime := false
+	if dm {
+		firstTime = g.session.State.EnsurePC()
+	}
+	g.applyMode()
+	g.refreshLog()
+	if dm {
+		g.appendTranscript("_🎲 **Virtual DM mode** — the AI now runs the game and you play the character. Type what you do; toggle back to Oracle any time._")
+		if firstTime {
+			g.ask(domain.DMKickoffPrompt(g.config.Language))
+		}
+	} else {
+		g.appendTranscript("_📖 **Oracle mode** — the AI assists you as the human DM again._")
+	}
+	g.autosave()
+}
+
 // refreshState re-renders the browser tree, the current-location label, the log
 // and (if something is selected) the detail pane after state changes.
 func (g *gui) refreshState() {
@@ -896,6 +1099,9 @@ func (g *gui) refreshState() {
 	}
 	g.refreshCurrentLabel()
 	g.refreshLog()
+	if g.modeIsDM() {
+		g.refreshPCPanel()
+	}
 	if g.currentUID != "" {
 		g.showDetail(g.currentUID)
 	}
@@ -922,7 +1128,7 @@ func (g *gui) refreshLog() {
 		return
 	}
 	var sb strings.Builder
-	for _, e := range g.session.State.Log.GetLast(80) {
+	for _, e := range g.session.State.RecentLog(80) {
 		fmt.Fprintf(&sb, "- `%s` %s\n", e.Timestamp.Format("15:04"), e.Message)
 	}
 	g.logText.ParseMarkdown(sb.String())

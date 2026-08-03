@@ -652,6 +652,18 @@ func (m *Model) handleSessionInput(raw string) tea.Cmd {
 			m.importInput.Focus()
 		case "image":
 			m.openImage(result.UIArg)
+		case "mode":
+			m.statusMsg = result.Message
+			st := m.session.State
+			if st.EffectiveMode() == domain.ModeVirtualDM {
+				firstTime := st.EnsurePC()
+				m.appendOracle("🎲 Virtual DM mode — the AI runs the game; type what your character does.")
+				if firstTime {
+					return m.askOracle(domain.DMKickoffPrompt(m.config.Language))
+				}
+			} else {
+				m.appendOracle("📖 Oracle mode — the AI assists you as the human DM.")
+			}
 		}
 	}
 
@@ -788,7 +800,7 @@ func (m *Model) refreshLogPanel() {
 		return
 	}
 	var sb strings.Builder
-	for _, e := range m.session.State.Log.GetLast(60) {
+	for _, e := range m.session.State.RecentLog(60) {
 		ts := e.Timestamp.Format("15:04")
 		style := m.styles.EventLog
 		switch e.Type {

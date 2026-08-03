@@ -1,6 +1,11 @@
 package domain
 
-import "time"
+import (
+	"encoding/json"
+	"strings"
+	"sync"
+	"time"
+)
 
 // LogEntryType classifies an entry in the session timeline.
 type LogEntryType string
@@ -65,6 +70,19 @@ func (l *SessionLog) GetLast(n int) []LogEntry {
 // Len returns the number of entries.
 func (l *SessionLog) Len() int { return len(l.Entries) }
 
+// SessionMode selects how the oracle behaves during a session.
+type SessionMode string
+
+const (
+	// ModeAssistant is the default: the AI is an oracle assisting a human DM who
+	// runs the game for real players.
+	ModeAssistant SessionMode = "assistant"
+	// ModeVirtualDM turns the AI into the Dungeon Master running the game for a
+	// solo player. Its primary use is to playtest / debug an adventure by playing
+	// through it. The mode is toggleable in-session.
+	ModeVirtualDM SessionMode = "dm"
+)
+
 // NPCStatus tracks the running state of an NPC the party has interacted with.
 type NPCStatus struct {
 	Met         bool   `json:"met"`
@@ -111,6 +129,12 @@ type SessionState struct {
 	Party           []*PartyMember        `json:"party,omitempty"`
 	Quests          []QuestProgress       `json:"quests,omitempty"`
 
+	// Mode selects oracle behaviour: assistant (default) or virtual DM. It can be
+	// toggled at any point during a session. PC holds the player character used in
+	// virtual-DM mode (nil in assistant mode).
+	Mode SessionMode `json:"mode,omitempty"`
+	PC   *Character  `json:"pc,omitempty"`
+
 	// Free-form timeline and running summary.
 	Log     *SessionLog `json:"log"`
 	Summary string      `json:"summary,omitempty"`
@@ -126,6 +150,23 @@ type SessionState struct {
 	// frontend can persist an append-only journal of the game as it happens. It is
 	// unexported and therefore never serialized.
 	onLog func(LogEntry)
+
+	// mu guards concurrent mutation and serialization of the state. The oracle
+	// runs in its own goroutine mutating the state through the tool router while a
+	// frontend may read/serialize it (autosave); every exported mutator and the
+	// JSON marshaller take this lock. Unexported (never serialized) and, being a
+	// mutex, must not be copied — callers pass *SessionState.
+	mu sync.Mutex
+}
+
+// MarshalJSON serializes the state under the mutex so an autosave can't race a
+// concurrent mutation from the oracle goroutine (which would otherwise risk a
+// "concurrent map iteration and map write" panic).
+func (s *SessionState) MarshalJSON() ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	type alias SessionState
+	return json.Marshal((*alias)(s))
 }
 
 // SetLogHook registers a callback invoked for every timeline entry the moment it
@@ -182,6 +223,8 @@ func (s *SessionState) touch() { s.UpdatedAt = time.Now() }
 // SetLocation records the party's current zone and room, marking the room
 // visited and logging the move.
 func (s *SessionState) SetLocation(zoneID, roomID, roomName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.CurrentZone = zoneID
 	s.CurrentRoom = roomID
 	if roomID != "" {
@@ -198,6 +241,8 @@ func (s *SessionState) SetLocation(zoneID, roomID, roomName string) {
 
 // MeetNPC marks an NPC as met (creating status if needed) and returns it.
 func (s *SessionState) MeetNPC(id, name string) *NPCStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	st := s.KnownNPCs[id]
 	if st == nil {
 		st = &NPCStatus{Alive: true}
@@ -216,8 +261,8 @@ func (s *SessionState) MeetNPC(id, name string) *NPCStatus {
 	return st
 }
 
-// NPCState returns the tracked status for an NPC, creating a default if absent.
-func (s *SessionState) NPCState(id string) *NPCStatus {
+// npcState is the lock-free core of NPCState, for callers already holding s.mu.
+func (s *SessionState) npcState(id string) *NPCStatus {
 	st := s.KnownNPCs[id]
 	if st == nil {
 		st = &NPCStatus{Alive: true}
@@ -226,8 +271,106 @@ func (s *SessionState) NPCState(id string) *NPCStatus {
 	return st
 }
 
+// NPCState returns the tracked status for an NPC, creating a default if absent.
+func (s *SessionState) NPCState(id string) *NPCStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.npcState(id)
+}
+
+// SetNPCDisposition records an NPC's disposition under the lock (the caller must
+// not mutate the returned NPCStatus directly, which would bypass synchronization).
+func (s *SessionState) SetNPCDisposition(id, disposition string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.npcState(id).Disposition = disposition
+	s.record(LogEntry{Type: LogNPC, Message: id + " disposition → " + disposition,
+		Data: map[string]any{"npc": id}})
+	s.touch()
+}
+
+// SetNPCAlive records whether an NPC is alive under the lock.
+func (s *SessionState) SetNPCAlive(id string, alive bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.npcState(id).Alive = alive
+	status := "alive"
+	if !alive {
+		status = "dead"
+	}
+	s.record(LogEntry{Type: LogNPC, Message: id + " is now " + status,
+		Data: map[string]any{"npc": id}})
+	s.touch()
+}
+
+// MutatePC runs fn against the player character under the lock, creating the
+// default character first if needed. All PC-sheet mutations go through here so
+// they are synchronized against serialization.
+func (s *SessionState) MutatePC(fn func(*Character)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.PC == nil {
+		s.PC = NewCharacter("Adventurer", "Human", "Fighter")
+	}
+	fn(s.PC)
+	s.touch()
+}
+
+// AddUserMessage appends a user message to the conversation under the lock.
+func (s *SessionState) AddUserMessage(content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Conversation.AddUserMessage(content)
+}
+
+// AddAssistantMessage appends an assistant message to the conversation under the
+// lock.
+func (s *SessionState) AddAssistantMessage(content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Conversation.AddAssistantMessage(content)
+}
+
+// RecentLog returns a copy of the last n timeline entries under the lock, so a
+// reader (e.g. a UI panel) never iterates the slice while a writer appends.
+func (s *SessionState) RecentLog(n int) []LogEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	last := s.Log.GetLast(n)
+	out := make([]LogEntry, len(last))
+	copy(out, last)
+	return out
+}
+
+// LogLen returns the timeline length under the lock.
+func (s *SessionState) LogLen() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Log.Len()
+}
+
+// ImportStructured replaces the structured progress fields from src under the
+// lock. Used by the Claude-CLI merge path, where a subprocess mutated a copy of
+// the state; the timeline is replayed separately via AppendLog.
+func (s *SessionState) ImportStructured(src *SessionState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.CurrentZone = src.CurrentZone
+	s.CurrentRoom = src.CurrentRoom
+	s.VisitedRooms = src.VisitedRooms
+	s.KnownNPCs = src.KnownNPCs
+	s.TriggeredEvents = src.TriggeredEvents
+	s.Flags = src.Flags
+	s.Variables = src.Variables
+	s.Party = src.Party
+	s.Quests = src.Quests
+	s.PC = src.PC
+}
+
 // TriggerEvent records that a scripted event has fired.
 func (s *SessionState) TriggerEvent(id, name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.TriggeredEvents[id] {
 		return
 	}
@@ -243,6 +386,8 @@ func (s *SessionState) TriggerEvent(id, name string) {
 
 // SetFlag sets a boolean flag and logs it.
 func (s *SessionState) SetFlag(key string, value bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Flags[key] = value
 	s.record(LogEntry{Type: LogFlag, Message: "Flag " + key + " set",
 		Data: map[string]any{"key": key, "value": value}})
@@ -251,6 +396,8 @@ func (s *SessionState) SetFlag(key string, value bool) {
 
 // SetVariable sets a string variable and logs it.
 func (s *SessionState) SetVariable(key, value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Variables[key] = value
 	s.record(LogEntry{Type: LogFlag, Message: "Variable " + key + " = " + value,
 		Data: map[string]any{"key": key, "value": value}})
@@ -261,18 +408,24 @@ func (s *SessionState) SetVariable(key, value string) {
 // state mutations performed by an external tool process (e.g. the MCP tools
 // server) so the log hook (journal) fires for them too.
 func (s *SessionState) AppendLog(e LogEntry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.record(e)
 	s.touch()
 }
 
 // AddNote appends a free-form DM note to the timeline.
 func (s *SessionState) AddNote(text string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.record(LogEntry{Type: LogNote, Message: text})
 	s.touch()
 }
 
 // AdvanceQuest creates or updates a quest's progress.
 func (s *SessionState) AdvanceQuest(id, name, status string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i := range s.Quests {
 		if s.Quests[i].ID == id {
 			s.Quests[i].Status = status
@@ -286,6 +439,99 @@ func (s *SessionState) AdvanceQuest(id, name, status string) {
 	}
 	s.Quests = append(s.Quests, QuestProgress{ID: id, Name: name, Status: status})
 	s.record(LogEntry{Type: LogQuest, Message: "New quest: " + name})
+	s.touch()
+}
+
+// effectiveMode is the lock-free core of EffectiveMode, for callers that already
+// hold s.mu.
+func (s *SessionState) effectiveMode() SessionMode {
+	if s.Mode == "" {
+		return ModeAssistant
+	}
+	return s.Mode
+}
+
+// EffectiveMode returns the session mode, treating the empty zero value as the
+// default assistant mode.
+func (s *SessionState) EffectiveMode() SessionMode {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.effectiveMode()
+}
+
+// SetMode switches the session to the given mode and logs the change.
+func (s *SessionState) SetMode(m SessionMode) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.effectiveMode() == m {
+		return
+	}
+	s.Mode = m
+	label := "Oracle (assistant to human DM)"
+	if m == ModeVirtualDM {
+		label = "Virtual DM (AI runs the game)"
+	}
+	s.record(LogEntry{Type: LogSystem, Message: "Mode switched to " + label,
+		Data: map[string]any{"mode": string(m)}})
+	s.touch()
+}
+
+// ToggleMode flips between assistant and virtual-DM mode and returns the new
+// mode. It delegates to the (locking) EffectiveMode/SetMode, so it takes no lock
+// itself.
+func (s *SessionState) ToggleMode() SessionMode {
+	if s.EffectiveMode() == ModeVirtualDM {
+		s.SetMode(ModeAssistant)
+	} else {
+		s.SetMode(ModeVirtualDM)
+	}
+	return s.EffectiveMode()
+}
+
+// EnsurePC guarantees a player character exists (creating the default adventurer
+// used by virtual-DM mode) and reports whether it created one just now. This is
+// the single place the default sheet is defined, so both frontends and the tool
+// router share it instead of duplicating the literal.
+func (s *SessionState) EnsurePC() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.PC != nil {
+		return false
+	}
+	s.PC = NewCharacter("Adventurer", "Human", "Fighter")
+	return true
+}
+
+// UpsertPartyMember creates or updates a tracked party member under the lock.
+// Non-nil pointers overwrite the corresponding field; a non-empty notes replaces
+// the note.
+func (s *SessionState) UpsertPartyMember(name string, currentHP, maxHP, ac *int, notes string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var pm *PartyMember
+	for _, m := range s.Party {
+		if strings.EqualFold(m.Name, name) {
+			pm = m
+			break
+		}
+	}
+	if pm == nil {
+		pm = &PartyMember{Name: name}
+		s.Party = append(s.Party, pm)
+	}
+	if currentHP != nil {
+		pm.CurrentHP = *currentHP
+	}
+	if maxHP != nil {
+		pm.MaxHP = *maxHP
+	}
+	if ac != nil {
+		pm.AC = *ac
+	}
+	if notes != "" {
+		pm.Notes = notes
+	}
+	s.record(LogEntry{Type: LogParty, Message: "Updated " + name})
 	s.touch()
 }
 
@@ -312,5 +558,7 @@ func NewSession(state *SessionState, adv *Adventure, config *Config) *Session {
 // MarkModified flags the session dirty and touches the timestamp.
 func (s *Session) MarkModified() {
 	s.IsModified = true
+	s.State.mu.Lock()
 	s.State.touch()
+	s.State.mu.Unlock()
 }
