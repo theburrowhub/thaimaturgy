@@ -51,12 +51,11 @@ type gui struct {
 	journal *storage.SessionJournal // append-only chronicle for the active session
 
 	// Session widgets.
-	transcript   *widget.RichText
-	transScroll  *container.Scroll
-	logText      *widget.RichText
-	logScroll    *container.Scroll
-	entry        *widget.Entry
-	transcriptMD string
+	transcriptEntry *widget.Entry // read-only (disabled) multi-line entry: selectable + copyable chat log
+	logText         *widget.RichText
+	logScroll       *container.Scroll
+	entry           *widget.Entry
+	transcriptMD    string // plain-text backing buffer shown in transcriptEntry
 
 	// Adventure browser + detail pane.
 	navTree       *widget.Tree
@@ -79,7 +78,8 @@ type gui struct {
 	leftSplit  *container.Split
 	navCard    *widget.Card
 	pcCard     *widget.Card
-	pcText     *widget.RichText
+	pcSheet    *fyne.Container // tabletop-style character sheet (rebuilt on refresh)
+	pcScroll   *container.Scroll
 
 	// Body layout, so virtual-DM mode can hide the detail pane (spoilers): in DM
 	// mode the body's trailing side is just centerCard; in oracle mode it is the
@@ -361,24 +361,27 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.oracle = engine.NewOracle(g.session, g.prov)
 	g.cmd = engine.NewCommandHandler(g.session)
 
-	g.transcript = widget.NewRichTextFromMarkdown("")
-	g.transcript.Wrapping = fyne.TextWrapWord
-	g.transScroll = container.NewVScroll(g.transcript)
-	g.transcriptMD = fmt.Sprintf("_Running **%s**. Ask a question or type a /command._\n\n", adv.Title)
+	// Chat log: a disabled multi-line entry so the text can be selected and copied
+	// (Fyne RichText can't be selected). It shows plain text (markdown markers
+	// stripped) and auto-scrolls to the newest line.
+	g.transcriptEntry = widget.NewMultiLineEntry()
+	g.transcriptEntry.Wrapping = fyne.TextWrapWord
+	g.transcriptMD = cleanMarkdown(fmt.Sprintf("Running %s. Ask a question or type a /command.", adv.Title)) + "\n\n"
 	// Restore the saved oracle chat when resuming a session so it isn't empty.
 	if state.Conversation != nil {
 		for _, m := range state.Conversation.Messages {
 			switch m.Role {
 			case domain.RoleUser:
-				g.transcriptMD += "**» " + m.Content + "**\n\n"
+				g.transcriptMD += "» " + m.Content + "\n\n"
 			case domain.RoleAssistant:
 				if strings.TrimSpace(m.Content) != "" {
-					g.transcriptMD += m.Content + "\n\n"
+					g.transcriptMD += cleanMarkdown(m.Content) + "\n\n"
 				}
 			}
 		}
 	}
-	g.transcript.ParseMarkdown(g.transcriptMD)
+	g.transcriptEntry.SetText(g.transcriptMD)
+	g.transcriptEntry.Disable() // read-only, but still selectable/copyable
 
 	g.logText = widget.NewRichTextFromMarkdown("")
 	g.logText.Wrapping = fyne.TextWrapWord
@@ -391,18 +394,22 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.detailActions = container.NewHBox()
 	g.navTree = g.buildAdvTree()
 
-	g.entry = widget.NewEntry()
+	// Multi-line input so the DM/player can write several lines (Enter inserts a
+	// newline; the Send button submits).
+	g.entry = widget.NewMultiLineEntry()
+	g.entry.Wrapping = fyne.TextWrapWord
+	g.entry.SetMinRowsVisible(3)
 	g.entry.SetPlaceHolder("Ask the oracle, or type a /command…")
-	g.entry.OnSubmitted = func(s string) { g.submit(s) }
 	g.sendBtn = widget.NewButton("Send", func() { g.submit(g.entry.Text) })
 	sendBtn := g.sendBtn
 
 	// Player-character panel, shown in virtual-DM mode in place of the adventure
-	// browser (which is hidden to avoid spoilers).
-	g.pcText = widget.NewRichTextFromMarkdown("")
-	g.pcText.Wrapping = fyne.TextWrapWord
+	// browser (which is hidden to avoid spoilers). Rebuilt as a tabletop-style
+	// sheet by refreshPCPanel.
+	g.pcSheet = container.NewVBox()
+	g.pcScroll = container.NewVScroll(g.pcSheet)
 	g.navCard = widget.NewCard("Adventure", "", g.navTree)
-	g.pcCard = widget.NewCard("Character", "", container.NewVScroll(g.pcText))
+	g.pcCard = widget.NewCard("Character", "", g.pcScroll)
 
 	// Left column: adventure browser / character sheet (top) + session log (bottom).
 	g.leftSplit = container.NewVSplit(
@@ -414,7 +421,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 
 	// Center: oracle transcript + input.
 	inputRow := container.NewBorder(nil, nil, nil, sendBtn, g.entry)
-	g.centerCard = widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transScroll))
+	g.centerCard = widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transcriptEntry))
 
 	// Right: detail of the selected zone/room/NPC/event/item — prose + navigable
 	// links (top, scrolls together) and the inline image (bottom).
@@ -976,9 +983,17 @@ func (g *gui) exportNovel() {
 }
 
 func (g *gui) appendTranscript(md string) {
-	g.transcriptMD += md + "\n\n"
-	g.transcript.ParseMarkdown(g.transcriptMD)
-	g.transScroll.ScrollToBottom()
+	if g.transcriptEntry == nil {
+		return
+	}
+	g.transcriptMD += cleanMarkdown(md) + "\n\n"
+	g.transcriptEntry.SetText(g.transcriptMD)
+	// Auto-scroll: park the (hidden) cursor on the last row so the entry's internal
+	// scroll follows it to the bottom. ensureCursorVisible runs on Refresh even
+	// while the entry is disabled.
+	g.transcriptEntry.CursorRow = strings.Count(g.transcriptMD, "\n")
+	g.transcriptEntry.CursorColumn = 0
+	g.transcriptEntry.Refresh()
 }
 
 // modeIsDM reports whether the active session is running in virtual-DM mode.
@@ -1039,17 +1054,25 @@ func (g *gui) applyMode() {
 	g.refreshPCPanel()
 }
 
-// refreshPCPanel re-renders the player-character sheet shown in virtual-DM mode.
+// refreshPCPanel rebuilds the tabletop-style player-character sheet shown in
+// virtual-DM mode.
 func (g *gui) refreshPCPanel() {
-	if g.pcText == nil || g.session == nil {
+	if g.pcSheet == nil || g.session == nil {
 		return
 	}
 	pc := g.session.State.PC
 	if pc == nil {
-		g.pcText.ParseMarkdown("_No character yet._\n\nSwitch to **Virtual DM** and a default adventurer is created so you can start playing to test the module.")
-		return
+		g.pcSheet.Objects = []fyne.CanvasObject{
+			widget.NewLabelWithStyle("No character yet.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
+			widget.NewLabel("Switch to Virtual DM and a default adventurer is created so you can start playing to test the module."),
+		}
+	} else {
+		g.pcSheet.Objects = buildPCSheet(pc)
 	}
-	g.pcText.ParseMarkdown("```\n" + engine.FormatCharacter(pc) + "\n```")
+	g.pcSheet.Refresh()
+	if g.pcScroll != nil {
+		g.pcScroll.Refresh()
+	}
 }
 
 // toggleMode flips the session mode (toolbar button); onModeChanged then syncs
