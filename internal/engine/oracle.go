@@ -180,8 +180,15 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 		allowed = append(allowed, fmt.Sprintf("mcp__%s__%s", mcptools.ServerName, d.Name))
 	}
 
+	// The CLI+MCP path runs Claude Code's full agentic tool-calling loop, which is
+	// far slower than a single API call — MCP server startup plus several tool
+	// iterations. Give it a generous timeout of its own so a normal turn isn't
+	// killed by the short per-request deadline ("signal: killed").
+	cctx, cancel := cliContext(ctx)
+	defer cancel()
+
 	start := time.Now()
-	answer, err := cli.RunWithMCP(ctx, o.session.Config.Model, o.buildSystemPrompt(), input, cfgPath, allowed)
+	answer, err := cli.RunWithMCP(cctx, o.session.Config.Model, o.buildSystemPrompt(), input, cfgPath, allowed)
 	if err != nil {
 		resp.Error = fmt.Errorf("AI request failed: %w", err)
 		return resp
@@ -196,6 +203,24 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	o.session.MarkModified()
 	resp.Answer = answer
 	return resp
+}
+
+// cliMinTimeout is the floor for a Claude-CLI agentic turn (MCP startup + several
+// tool iterations), regardless of the short per-request timeout used for direct
+// API calls.
+const cliMinTimeout = 5 * time.Minute
+
+// cliContext derives a context for the CLI+MCP turn: it detaches from the
+// caller's (short) deadline and grants at least cliMinTimeout — more if the
+// caller's own deadline was already longer.
+func cliContext(parent context.Context) (context.Context, context.CancelFunc) {
+	timeout := cliMinTimeout
+	if dl, ok := parent.Deadline(); ok {
+		if remaining := time.Until(dl); remaining > timeout {
+			timeout = remaining
+		}
+	}
+	return context.WithTimeout(context.WithoutCancel(parent), timeout)
 }
 
 func tempFile(pattern string) (string, error) {

@@ -137,6 +137,11 @@ func (p *ClaudeCLIProvider) run(ctx context.Context, args []string, stdin string
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		// A killed process almost always means our context deadline fired; surface
+		// that clearly instead of the opaque "signal: killed".
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("claude CLI timed out or was canceled: %w", ctx.Err())
+		}
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = err.Error()
