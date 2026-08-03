@@ -463,6 +463,23 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 		g.showDetail("room:" + g.session.State.CurrentZone + "::" + g.session.State.CurrentRoom)
 	}
 	g.win.Canvas().Focus(g.entry)
+	// Jump to the end of the history so a resumed session opens on the newest line.
+	g.scrollTranscriptToBottom()
+}
+
+// scrollTranscriptToBottom scrolls the chat log to the newest message. It scrolls
+// immediately and once more after a short delay, because at session-open time the
+// content size isn't laid out yet, so the first call alone would be a no-op.
+func (g *gui) scrollTranscriptToBottom() {
+	s := g.transScroll
+	if s == nil {
+		return
+	}
+	s.ScrollToBottom()
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		fyne.Do(func() { s.ScrollToBottom() })
+	}()
 }
 
 // --- Adventure browser ---------------------------------------------------
