@@ -57,7 +57,7 @@ type gui struct {
 	transScroll   *container.Scroll
 	logText       *widget.RichText
 	logScroll     *container.Scroll
-	entry         *widget.Entry
+	entry         *chatEntry
 
 	// Adventure browser + detail pane.
 	navTree       *widget.Tree
@@ -394,12 +394,11 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.detailActions = container.NewHBox()
 	g.navTree = g.buildAdvTree()
 
-	// Multi-line input so the DM/player can write several lines (Enter inserts a
-	// newline; the Send button submits).
-	g.entry = widget.NewMultiLineEntry()
-	g.entry.Wrapping = fyne.TextWrapWord
+	// Multi-line input with chat-style keys: Enter submits, Ctrl/Cmd+Enter inserts
+	// a newline. The Send button also submits.
+	g.entry = newChatEntry(func(s string) { g.submit(s) })
 	g.entry.SetMinRowsVisible(3)
-	g.entry.SetPlaceHolder("Ask the oracle, or type a /command…")
+	g.entry.SetPlaceHolder("Ask the oracle, or type a /command… (Enter sends, ⌘/Ctrl+Enter = newline)")
 	g.sendBtn = widget.NewButton("Send", func() { g.submit(g.entry.Text) })
 	sendBtn := g.sendBtn
 
@@ -1045,9 +1044,9 @@ func (g *gui) applyMode() {
 	}
 	if g.entry != nil {
 		if dm {
-			g.entry.SetPlaceHolder("What do you do? (you play the character; the AI is the DM)")
+			g.entry.SetPlaceHolder("What do you do?  (Enter sends · ⌘/Ctrl+Enter = newline)")
 		} else {
-			g.entry.SetPlaceHolder("Ask the oracle, or type a /command…")
+			g.entry.SetPlaceHolder("Ask the oracle, or type a /command…  (Enter sends · ⌘/Ctrl+Enter = newline)")
 		}
 	}
 	if g.leftSplit != nil {
