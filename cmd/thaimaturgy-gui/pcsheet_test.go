@@ -1,6 +1,26 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/theburrowhub/thaimaturgy/internal/domain"
+)
+
+func TestBuildPCSheet(t *testing.T) {
+	c := domain.NewCharacter("Kael", "Elf", "Wizard")
+	c.AddItem(domain.InventoryItem{Name: "Dagger", Quantity: 2, Equipped: true})
+	c.AddCondition(domain.ConditionPoisoned)
+	c.Notes = "Seeks the lost tome."
+
+	objs := buildPCSheet(c)
+	if len(objs) == 0 {
+		t.Fatal("buildPCSheet returned no objects")
+	}
+	// A minimal character (no inventory/conditions/notes) must also render.
+	if len(buildPCSheet(domain.NewCharacter("Bob", "Human", "Fighter"))) == 0 {
+		t.Error("buildPCSheet returned no objects for a bare character")
+	}
+}
 
 func TestCleanMarkdown(t *testing.T) {
 	tests := []struct {

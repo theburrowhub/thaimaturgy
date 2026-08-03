@@ -211,8 +211,10 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 const cliMinTimeout = 5 * time.Minute
 
 // cliContext derives a context for the CLI+MCP turn: it detaches from the
-// caller's (short) deadline and grants at least cliMinTimeout — more if the
-// caller's own deadline was already longer.
+// caller's (short) *deadline* — granting at least cliMinTimeout, or more if the
+// caller's deadline was already longer — while still honouring an *explicit*
+// cancellation of the parent, so closing the session/app kills the CLI subprocess
+// instead of leaving it (and its MCP server) orphaned until the timeout.
 func cliContext(parent context.Context) (context.Context, context.CancelFunc) {
 	timeout := cliMinTimeout
 	if dl, ok := parent.Deadline(); ok {
@@ -220,7 +222,18 @@ func cliContext(parent context.Context) (context.Context, context.CancelFunc) {
 			timeout = remaining
 		}
 	}
-	return context.WithTimeout(context.WithoutCancel(parent), timeout)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), timeout)
+	// Propagate a real cancel (not the short deadline) from the parent.
+	go func() {
+		select {
+		case <-parent.Done():
+			if parent.Err() == context.Canceled {
+				cancel()
+			}
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
 }
 
 func tempFile(pattern string) (string, error) {

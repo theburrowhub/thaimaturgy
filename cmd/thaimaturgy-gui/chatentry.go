@@ -46,6 +46,13 @@ func (e *chatEntry) KeyUp(key *fyne.KeyEvent) {
 	e.Entry.KeyUp(key)
 }
 
+// FocusLost clears the tracked shift state so a Shift held while focus leaves
+// (its KeyUp never arriving) can't make the next Enter insert a newline.
+func (e *chatEntry) FocusLost() {
+	e.shiftDown = false
+	e.Entry.FocusLost()
+}
+
 // TypedKey submits on a plain Return/Enter and inserts a newline on Shift+Enter.
 // When the entry is disabled (e.g. an oracle request is in flight) it delegates
 // to the base widget so a keystroke can't bypass the busy guard and fire another
