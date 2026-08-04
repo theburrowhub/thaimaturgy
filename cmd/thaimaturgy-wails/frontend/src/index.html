@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>thAImaturgy — DM Oracle</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark"></span><div><strong>thAImaturgy</strong><small>DM ORACLE COCKPIT</small></div></div>
+      <div class="crumbs"><span id="crumb-adventure">Library</span><span>/</span><span id="crumb-room">Choose an adventure</span></div>
+      <div class="top-actions"><button id="refresh-btn" class="ghost">Refresh</button><button id="new-session-btn" class="primary">Start session</button></div>
+    </header>
+
+    <main class="shell">
+      <aside class="col library-col">
+        <section class="panel">
+          <div class="panel-head"><span>Adventure tree</span><em id="adventure-count">0 modules</em></div>
+          <input id="search" class="search" placeholder="Search rooms, NPCs, events…" />
+          <div id="library-list" class="adventure-list"></div>
+        </section>
+        <section class="panel sessions-panel">
+          <div class="panel-head"><span>Sessions</span><em id="session-count">0 saves</em></div>
+          <div id="session-list" class="session-list"></div>
+        </section>
+      </aside>
+
+      <section class="col oracle-col">
+        <div class="oracle-stage">
+          <div class="orb"></div>
+          <div>
+            <p class="kicker">Current operation</p>
+            <h1 id="session-title">Select an adventure</h1>
+            <p id="session-subtitle">Wails desktop shell with the approved DM Oracle design.</p>
+          </div>
+        </div>
+        <div id="transcript" class="transcript"></div>
+        <form id="composer" class="composer">
+          <textarea id="command" rows="1" placeholder="Type /goto room_id, /room, /roll 1d20+4, or a DM note…"></textarea>
+          <button class="primary" type="submit">Send</button>
+        </form>
+      </section>
+
+      <aside class="col detail-col">
+        <section class="panel inspector">
+          <div class="panel-head"><span>Detail inspector</span><em id="room-id">—</em></div>
+          <div id="detail-content" class="detail-content empty">Start or load a session to inspect the current room.</div>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>

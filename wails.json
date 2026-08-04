@@ -1,0 +1,14 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "thAImaturgy",
+  "outputfilename": "thaimaturgy-wails",
+  "frontend:dir": "cmd/thaimaturgy-wails/frontend",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "The Burrow Hub",
+    "email": ""
+  }
+}
