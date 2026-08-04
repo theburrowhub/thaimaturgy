@@ -34,6 +34,9 @@ type TurnRound struct {
 func (s *SessionState) ClaimCharacter(playerID, displayName, charName string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if strings.TrimSpace(charName) == "" {
+		return "", fmt.Errorf("name a character to play")
+	}
 	c := s.resolveCharacter(charName)
 	if c == nil {
 		return "", fmt.Errorf("no character %q in the party", charName)
@@ -45,6 +48,11 @@ func (s *SessionState) ClaimCharacter(playerID, displayName, charName string) (s
 	}
 	if s.Players == nil {
 		s.Players = make(map[string]*PlayerSlot)
+	}
+	// Switching to a different character invalidates this player's pending action
+	// (it was recorded under the old character), so drop it.
+	if old, ok := s.Players[playerID]; ok && !strings.EqualFold(old.CharacterName, c.Name) && s.Round != nil {
+		s.Round.Actions = filterActions(s.Round.Actions, playerID)
 	}
 	s.Players[playerID] = &PlayerSlot{DisplayName: displayName, CharacterName: c.Name}
 	s.record(LogEntry{Type: LogParty, Message: fmt.Sprintf("%s now plays %s", displayName, c.Name),
@@ -128,6 +136,29 @@ func (s *SessionState) ResetRound() {
 	if s.Round != nil {
 		s.Round.Actions = nil
 	}
+	s.touch()
+}
+
+// RemoveResolvedActions drops exactly the given actions (matched by player and
+// timestamp) from the round buffer, leaving any actions submitted after they were
+// snapshotted — e.g. while the DM was resolving the turn — so those aren't lost.
+func (s *SessionState) RemoveResolvedActions(resolved []RoundAction) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Round == nil || len(resolved) == 0 {
+		return
+	}
+	drop := make(map[string]bool, len(resolved))
+	for _, a := range resolved {
+		drop[a.PlayerID+"|"+a.At.Format(time.RFC3339Nano)] = true
+	}
+	kept := s.Round.Actions[:0]
+	for _, a := range s.Round.Actions {
+		if !drop[a.PlayerID+"|"+a.At.Format(time.RFC3339Nano)] {
+			kept = append(kept, a)
+		}
+	}
+	s.Round.Actions = kept
 	s.touch()
 }
 

@@ -130,7 +130,9 @@ func (o *Oracle) RunGroupTurn(ctx context.Context) *Response {
 	}
 	resp := o.Ask(ctx, composeRoundInput(actions, o.session.Config.Language))
 	if resp.Error == nil {
-		o.session.State.ResetRound()
+		// Drop only the actions we actually resolved, so anything submitted while
+		// the DM was thinking survives into the next round.
+		o.session.State.RemoveResolvedActions(actions)
 	}
 	return resp
 }
