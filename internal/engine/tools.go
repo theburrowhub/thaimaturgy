@@ -676,6 +676,12 @@ func (tr *ToolRouter) mutatePC(id string, args map[string]any, fn func(*domain.C
 		}
 		return errResult(id, fmt.Sprintf("no character %q in the party: %s", name, party))
 	}
+	// An empty message means the closure made no effective change (e.g. removing an
+	// item the character doesn't have): don't log an empty entry or mark modified —
+	// the caller reports the outcome.
+	if msg == "" {
+		return okResult(id, "")
+	}
 	tr.state().AppendLog(domain.LogEntry{Type: domain.LogParty, Message: msg})
 	tr.session.MarkModified()
 	return okResult(id, msg)

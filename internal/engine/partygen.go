@@ -29,9 +29,17 @@ type partyRoster struct {
 // sensible defaults (Human/Fighter/level 1).
 func GeneratePartyFromSpecs(specs []PartyMemberSpec) []*domain.Character {
 	party := make([]*domain.Character, 0, len(specs))
+	perRace := map[string]int{} // distinct sample names per race for unnamed entries
 	for _, s := range specs {
-		party = append(party, domain.GenerateCharacter(s.Name, s.Race, s.Class, s.Level))
+		name := strings.TrimSpace(s.Name)
+		if name == "" {
+			key := strings.ToLower(domain.NormalizeRace(s.Race))
+			name = domain.SampleName(s.Race, perRace[key])
+			perRace[key]++
+		}
+		party = append(party, domain.GenerateCharacter(name, s.Race, s.Class, s.Level))
 	}
+	domain.EnsureUniqueNames(party) // safety net against any remaining duplicates
 	return party
 }
 

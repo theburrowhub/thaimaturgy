@@ -367,7 +367,7 @@ func (s *SessionState) resolveCharacter(name string) *Character {
 		return nil
 	}
 	for _, c := range s.Characters {
-		if strings.EqualFold(c.Name, name) {
+		if c != nil && strings.EqualFold(c.Name, name) {
 			return c
 		}
 	}
@@ -581,11 +581,14 @@ func (s *SessionState) EnsureParty() bool {
 func (s *SessionState) SetParty(party []*Character) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	EnsureUniqueNames(party)
 	s.PC = nil
 	s.Characters = party
 	names := make([]string, 0, len(party))
 	for _, c := range party {
-		names = append(names, c.Name)
+		if c != nil {
+			names = append(names, c.Name)
+		}
 	}
 	s.record(LogEntry{Type: LogParty, Message: "Party set: " + strings.Join(names, ", ")})
 	s.touch()
@@ -597,7 +600,9 @@ func (s *SessionState) PartyNames() []string {
 	defer s.mu.Unlock()
 	out := make([]string, 0, len(s.Characters))
 	for _, c := range s.Characters {
-		out = append(out, c.Name)
+		if c != nil {
+			out = append(out, c.Name)
+		}
 	}
 	return out
 }
@@ -610,6 +615,9 @@ func (s *SessionState) PartySnapshot() []Character {
 	s.migratePC()
 	out := make([]Character, 0, len(s.Characters))
 	for _, c := range s.Characters {
+		if c == nil {
+			continue
+		}
 		cp := *c
 		cp.Skills = append([]Skill(nil), c.Skills...)
 		cp.Inventory = append([]InventoryItem(nil), c.Inventory...)

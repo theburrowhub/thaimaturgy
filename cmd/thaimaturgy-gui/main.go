@@ -164,6 +164,11 @@ func runMCPTools(args []string) error {
 	if err := json.Unmarshal(data, &st); err != nil {
 		return err
 	}
+	// In virtual-DM mode make sure the party exists, so the character tools have
+	// members to target even if this subprocess is the first to touch it.
+	if st.EffectiveMode() == domain.ModeVirtualDM {
+		st.EnsureParty()
+	}
 	session := domain.NewSession(&st, adv, domain.DefaultConfig())
 	router := engine.NewToolRouter(session)
 	save := func() {

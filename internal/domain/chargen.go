@@ -1,6 +1,9 @@
 package domain
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // This file generates D&D-style player characters from a race, class and level,
 // assigning ability scores, HP, AC, proficiency bonus, speed, skills and starting
@@ -174,6 +177,37 @@ func sampleName(ri raceInfo, class string) string {
 		return ri.names[0]
 	}
 	return "The " + class
+}
+
+// SampleName returns the i-th sample name for a race (wrapping the pool), so
+// callers generating several unnamed members of the same race get distinct
+// names. Falls back to a generic name if the race has no pool.
+func SampleName(race string, i int) string {
+	ri := raceTable[strings.ToLower(NormalizeRace(race))]
+	if len(ri.names) == 0 {
+		return fmt.Sprintf("Adventurer %d", i+1)
+	}
+	if i < 0 {
+		i = 0
+	}
+	return ri.names[i%len(ri.names)]
+}
+
+// EnsureUniqueNames disambiguates duplicate (case-insensitive) party names in
+// place by suffixing repeats (" 2", " 3", …), so every member is addressable by
+// a distinct name.
+func EnsureUniqueNames(party []*Character) {
+	seen := map[string]int{}
+	for _, c := range party {
+		if c == nil {
+			continue
+		}
+		key := strings.ToLower(c.Name)
+		seen[key]++
+		if seen[key] > 1 {
+			c.Name = fmt.Sprintf("%s %d", c.Name, seen[key])
+		}
+	}
 }
 
 // defaultRoster is the heterogeneous level-1 party created when none is set:

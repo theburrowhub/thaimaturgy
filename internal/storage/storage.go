@@ -243,6 +243,11 @@ func (s *Storage) RenameSession(oldName, newName string) error {
 	if err := s.SaveSession(state); err != nil {
 		return err
 	}
+	// Move the append-only journal alongside the session so the chronicle stays
+	// with it (and a later session reusing the old name can't inherit it).
+	if err := os.Rename(s.sessionJournalPath(oldName), s.sessionJournalPath(newName)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to move session journal: %w", err)
+	}
 	return s.DeleteSession(oldName)
 }
 
