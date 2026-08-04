@@ -144,6 +144,9 @@ type SessionState struct {
 	// turn until the DM resolves it. Both are empty in single-player use.
 	Players map[string]*PlayerSlot `json:"players,omitempty"`
 	Round   *TurnRound             `json:"round,omitempty"`
+	// Started marks that the game has begun (the DM gave the opening scene). Before
+	// it is set, a multiplayer front-end accepts only setup/start commands.
+	Started bool `json:"started,omitempty"`
 
 	// Free-form timeline and running summary.
 	Log     *SessionLog `json:"log"`

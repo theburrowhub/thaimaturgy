@@ -57,6 +57,9 @@ func New(store *storage.Storage, session *domain.Session, oracle *engine.Oracle,
 	if err != nil {
 		return nil, err
 	}
+	// A session already played (in the GUI or a prior run) shouldn't demand /begin
+	// or re-narrate an opening — treat it as started when there's evidence.
+	session.State.MarkStartedIfInProgress()
 	return &Bot{
 		api:     api,
 		store:   store,
@@ -122,7 +125,11 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 	arg := strings.TrimSpace(m.CommandArguments())
 
 	switch m.Command() {
+	case "begin", "beginadventure":
+		b.startGame(m)
 	case "start", "help":
+		// /start is what Telegram auto-sends when a user opens the chat, so it must
+		// stay harmless (help) — the game is begun explicitly with /begin.
 		b.reply(m, helpText)
 	case "chatid":
 		b.reply(m, fmt.Sprintf("This chat's id is: %d\nUse it as the chat id to restrict the bot to this chat.", m.Chat.ID))
@@ -140,6 +147,10 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 	case "me":
 		b.reply(m, b.sheetText(playerID))
 	case "do":
+		if !b.session.State.GameStarted() {
+			b.reply(m, notStartedMsg)
+			return
+		}
 		if arg == "" {
 			b.reply(m, "Usage: /do <what your character does>")
 			return
@@ -152,12 +163,82 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.event(fmt.Sprintf("%s: %s", display, arg))
 		b.reply(m, b.roundStatus())
 	case "dm", "narrate":
+		if !b.session.State.GameStarted() {
+			b.reply(m, notStartedMsg)
+			return
+		}
 		b.runDM(m)
 	case "roll":
 		b.reply(m, rollText(arg))
 	default:
 		b.reply(m, "Unknown command. "+helpText)
 	}
+}
+
+// startGame begins the game: the DM sets the opening scene, then hands off to the
+// players. Before this, /do and /dm are ignored. Idempotent — a second /start
+// once underway just says so.
+func (b *Bot) startGame(m *tgbotapi.Message) {
+	if b.session.State.GameStarted() {
+		b.reply(m, "The game is already underway — declare actions with /do, then /dm.")
+		return
+	}
+	if b.session.State.PlayerCount() == 0 {
+		b.reply(m, "Everyone pick a character first (/party then /pick <name>), then /begin.")
+		return
+	}
+	b.mu.Lock()
+	if b.resolving {
+		b.mu.Unlock()
+		b.reply(m, "The DM is busy — hang on…")
+		return
+	}
+	b.resolving = true
+	b.mu.Unlock()
+
+	b.reply(m, "🎬 The DM is setting the scene…")
+	b.turns.Add(1)
+	go func() {
+		defer b.turns.Done()
+		defer func() {
+			b.mu.Lock()
+			b.resolving = false
+			b.mu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(b.turnBase(), b.turnTimeout())
+		defer cancel()
+
+		resp := b.oracle.Ask(ctx, domain.DMKickoffPrompt(b.session.Config.Language))
+		if b.turnBase().Err() != nil {
+			return
+		}
+		if resp.Error != nil {
+			log.Printf("intro: %v", resp.Error)
+			b.send(m.Chat.ID, "⚠ The DM couldn't set the scene right now. Try /start again in a moment.")
+			return
+		}
+		b.session.State.StartGame()
+		b.save()
+		b.event("DM: " + resp.Answer)
+		b.send(m.Chat.ID, resp.Answer)
+	}()
+}
+
+// turnBase returns the parent context for a DM turn (the Run ctx, so Stop cancels
+// an in-flight turn), defaulting to Background before Run is called.
+func (b *Bot) turnBase() context.Context {
+	if b.runCtx == nil {
+		return context.Background()
+	}
+	return b.runCtx
+}
+
+// turnTimeout is the per-turn timeout from config (90s default).
+func (b *Bot) turnTimeout() time.Duration {
+	if t := time.Duration(b.session.Config.RequestTimeoutSeconds) * time.Second; t > 0 {
+		return t
+	}
+	return 90 * time.Second
 }
 
 // runDM resolves the current round with the AI DM and posts the narration. Only
@@ -186,21 +267,13 @@ func (b *Bot) runDM(m *tgbotapi.Message) {
 			b.resolving = false
 			b.mu.Unlock()
 		}()
-		timeout := time.Duration(b.session.Config.RequestTimeoutSeconds) * time.Second
-		if timeout <= 0 {
-			timeout = 90 * time.Second
-		}
-		base := b.runCtx
-		if base == nil {
-			base = context.Background()
-		}
-		ctx, cancel := context.WithTimeout(base, timeout)
+		ctx, cancel := context.WithTimeout(b.turnBase(), b.turnTimeout())
 		defer cancel()
 
 		resp := b.oracle.RunGroupTurn(ctx)
 		// If the host was torn down (Run ctx cancelled) mid-turn, don't save or
 		// post to a game that's been abandoned.
-		if base.Err() != nil {
+		if b.turnBase().Err() != nil {
 			return
 		}
 		if resp.Error != nil {
@@ -336,12 +409,15 @@ func displayName(u *tgbotapi.User) string {
 	return "Player" + strconv.FormatInt(u.ID, 10)
 }
 
+const notStartedMsg = "The game hasn't started yet. Pick characters with /pick, then a player runs /begin and the DM sets the scene."
+
 const helpText = `thAImaturgy — multiplayer DM bot
 /party — list characters and who plays them
 /pick <name> — claim a character to play
 /me — show your character sheet
-/do <action> — declare your character's action this round
-/dm — let the AI Dungeon Master resolve the round and narrate
+/begin — start the game (the DM sets the opening scene)
+/do <action> — declare your character's action this round (after /begin)
+/dm — let the AI Dungeon Master resolve the round and narrate (after /begin)
 /roll <dice> — roll dice (e.g. 2d6+3)
 /chatid — show this chat's id
 /help — this help`

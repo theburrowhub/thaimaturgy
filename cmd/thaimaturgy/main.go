@@ -1173,6 +1173,7 @@ func (g *gui) onModeChanged() {
 	if dm {
 		g.appendTranscript("_🎲 **Virtual DM mode** — the AI now runs the game for your party. Type what you do; toggle back to Oracle any time._")
 		if firstTime {
+			g.session.State.StartGame() // the opening scene counts as starting the game (so a Telegram host won't re-intro)
 			g.ask(domain.DMKickoffPrompt(g.config.Language))
 		}
 	} else {
