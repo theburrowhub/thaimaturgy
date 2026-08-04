@@ -106,6 +106,55 @@ func TestAppLibraryManagementAndAdventureDetail(t *testing.T) {
 	}
 }
 
+func TestAppFullSettingsAndExports(t *testing.T) {
+	store := testStore(t)
+	writeAdventure(t, store, sampleAdventure())
+	app, _ := NewWithStorage(store)
+	cfg, err := app.SaveConfig(ConfigPayload{
+		Provider:                "anthropic",
+		Model:                   "base-model",
+		RunModel:                "run-model",
+		EditModel:               "edit-model",
+		Language:                "es",
+		ImportLanguage:          "Spanish",
+		Temperature:             0.42,
+		MaxTokens:               4096,
+		ImportMaxOutputTokens:   8192,
+		OracleMaxToolIterations: 7,
+		RequestTimeoutSeconds:   120,
+		AutoSave:                true,
+		AutoSaveInterval:        17,
+		TTSEnabled:              true,
+		TTSVoice:                "nova",
+		TTSModel:                "tts-test",
+		TTSSpeed:                1.1,
+	})
+	if err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if cfg.ImportLanguage != "Spanish" || cfg.TTSVoice != "nova" || cfg.AutoSaveInterval != 17 || cfg.MaxTokens != 4096 {
+		t.Fatalf("config payload lost full settings: %+v", cfg)
+	}
+	if _, err := app.StartSession("crypt"); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	out := filepath.Join(t.TempDir(), "crypt-dmbook.md")
+	res, err := app.ExportDMBook(out, false)
+	if err != nil {
+		t.Fatalf("ExportDMBook: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("ExportDMBook result = %+v", res)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("Read exported DM book: %v", err)
+	}
+	if !strings.Contains(string(data), "# The Sunken Crypt") || !strings.Contains(string(data), "Entry Hall") {
+		t.Fatalf("unexpected DM book: %s", data)
+	}
+}
+
 func testStore(t *testing.T) *storage.Storage {
 	t.Helper()
 	store, err := storage.NewWithPath(t.TempDir())

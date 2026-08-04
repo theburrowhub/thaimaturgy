@@ -10,6 +10,14 @@ export function DeleteSession(arg1) {
   return window['go']['wailsapp']['App']['DeleteSession'](arg1);
 }
 
+export function ExportDMBook(arg1, arg2) {
+  return window['go']['wailsapp']['App']['ExportDMBook'](arg1, arg2);
+}
+
+export function ExportNovel(arg1, arg2) {
+  return window['go']['wailsapp']['App']['ExportNovel'](arg1, arg2);
+}
+
 export function GetAdventure(arg1) {
   return window['go']['wailsapp']['App']['GetAdventure'](arg1);
 }
@@ -48,6 +56,10 @@ export function MoveParty(arg1) {
 
 export function NewAdventureTemplate() {
   return window['go']['wailsapp']['App']['NewAdventureTemplate']();
+}
+
+export function PackageAdventure(arg1, arg2) {
+  return window['go']['wailsapp']['App']['PackageAdventure'](arg1, arg2);
 }
 
 export function RenameSession(arg1, arg2) {

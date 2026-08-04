@@ -7,6 +7,10 @@ export function DeleteAdventure(arg1:string):Promise<wailsapp.LibraryPayload>;
 
 export function DeleteSession(arg1:string):Promise<wailsapp.LibraryPayload>;
 
+export function ExportDMBook(arg1:string,arg2:boolean):Promise<wailsapp.SubmitResult>;
+
+export function ExportNovel(arg1:string,arg2:boolean):Promise<wailsapp.SubmitResult>;
+
 export function GetAdventure(arg1:string):Promise<domain.Adventure>;
 
 export function GetConfig():Promise<wailsapp.ConfigPayload>;
@@ -26,6 +30,8 @@ export function MarkNPCMet(arg1:string):Promise<wailsapp.SessionPayload>;
 export function MoveParty(arg1:string):Promise<wailsapp.SessionPayload>;
 
 export function NewAdventureTemplate():Promise<domain.Adventure>;
+
+export function PackageAdventure(arg1:string,arg2:string):Promise<wailsapp.SubmitResult>;
 
 export function RenameSession(arg1:string,arg2:string):Promise<wailsapp.LibraryPayload>;
 

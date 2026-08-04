@@ -14,6 +14,10 @@
       <div class="top-actions">
         <button id="library-btn" class="btn ghost">Library</button>
         <button id="settings-btn" class="btn ghost">Settings</button>
+        <button id="dice-btn" class="btn ghost hidden">Dice</button>
+        <button id="mode-btn" class="btn ghost hidden">Mode: Oracle</button>
+        <button id="export-dmbook-btn" class="btn ghost hidden">Export DM book</button>
+        <button id="export-novel-btn" class="btn ghost hidden">Export novel</button>
         <button id="save-session-btn" class="btn ghost hidden">Save</button>
         <button id="start-btn" class="btn primary">Start session</button>
       </div>
@@ -53,7 +57,9 @@
       <aside class="panel detail-panel"><div class="panel-title"><span>Detail</span><small id="detail-subtitle">Scene notes and references</small></div><div id="detail-actions" class="tool-row"></div><article id="detail" class="detail-content"></article><div id="detail-links" class="detail-links"></div></aside>
     </main>
 
-    <dialog id="settings-dialog"><form method="dialog" class="settings"><h2>Settings</h2><label>Provider<input id="cfg-provider"></label><label>Model<input id="cfg-model"></label><label>Run model<input id="cfg-run-model"></label><label>Edit model<input id="cfg-edit-model"></label><label>Language<input id="cfg-language"></label><label>Telegram chat ID<input id="cfg-chat-id" type="number"></label><label class="check"><input id="cfg-autosave" type="checkbox"> Auto-save</label><div class="dialog-actions"><button value="cancel" class="btn ghost">Cancel</button><button id="settings-save" value="default" class="btn primary">Save settings</button></div><p id="settings-meta" class="status"></p></form></dialog>
+    <dialog id="settings-dialog"><form method="dialog" class="settings"><h2>Settings</h2><label>Provider<input id="cfg-provider"></label><label>Model<input id="cfg-model"></label><label>Run model<input id="cfg-run-model"></label><label>Edit model<input id="cfg-edit-model"></label><label>UI language<input id="cfg-language"></label><label>Import language<input id="cfg-import-language"></label><label>Temperature<input id="cfg-temperature" type="number" step="0.01"></label><label>Max tokens<input id="cfg-max-tokens" type="number"></label><label>Import max output tokens<input id="cfg-import-tokens" type="number"></label><label>Oracle max tool iterations<input id="cfg-tool-iter" type="number"></label><label>Request timeout seconds<input id="cfg-timeout" type="number"></label><label>Autosave interval seconds<input id="cfg-autosave-interval" type="number"></label><label class="check"><input id="cfg-autosave" type="checkbox"> Auto-save</label><label class="check"><input id="cfg-tts-enabled" type="checkbox"> TTS enabled</label><label>TTS voice<input id="cfg-tts-voice"></label><label>TTS model<input id="cfg-tts-model"></label><label>TTS speed<input id="cfg-tts-speed" type="number" step="0.1"></label><label>Telegram chat ID<input id="cfg-chat-id" type="number"></label><div class="dialog-actions"><button value="cancel" class="btn ghost">Cancel</button><button id="settings-save" value="default" class="btn primary">Save settings</button></div><p id="settings-meta" class="status"></p></form></dialog>
+    <dialog id="dice-dialog"><form method="dialog" class="settings"><h2>Dice</h2><label>Notation<input id="dice-notation" value="1d20"></label><div class="dialog-actions"><button value="cancel" class="btn ghost">Cancel</button><button id="dice-roll" value="default" class="btn primary">Roll</button></div></form></dialog>
+    <dialog id="export-dialog"><form method="dialog" class="settings"><h2 id="export-title">Export</h2><label>Output path<input id="export-path"></label><label class="check"><input id="export-pdf" type="checkbox"> PDF instead of Markdown</label><div class="dialog-actions"><button value="cancel" class="btn ghost">Cancel</button><button id="export-run" value="default" class="btn primary">Export</button></div></form></dialog>
   </div>
   <script src="./app.js"></script>
 </body>
