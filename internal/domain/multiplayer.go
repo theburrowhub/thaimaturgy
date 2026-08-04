@@ -189,7 +189,9 @@ func (s *SessionState) Controllers() map[string]string {
 	defer s.mu.Unlock()
 	out := make(map[string]string, len(s.Players))
 	for _, slot := range s.Players {
-		out[slot.CharacterName] = slot.DisplayName
+		if slot.CharacterName != "" {
+			out[slot.CharacterName] = slot.DisplayName
+		}
 	}
 	return out
 }

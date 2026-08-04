@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
@@ -71,6 +72,7 @@ type bot struct {
 
 	mu        sync.Mutex // guards resolving
 	resolving bool       // a /dm turn is in flight
+	saveMu    sync.Mutex // serializes session file writes across goroutines
 }
 
 func newBot(token, advID, sessionName string, chatID int64) (*bot, error) {
@@ -132,6 +134,9 @@ func newBot(token, advID, sessionName string, chatID int64) (*bot, error) {
 
 func (b *bot) run() {
 	log.Printf("thaimaturgy-bot online as @%s — adventure %q, session %q", b.api.Self.UserName, b.session.Adventure.ID, b.name)
+	if b.chatID == 0 {
+		log.Printf("WARNING: -chat not set — any chat that finds this bot can play and trigger LLM turns; set -chat <id> to restrict.")
+	}
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
 	for update := range b.api.GetUpdatesChan(u) {
@@ -221,7 +226,9 @@ func (b *bot) runDM(m *tgbotapi.Message) {
 
 		resp := b.oracle.RunGroupTurn(ctx)
 		if resp.Error != nil {
-			b.send(m.Chat.ID, "⚠ The DM couldn't resolve the turn: "+resp.Error.Error())
+			// Log the detail; don't leak provider/paths to the chat.
+			log.Printf("group turn: %v", resp.Error)
+			b.send(m.Chat.ID, "⚠ The DM couldn't resolve the turn right now. Try /dm again in a moment.")
 			return
 		}
 		b.save()
@@ -286,7 +293,16 @@ func rollText(notation string) string {
 	return msg
 }
 
-func (b *bot) save() { _ = b.store.SaveSession(b.session.State) }
+// save persists the session, serialized so the /dm goroutine and the update loop
+// can't write the same session file concurrently (which could corrupt it). The
+// in-memory marshal itself is already synchronized by SessionState.MarshalJSON.
+func (b *bot) save() {
+	b.saveMu.Lock()
+	defer b.saveMu.Unlock()
+	if err := b.store.SaveSession(b.session.State); err != nil {
+		log.Printf("save: %v", err)
+	}
+}
 
 func (b *bot) reply(m *tgbotapi.Message, text string) { b.send(m.Chat.ID, text) }
 
@@ -310,7 +326,15 @@ func splitMessage(text string, limit int) []string {
 	for len(text) > limit {
 		cut := strings.LastIndex(text[:limit], "\n")
 		if cut <= 0 {
+			// No newline to break on: cut at the limit but back up to a UTF-8 rune
+			// boundary so a multibyte character (e.g. ó/ñ in Spanish) isn't split.
 			cut = limit
+			for cut > 0 && !utf8.RuneStart(text[cut]) {
+				cut--
+			}
+			if cut == 0 {
+				cut = limit
+			}
 		}
 		out = append(out, text[:cut])
 		text = strings.TrimLeft(text[cut:], "\n")

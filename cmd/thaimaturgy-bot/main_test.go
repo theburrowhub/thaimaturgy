@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -29,6 +30,20 @@ func TestSplitMessage(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(chunks, " "), "more") {
 		t.Error("content lost during split")
+	}
+
+	// Multibyte content with no newline must not be split mid-rune: every chunk
+	// must be valid UTF-8 and the rejoined text must round-trip (against the
+	// leading/trailing-trimmed input, since splitMessage trims first).
+	multibyte := strings.TrimSpace(strings.Repeat("acción-ñoño ", 400)) // no newlines, many 2-byte runes
+	mchunks := splitMessage(multibyte, 100)
+	for i, c := range mchunks {
+		if !utf8.ValidString(c) {
+			t.Errorf("chunk %d is not valid UTF-8", i)
+		}
+	}
+	if strings.Join(mchunks, "") != multibyte {
+		t.Error("multibyte content changed after split/rejoin")
 	}
 }
 
