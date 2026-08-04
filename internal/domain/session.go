@@ -173,6 +173,46 @@ func (s *SessionState) MarshalJSON() ([]byte, error) {
 	return json.Marshal((*alias)(s))
 }
 
+// UnmarshalJSON decodes the state and re-initializes the maps/pointers that use
+// `omitempty` (they come back nil when the saved JSON omitted an empty value).
+// Without this, a state reloaded from disk — notably in the Claude-CLI MCP tools
+// subprocess — panics with "assignment to entry in nil map" the first time a tool
+// records an NPC, flag, visited room, etc.
+func (s *SessionState) UnmarshalJSON(b []byte) error {
+	type alias SessionState
+	if err := json.Unmarshal(b, (*alias)(s)); err != nil {
+		return err
+	}
+	s.ensureInitialized()
+	return nil
+}
+
+// ensureInitialized guarantees the structured maps and the log/conversation
+// pointers are non-nil, so every mutator is safe on a freshly loaded state.
+func (s *SessionState) ensureInitialized() {
+	if s.VisitedRooms == nil {
+		s.VisitedRooms = make(map[string]bool)
+	}
+	if s.KnownNPCs == nil {
+		s.KnownNPCs = make(map[string]*NPCStatus)
+	}
+	if s.TriggeredEvents == nil {
+		s.TriggeredEvents = make(map[string]bool)
+	}
+	if s.Flags == nil {
+		s.Flags = make(map[string]bool)
+	}
+	if s.Variables == nil {
+		s.Variables = make(map[string]string)
+	}
+	if s.Log == nil {
+		s.Log = &SessionLog{Entries: []LogEntry{}, MaxSize: 0}
+	}
+	if s.Conversation == nil {
+		s.Conversation = &Conversation{Messages: []Message{}, MaxSize: 0}
+	}
+}
+
 // SetLogHook registers a callback invoked for every timeline entry the moment it
 // is added — used to write a persistent, as-it-happens session journal.
 func (s *SessionState) SetLogHook(fn func(LogEntry)) { s.onLog = fn }
