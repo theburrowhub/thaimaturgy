@@ -381,6 +381,8 @@ func (g *gui) resumeSession(name string) {
 }
 
 func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
+	// A fresh session must not inherit stale busy/hosting flags from a previous one.
+	g.busy, g.hosting = false, false
 	// Open an append-only journal and stream every timeline entry to it as it
 	// happens, so the game is recorded continuously (not just on autosave).
 	if g.journal != nil {
@@ -1204,7 +1206,7 @@ func (g *gui) toggleTelegram() {
 		g.stopTelegram("_📴 Telegram bot stopped._")
 		return
 	}
-	if g.busy || g.hosting {
+	if g.busy {
 		g.showErr(fmt.Errorf("wait for the current oracle turn to finish before hosting"))
 		return
 	}
@@ -1242,6 +1244,7 @@ func (g *gui) toggleTelegram() {
 // shutdownTelegram stops the bot without touching the session UI (used when the
 // session is being torn down).
 func (g *gui) shutdownTelegram() {
+	g.hosting = false // always clear the flag, even if the bot wasn't running
 	if g.tg == nil {
 		return
 	}
