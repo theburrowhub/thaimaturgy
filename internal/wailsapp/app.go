@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/aibuild"
+	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/bookpdf"
 	"github.com/theburrowhub/thaimaturgy/internal/dmbook"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -33,6 +34,48 @@ type App struct {
 	tg       *tgbot.Bot
 	tgCancel context.CancelFunc
 	session  *domain.Session
+	journal  *storage.SessionJournal
+
+	// authStatus is the human-readable credential message from auth.AutoConfigure
+	// (e.g. "Using Claude Code via local login"). Empty when nothing was detected.
+	authStatus string
+}
+
+// autosave persists the current session only when auto-save is enabled, matching
+// the desktop app's autosave semantics (a manual SaveSession always writes).
+func (a *App) autosave() {
+	if a.session != nil && a.config.AutoSave {
+		_ = a.store.SaveSession(a.session.State)
+	}
+}
+
+// openJournal starts an append-only chronicle for the current session and streams
+// every timeline entry to it (mirrors the desktop app's per-session journal).
+func (a *App) openJournal() {
+	a.closeJournal()
+	if a.session == nil {
+		return
+	}
+	j, err := a.store.OpenSessionJournal(a.session.State.Name)
+	if err != nil || j == nil {
+		return
+	}
+	a.journal = j
+	a.session.State.SetLogHook(func(e domain.LogEntry) { j.Append(e) })
+}
+
+func (a *App) closeJournal() {
+	if a.journal != nil {
+		_ = a.journal.Close()
+		a.journal = nil
+	}
+}
+
+// CloseSession tears down session-scoped resources (journal + Telegram host) when
+// the frontend returns to the library.
+func (a *App) CloseSession() {
+	a.closeJournal()
+	a.stopTelegramHost()
 }
 
 type LibraryPayload struct {
@@ -67,6 +110,17 @@ type ConfigPayload struct {
 	Configured              bool    `json:"configured"`
 	ConfigPath              string  `json:"config_path"`
 	DataPath                string  `json:"data_path"`
+	// AuthStatus describes how the active credential was obtained (e.g. a local
+	// Claude Code login). Output-only; empty when nothing was auto-detected.
+	AuthStatus string `json:"auth_status"`
+
+	// Input-only secrets. The frontend sends these when the user edits them; they
+	// are never echoed back (configPayload leaves them blank and reports presence
+	// via the *_set booleans instead).
+	OpenAIAPIKey    string `json:"openai_api_key,omitempty"`
+	AnthropicAPIKey string `json:"anthropic_api_key,omitempty"`
+	GeminiAPIKey    string `json:"gemini_api_key,omitempty"`
+	TelegramToken   string `json:"telegram_bot_token,omitempty"`
 }
 
 type SessionPayload struct {
@@ -81,6 +135,7 @@ type SessionPayload struct {
 type SubmitResult struct {
 	Success bool            `json:"success"`
 	Message string          `json:"message"`
+	Image   string          `json:"image,omitempty"` // data: URI for /map and /art
 	Session *SessionPayload `json:"session,omitempty"`
 }
 
@@ -105,6 +160,7 @@ func NewWithStorage(store *storage.Storage) (*App, error) {
 		return nil, err
 	}
 	app := &App{store: store, config: config}
+	app.authStatus = auth.AutoConfigure(config)
 	app.rebuildProvider()
 	return app, nil
 }
@@ -186,10 +242,39 @@ func (a *App) SaveConfig(in ConfigPayload) (ConfigPayload, error) {
 		cfg.TTS.Speed = in.TTSSpeed
 	}
 	cfg.TelegramChatID = in.TelegramChatID
+	// Seed secrets from the running config first: API keys are session-only and
+	// never written to disk, so reloading from disk above would otherwise drop
+	// them on every save. The Telegram token IS persisted, but seeding it too is
+	// harmless and keeps the merge uniform.
+	if a.config != nil {
+		cfg.OpenAIAPIKey = a.config.OpenAIAPIKey
+		cfg.AnthropicAPIKey = a.config.AnthropicAPIKey
+		cfg.GeminiAPIKey = a.config.GeminiAPIKey
+		if strings.TrimSpace(cfg.TelegramToken) == "" {
+			cfg.TelegramToken = a.config.TelegramToken
+		}
+	}
+	// Then only overwrite when a value was supplied so a blank field never wipes a
+	// previously-set credential.
+	if k := strings.TrimSpace(in.OpenAIAPIKey); k != "" {
+		cfg.OpenAIAPIKey = k
+	}
+	if k := strings.TrimSpace(in.AnthropicAPIKey); k != "" {
+		cfg.AnthropicAPIKey = k
+	}
+	if k := strings.TrimSpace(in.GeminiAPIKey); k != "" {
+		cfg.GeminiAPIKey = k
+	}
+	if t := strings.TrimSpace(in.TelegramToken); t != "" {
+		cfg.TelegramToken = t
+	}
 	if err := a.store.SaveConfig(cfg); err != nil {
 		return ConfigPayload{}, err
 	}
 	a.config = cfg
+	// Re-detect local logins (Claude Code / Gemini CLI) for the chosen provider,
+	// matching the desktop app's Settings save behaviour.
+	a.authStatus = auth.AutoConfigure(cfg)
 	a.rebuildProvider()
 	return a.configPayload(), nil
 }
@@ -221,6 +306,7 @@ func (a *App) configPayload() ConfigPayload {
 		Configured:              a.prov != nil,
 		ConfigPath:              a.store.ConfigPath(),
 		DataPath:                a.store.BasePath(),
+		AuthStatus:              a.authStatus,
 	}
 }
 
@@ -262,7 +348,7 @@ func (a *App) SaveAdventure(adv *domain.Adventure) (*domain.Adventure, error) {
 	if adv.SchemaVersion == "" {
 		adv.SchemaVersion = domain.SchemaVersion
 	}
-	if errs := domain.ValidateAdventure(adv, nil); len(errs) > 0 {
+	if errs := domain.ValidateAdventure(adv, a.imageExistsFor(adv.ID)); len(errs) > 0 {
 		return nil, fmt.Errorf("adventure validation failed:\n%s", joinErrors(errs))
 	}
 	dir := a.store.AdventureDir(adv.ID)
@@ -326,8 +412,10 @@ func (a *App) StartSession(adventureID string) (*SessionPayload, error) {
 	if err := a.store.SaveSession(state); err != nil {
 		return nil, err
 	}
+	a.stopTelegramHost()
 	a.session = domain.NewSession(state, adv, a.config)
 	a.oracle = engine.NewOracle(a.session, a.prov)
+	a.openJournal()
 	return a.payloadWithDetail("room:" + state.CurrentZone + "::" + state.CurrentRoom)
 }
 
@@ -344,8 +432,10 @@ func (a *App) LoadSession(name string) (*SessionPayload, error) {
 	if err != nil {
 		return nil, err
 	}
+	a.stopTelegramHost()
 	a.session = domain.NewSession(state, adv, a.config)
 	a.oracle = engine.NewOracle(a.session, a.prov)
+	a.openJournal()
 	uid := "about"
 	if state.CurrentRoom != "" {
 		uid = "room:" + state.CurrentZone + "::" + state.CurrentRoom
@@ -374,9 +464,7 @@ func (a *App) MoveParty(roomID string) (*SessionPayload, error) {
 	}
 	a.session.State.SetLocation(zone.ID, room.ID, room.Name)
 	a.session.MarkModified()
-	if err := a.store.SaveSession(a.session.State); err != nil {
-		return nil, err
-	}
+	a.autosave()
 	return a.payloadWithDetail("room:" + zone.ID + "::" + room.ID)
 }
 
@@ -387,7 +475,7 @@ func (a *App) MarkNPCMet(id string) (*SessionPayload, error) {
 	if n := a.session.Adventure.NPC(strings.TrimSpace(id)); n != nil {
 		a.session.State.MeetNPC(n.ID, n.Name)
 		a.session.MarkModified()
-		_ = a.store.SaveSession(a.session.State)
+		a.autosave()
 		return a.payloadWithDetail("npc:" + n.ID)
 	}
 	return nil, fmt.Errorf("npc not found: %s", id)
@@ -400,7 +488,7 @@ func (a *App) TriggerEvent(id string) (*SessionPayload, error) {
 	if ev := a.session.Adventure.Event(strings.TrimSpace(id)); ev != nil {
 		a.session.State.TriggerEvent(ev.ID, ev.Name)
 		a.session.MarkModified()
-		_ = a.store.SaveSession(a.session.State)
+		a.autosave()
 		return a.payloadWithDetail("event:" + ev.ID)
 	}
 	return nil, fmt.Errorf("event not found: %s", id)
@@ -423,7 +511,7 @@ func (a *App) RollTable(id string) (*SubmitResult, error) {
 	msg := fmt.Sprintf("🎲 %s — rolled %d: %s", name, roll, result)
 	a.session.State.AddNote(fmt.Sprintf("Rolled %s (%d): %s", name, roll, result))
 	a.session.MarkModified()
-	_ = a.store.SaveSession(a.session.State)
+	a.autosave()
 	p, _ := a.payloadWithDetail("table:" + t.ID)
 	return &SubmitResult{Success: true, Message: msg, Session: p}, nil
 }
@@ -461,6 +549,34 @@ func (a *App) ExportDMBook(path string, pdf bool) (*SubmitResult, error) {
 	}
 	p, _ := a.payload()
 	return &SubmitResult{Success: true, Message: "DM book exported: " + path, Session: p}, nil
+}
+
+// ExportAdventureDMBook exports a DM sourcebook for an installed adventure
+// without needing an active play session — mirrors the desktop editor's "DM
+// book…" toolbar button (the session-scoped ExportDMBook requires a session).
+func (a *App) ExportAdventureDMBook(adventureID, path string, pdf bool) (*SubmitResult, error) {
+	adventureID = strings.TrimSpace(adventureID)
+	path = strings.TrimSpace(path)
+	if adventureID == "" || path == "" {
+		return nil, fmt.Errorf("adventure id and export path are required")
+	}
+	adv, err := a.store.LoadAdventure(adventureID)
+	if err != nil {
+		return nil, err
+	}
+	md := dmbook.Markdown(adv)
+	if pdf {
+		b, err := bookpdf.FromMarkdown(adv.Title, "Dungeon Master's Sourcebook", md)
+		if err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(path, b, 0644); err != nil {
+			return nil, err
+		}
+	} else if err := os.WriteFile(path, []byte(md), 0644); err != nil {
+		return nil, err
+	}
+	return &SubmitResult{Success: true, Message: "DM book exported: " + path}, nil
 }
 
 func (a *App) ExportNovel(path string, pdf bool) (*SubmitResult, error) {
@@ -559,7 +675,7 @@ func (a *App) ToggleMode() (*SessionPayload, error) {
 		}
 	}
 	a.session.MarkModified()
-	_ = a.store.SaveSession(a.session.State)
+	a.autosave()
 	return a.payload()
 }
 
@@ -587,6 +703,9 @@ func (a *App) StartTelegram() (*SubmitResult, error) {
 	if strings.TrimSpace(a.config.TelegramToken) == "" {
 		return nil, fmt.Errorf("no Telegram bot token configured")
 	}
+	if a.prov == nil {
+		return nil, fmt.Errorf("no AI provider configured")
+	}
 	if a.oracle == nil {
 		a.oracle = engine.NewOracle(a.session, a.prov)
 	}
@@ -612,6 +731,15 @@ func (a *App) StartTelegram() (*SubmitResult, error) {
 }
 
 func (a *App) StopTelegram() (*SubmitResult, error) {
+	a.stopTelegramHost()
+	p, _ := a.payload()
+	return &SubmitResult{Success: true, Message: "Telegram bot stopped.", Session: p}, nil
+}
+
+// stopTelegramHost tears down any running Telegram bot. Safe to call when none is
+// hosting. Invoked when leaving DM mode, starting/loading a different session, or
+// returning to the library so a bot never keeps driving a stale session.
+func (a *App) stopTelegramHost() {
 	if a.tgCancel != nil {
 		a.tgCancel()
 	}
@@ -619,8 +747,6 @@ func (a *App) StopTelegram() (*SubmitResult, error) {
 		a.tg.Stop()
 	}
 	a.tg, a.tgCancel = nil, nil
-	p, _ := a.payload()
-	return &SubmitResult{Success: true, Message: "Telegram bot stopped.", Session: p}, nil
 }
 
 func (a *App) ChooseModuleFile() (string, error) {
@@ -643,7 +769,7 @@ func (a *App) ChooseSaveFile(defaultName string) (string, error) {
 	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "Save file", DefaultFilename: defaultName, CanCreateDirectories: true})
 }
 
-func (a *App) ImportAdventureFromPDF(path string) (*domain.Adventure, error) {
+func (a *App) ImportAdventureFromPDF(path string, translate bool) (*domain.Adventure, error) {
 	if a.prov == nil {
 		return nil, fmt.Errorf("AI import needs a configured provider")
 	}
@@ -658,10 +784,10 @@ func (a *App) ImportAdventureFromPDF(path string) (*domain.Adventure, error) {
 	title := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 	defer cancel()
-	return aibuild.FromPDF(ctx, a.prov, a.importConfig(), path, dir, title, nil, nil, nil)
+	return aibuild.FromPDF(ctx, a.prov, a.importConfig(translate), path, dir, title, a.importProgress(), a.confirmFallback(), a.visionProvider())
 }
 
-func (a *App) ImportAdventureFromImages(path string) (*domain.Adventure, error) {
+func (a *App) ImportAdventureFromImages(path string, translate bool) (*domain.Adventure, error) {
 	if a.prov == nil {
 		return nil, fmt.Errorf("AI import needs a configured provider")
 	}
@@ -675,15 +801,69 @@ func (a *App) ImportAdventureFromImages(path string) (*domain.Adventure, error) 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 	defer cancel()
-	return aibuild.FromImages(ctx, a.prov, a.importConfig(), path, dir, filepath.Base(path), nil, nil, nil)
+	return aibuild.FromImages(ctx, a.prov, a.importConfig(translate), path, dir, filepath.Base(path), a.importProgress(), a.confirmFallback(), a.visionProvider())
 }
 
-func (a *App) importConfig() *domain.Config {
+// importProgress streams AI-import stage messages to the frontend as the Wails
+// event "import:progress" (mirrors the desktop editor's status bar).
+func (a *App) importProgress() aibuild.Progress {
+	return func(stage string) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "import:progress", stage)
+		}
+	}
+}
+
+// visionProvider returns a separate Anthropic vision provider for image curation
+// when the primary backend is text-only (e.g. the Claude CLI). Returns nil when
+// the primary provider already supports vision. Mirrors the desktop editor.
+func (a *App) visionProvider() providers.Provider {
+	if a.prov != nil && a.prov.SupportsVision() {
+		return nil
+	}
+	vcfg := *a.config
+	vcfg.Provider = domain.ProviderAnthropic
+	vcfg.AnthropicOAuthToken = ""
+	vcfg.AnthropicAPIKey = ""
+	auth.AutoConfigure(&vcfg)
+	return providers.New(&vcfg)
+}
+
+// importConfig builds the config for an AI import. When translate is false the
+// module is authored in the source document's own language (ImportLanguage is
+// cleared); when true it is authored in the configured import language (falling
+// back to the UI language). Mirrors the desktop editor's Translate toggle.
+func (a *App) importConfig(translate bool) *domain.Config {
 	cfg := *a.config
-	if strings.TrimSpace(cfg.ImportLanguage) == "" {
+	if !translate {
+		cfg.ImportLanguage = ""
+	} else if strings.TrimSpace(cfg.ImportLanguage) == "" {
 		cfg.ImportLanguage = string(cfg.Language)
 	}
 	return &cfg
+}
+
+// confirmFallback asks the user (via a native dialog) before an AI import
+// silently substitutes an unavailable model. Mirrors the desktop editor's
+// fallback confirmation; defaults to proceeding if no window context is present.
+func (a *App) confirmFallback() aibuild.ConfirmFallback {
+	return func(requested, served string) bool {
+		if a.ctx == nil {
+			return true
+		}
+		sel, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+			Type:          runtime.QuestionDialog,
+			Title:         "Model unavailable",
+			Message:       fmt.Sprintf("The requested model %q is unavailable.\n\nContinue with %q instead?", requested, served),
+			Buttons:       []string{"Continue", "Cancel"},
+			DefaultButton: "Continue",
+			CancelButton:  "Cancel",
+		})
+		if err != nil {
+			return true
+		}
+		return sel == "Continue"
+	}
 }
 
 func safeAssetSegment(s, fallback string) string {
@@ -718,9 +898,13 @@ func (a *App) Submit(input string) (*SubmitResult, error) {
 	if result.Response != "" {
 		msg = result.Response
 	}
+	imageURL := ""
 	if result.NeedsUI {
 		switch result.UIAction {
 		case "oracle":
+			if a.prov == nil {
+				return &SubmitResult{Success: false, Message: "No AI provider configured. Set an API key or provider in Settings to use the oracle."}, nil
+			}
 			if a.oracle == nil {
 				a.oracle = engine.NewOracle(a.session, a.prov)
 			}
@@ -730,11 +914,17 @@ func (a *App) Submit(input string) (*SubmitResult, error) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
+			if a.journal != nil {
+				a.journal.Note("oracle-q", result.UIArg)
+			}
 			resp := a.oracle.Ask(ctx, result.UIArg)
 			if resp.Error != nil {
 				return &SubmitResult{Success: false, Message: resp.Error.Error()}, nil
 			}
 			msg = resp.Answer
+			if a.journal != nil {
+				a.journal.Note("oracle-a", resp.Answer)
+			}
 		case "save":
 			return a.SaveSession()
 		case "load":
@@ -742,17 +932,20 @@ func (a *App) Submit(input string) (*SubmitResult, error) {
 		case "import":
 			return &SubmitResult{Success: true, Message: "Use Library → Import .tar.gz to import a module."}, nil
 		case "image":
-			msg = "Image selected: " + result.UIArg
+			if url := a.assetDataURL(a.session.Adventure.ID, result.UIArg); url != "" {
+				imageURL = url
+				msg = "🖼 " + result.UIArg
+			} else {
+				msg = "Image not found: " + result.UIArg
+			}
 		case "mode":
 			msg = result.Message
 		}
 	}
 	a.session.MarkModified()
-	if err := a.store.SaveSession(a.session.State); err != nil {
-		return nil, err
-	}
+	a.autosave()
 	p, _ := a.payload()
-	return &SubmitResult{Success: result.Success, Message: msg, Session: p}, nil
+	return &SubmitResult{Success: result.Success, Message: msg, Image: imageURL, Session: p}, nil
 }
 
 func (a *App) payload() (*SessionPayload, error) {
@@ -779,12 +972,9 @@ func (a *App) resolveDetailImages(d *DetailPayload) {
 	}
 	out := make([]string, 0, len(d.Images))
 	for _, rel := range d.Images {
-		abs, err := a.store.ResolveImagePath(a.session.Adventure.ID, rel)
-		if err != nil {
-			out = append(out, rel)
-			continue
+		if url := a.assetDataURL(a.session.Adventure.ID, rel); url != "" {
+			out = append(out, url)
 		}
-		out = append(out, "file://"+filepath.ToSlash(abs))
 	}
 	d.Images = out
 }

@@ -6,6 +6,10 @@ export function AddImageAsset(arg1, arg2, arg3) {
   return window['go']['wailsapp']['App']['AddImageAsset'](arg1, arg2, arg3);
 }
 
+export function AssetURL(arg1, arg2) {
+  return window['go']['wailsapp']['App']['AssetURL'](arg1, arg2);
+}
+
 export function ChooseImageFile() {
   return window['go']['wailsapp']['App']['ChooseImageFile']();
 }
@@ -26,12 +30,24 @@ export function ChooseSaveFile(arg1) {
   return window['go']['wailsapp']['App']['ChooseSaveFile'](arg1);
 }
 
+export function CloseSession() {
+  return window['go']['wailsapp']['App']['CloseSession']();
+}
+
 export function DeleteAdventure(arg1) {
   return window['go']['wailsapp']['App']['DeleteAdventure'](arg1);
 }
 
 export function DeleteSession(arg1) {
   return window['go']['wailsapp']['App']['DeleteSession'](arg1);
+}
+
+export function ExportAdventureDMBook(arg1, arg2, arg3) {
+  return window['go']['wailsapp']['App']['ExportAdventureDMBook'](arg1, arg2, arg3);
+}
+
+export function ExportAdventureFolder(arg1, arg2) {
+  return window['go']['wailsapp']['App']['ExportAdventureFolder'](arg1, arg2);
 }
 
 export function ExportDMBook(arg1, arg2) {
@@ -66,12 +82,12 @@ export function ImportAdventure(arg1) {
   return window['go']['wailsapp']['App']['ImportAdventure'](arg1);
 }
 
-export function ImportAdventureFromImages(arg1) {
-  return window['go']['wailsapp']['App']['ImportAdventureFromImages'](arg1);
+export function ImportAdventureFromImages(arg1, arg2) {
+  return window['go']['wailsapp']['App']['ImportAdventureFromImages'](arg1, arg2);
 }
 
-export function ImportAdventureFromPDF(arg1) {
-  return window['go']['wailsapp']['App']['ImportAdventureFromPDF'](arg1);
+export function ImportAdventureFromPDF(arg1, arg2) {
+  return window['go']['wailsapp']['App']['ImportAdventureFromPDF'](arg1, arg2);
 }
 
 export function LoadSession(arg1) {
@@ -90,12 +106,24 @@ export function NewAdventureTemplate() {
   return window['go']['wailsapp']['App']['NewAdventureTemplate']();
 }
 
+export function OpenExternalModule(arg1) {
+  return window['go']['wailsapp']['App']['OpenExternalModule'](arg1);
+}
+
 export function PackageAdventure(arg1, arg2) {
   return window['go']['wailsapp']['App']['PackageAdventure'](arg1, arg2);
 }
 
+export function PlanParty(arg1) {
+  return window['go']['wailsapp']['App']['PlanParty'](arg1);
+}
+
 export function RenameSession(arg1, arg2) {
   return window['go']['wailsapp']['App']['RenameSession'](arg1, arg2);
+}
+
+export function ResetParty() {
+  return window['go']['wailsapp']['App']['ResetParty']();
 }
 
 export function RollTable(arg1) {
@@ -116,6 +144,10 @@ export function SaveParty(arg1) {
 
 export function SaveSession() {
   return window['go']['wailsapp']['App']['SaveSession']();
+}
+
+export function SetMode() {
+  return window['go']['wailsapp']['App']['SetMode']();
 }
 
 export function StartSession(arg1) {
@@ -140,4 +172,8 @@ export function ToggleMode() {
 
 export function TriggerEvent(arg1) {
   return window['go']['wailsapp']['App']['TriggerEvent'](arg1);
+}
+
+export function ValidateAdventure(arg1) {
+  return window['go']['wailsapp']['App']['ValidateAdventure'](arg1);
 }

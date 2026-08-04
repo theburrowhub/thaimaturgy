@@ -5,6 +5,8 @@ import {domain} from '../models';
 
 export function AddImageAsset(arg1:string,arg2:string,arg3:string):Promise<string>;
 
+export function AssetURL(arg1:string,arg2:string):Promise<string>;
+
 export function ChooseImageFile():Promise<string>;
 
 export function ChooseImagesFolder():Promise<string>;
@@ -15,9 +17,15 @@ export function ChoosePDFFile():Promise<string>;
 
 export function ChooseSaveFile(arg1:string):Promise<string>;
 
+export function CloseSession():Promise<void>;
+
 export function DeleteAdventure(arg1:string):Promise<wailsapp.LibraryPayload>;
 
 export function DeleteSession(arg1:string):Promise<wailsapp.LibraryPayload>;
+
+export function ExportAdventureDMBook(arg1:string,arg2:string,arg3:boolean):Promise<wailsapp.SubmitResult>;
+
+export function ExportAdventureFolder(arg1:string,arg2:string):Promise<wailsapp.SubmitResult>;
 
 export function ExportDMBook(arg1:string,arg2:boolean):Promise<wailsapp.SubmitResult>;
 
@@ -35,9 +43,9 @@ export function GetSession():Promise<wailsapp.SessionPayload>;
 
 export function ImportAdventure(arg1:string):Promise<wailsapp.ActionResult>;
 
-export function ImportAdventureFromImages(arg1:string):Promise<domain.Adventure>;
+export function ImportAdventureFromImages(arg1:string,arg2:boolean):Promise<domain.Adventure>;
 
-export function ImportAdventureFromPDF(arg1:string):Promise<domain.Adventure>;
+export function ImportAdventureFromPDF(arg1:string,arg2:boolean):Promise<domain.Adventure>;
 
 export function LoadSession(arg1:string):Promise<wailsapp.SessionPayload>;
 
@@ -47,9 +55,15 @@ export function MoveParty(arg1:string):Promise<wailsapp.SessionPayload>;
 
 export function NewAdventureTemplate():Promise<domain.Adventure>;
 
+export function OpenExternalModule(arg1:string):Promise<domain.Adventure>;
+
 export function PackageAdventure(arg1:string,arg2:string):Promise<wailsapp.SubmitResult>;
 
+export function PlanParty(arg1:string):Promise<wailsapp.SessionPayload>;
+
 export function RenameSession(arg1:string,arg2:string):Promise<wailsapp.LibraryPayload>;
+
+export function ResetParty():Promise<wailsapp.SessionPayload>;
 
 export function RollTable(arg1:string):Promise<wailsapp.SubmitResult>;
 
@@ -60,6 +74,8 @@ export function SaveConfig(arg1:wailsapp.ConfigPayload):Promise<wailsapp.ConfigP
 export function SaveParty(arg1:Array<domain.Character>):Promise<wailsapp.SessionPayload>;
 
 export function SaveSession():Promise<wailsapp.SubmitResult>;
+
+export function SetMode():Promise<wailsapp.SubmitResult>;
 
 export function StartSession(arg1:string):Promise<wailsapp.SessionPayload>;
 
@@ -72,3 +88,5 @@ export function Submit(arg1:string):Promise<wailsapp.SubmitResult>;
 export function ToggleMode():Promise<wailsapp.SessionPayload>;
 
 export function TriggerEvent(arg1:string):Promise<wailsapp.SessionPayload>;
+
+export function ValidateAdventure(arg1:domain.Adventure):Promise<Array<string>>;

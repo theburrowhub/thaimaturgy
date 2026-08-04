@@ -1319,6 +1319,11 @@ export namespace wailsapp {
 	    configured: boolean;
 	    config_path: string;
 	    data_path: string;
+	    auth_status: string;
+	    openai_api_key?: string;
+	    anthropic_api_key?: string;
+	    gemini_api_key?: string;
+	    telegram_bot_token?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConfigPayload(source);
@@ -1351,6 +1356,11 @@ export namespace wailsapp {
 	        this.configured = source["configured"];
 	        this.config_path = source["config_path"];
 	        this.data_path = source["data_path"];
+	        this.auth_status = source["auth_status"];
+	        this.openai_api_key = source["openai_api_key"];
+	        this.anthropic_api_key = source["anthropic_api_key"];
+	        this.gemini_api_key = source["gemini_api_key"];
+	        this.telegram_bot_token = source["telegram_bot_token"];
 	    }
 	}
 	export class LibraryPayload {
@@ -1430,6 +1440,7 @@ export namespace wailsapp {
 	export class SubmitResult {
 	    success: boolean;
 	    message: string;
+	    image?: string;
 	    session?: SessionPayload;
 	
 	    static createFrom(source: any = {}) {
@@ -1440,6 +1451,7 @@ export namespace wailsapp {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.success = source["success"];
 	        this.message = source["message"];
+	        this.image = source["image"];
 	        this.session = this.convertValues(source["session"], SessionPayload);
 	    }
 	
