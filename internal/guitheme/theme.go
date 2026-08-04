@@ -1,7 +1,7 @@
-// Package guitheme provides a cinematic, modern tabletop-RPG Fyne theme
-// shared by the player GUI and the module editor. It is inspired by dark
-// starlit adventure pages: midnight chrome, warm parchment surfaces, sapphire
-// focus states and restrained gold accents.
+// Package guitheme provides the dark DM-cockpit Fyne theme shared by the
+// desktop app and editor. It intentionally mirrors Tony's approved
+// dm-oracle-moderno.html design: near-black chrome, muted dark panels, gold
+// primary/read-aloud accents and arcane cyan focus/oracle states.
 package guitheme
 
 import (
@@ -11,34 +11,32 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
-// Palette — midnight shell, parchment work surfaces, sapphire/gold accents.
+// Palette lifted from .hermes/designs/dm-oracle-moderno-spec.md.
 var (
-	cNight     = rgb(0x0B, 0x12, 0x24) // app shell / gaps
-	cNight2    = rgb(0x13, 0x22, 0x43) // hover chrome
-	cPaper     = rgb(0xF6, 0xEF, 0xDE) // main panels
-	cPaper2    = rgb(0xEA, 0xDF, 0xC7) // secondary panels / hover
-	cPaper3    = rgb(0xFF, 0xFB, 0xF0) // inputs
-	cInk       = rgb(0x18, 0x22, 0x32) // primary text
-	cInkSoft   = rgb(0x68, 0x5B, 0x48) // placeholder / secondary
-	cSapphire  = rgb(0x1D, 0x4E, 0x9B) // primary action
-	cSapphire2 = rgb(0x2D, 0x6C, 0xD6) // focus / link
-	cGold      = rgb(0xC9, 0x92, 0x2E) // accent / warnings
-	cCopper    = rgb(0xB7, 0x4B, 0x3A) // danger / dramatic accent
-	cOK        = rgb(0x3F, 0x7E, 0x53)
-	cSelection = rgba(0x2D, 0x6C, 0xD6, 0x38)
-	cFocus     = rgba(0xC9, 0x92, 0x2E, 0xAA)
-	cShadow    = rgba(0x05, 0x08, 0x12, 0x88)
+	cBg         = rgb(0x0D, 0x10, 0x17) // --bg
+	cPanel      = rgb(0x15, 0x19, 0x23) // --panel
+	cPanel2     = rgb(0x1A, 0x1F, 0x2C) // --panel-2
+	cText       = rgb(0xE9, 0xE9, 0xF0) // --text
+	cMuted      = rgb(0x8B, 0x92, 0xA6) // --muted
+	cFaint      = rgb(0x5D, 0x64, 0x78) // --faint
+	cGold       = rgb(0xE2, 0xB2, 0x5C) // --gold
+	cArcane     = rgb(0x7E, 0xE0, 0xD2) // --arcane
+	cDanger     = rgb(0xE0, 0x70, 0x5C) // --danger
+	cSelection  = rgba(0xE2, 0xB2, 0x5C, 0x30)
+	cArcaneSoft = rgba(0x7E, 0xE0, 0xD2, 0x30)
+	cLine       = rgba(0xFF, 0xFF, 0xFF, 0x13)
+	cShadow     = rgba(0x00, 0x00, 0x00, 0xAA)
 )
 
-type parchment struct{ base fyne.Theme }
+type cockpit struct{ base fyne.Theme }
 
-// New returns the thAImaturgy theme.
-func New() fyne.Theme { return &parchment{base: theme.DefaultTheme()} }
+// New returns the thAImaturgy desktop theme.
+func New() fyne.Theme { return &cockpit{base: theme.DefaultTheme()} }
 
-func (p *parchment) Font(s fyne.TextStyle) fyne.Resource     { return p.base.Font(s) }
-func (p *parchment) Icon(n fyne.ThemeIconName) fyne.Resource { return p.base.Icon(n) }
+func (c *cockpit) Font(s fyne.TextStyle) fyne.Resource     { return c.base.Font(s) }
+func (c *cockpit) Icon(n fyne.ThemeIconName) fyne.Resource { return c.base.Icon(n) }
 
-func (p *parchment) Size(n fyne.ThemeSizeName) float32 {
+func (c *cockpit) Size(n fyne.ThemeSizeName) float32 {
 	switch n {
 	case theme.SizeNameText:
 		return 14
@@ -47,51 +45,53 @@ func (p *parchment) Size(n fyne.ThemeSizeName) float32 {
 	case theme.SizeNameInnerPadding:
 		return 10
 	case theme.SizeNameHeadingText:
-		return 24
+		return 22
 	case theme.SizeNameSubHeadingText:
-		return 17
+		return 16
 	case theme.SizeNameInputRadius, theme.SizeNameSelectionRadius:
-		return 9
+		return 8
+	case theme.SizeNameInlineIcon:
+		return 15
 	}
-	return p.base.Size(n)
+	return c.base.Size(n)
 }
 
-func (p *parchment) Color(n fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+func (c *cockpit) Color(n fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
 	switch n {
 	case theme.ColorNameBackground:
-		return cNight
+		return cBg
 	case theme.ColorNameForeground:
-		return cInk
+		return cText
 	case theme.ColorNameForegroundOnPrimary:
-		return cPaper3
+		return cBg
 	case theme.ColorNamePrimary, theme.ColorNameHyperlink:
-		return cSapphire
-	case theme.ColorNameButton:
-		return cPaper2
-	case theme.ColorNameInputBackground, theme.ColorNameMenuBackground, theme.ColorNameOverlayBackground:
-		return cPaper3
-	case theme.ColorNameInputBorder, theme.ColorNameSeparator:
 		return cGold
+	case theme.ColorNameButton:
+		return cPanel2
+	case theme.ColorNameInputBackground, theme.ColorNameMenuBackground, theme.ColorNameOverlayBackground:
+		return cPanel
+	case theme.ColorNameInputBorder, theme.ColorNameSeparator:
+		return cLine
 	case theme.ColorNameHover:
-		return cPaper2
+		return cPanel2
 	case theme.ColorNamePressed, theme.ColorNameSelection:
 		return cSelection
 	case theme.ColorNameFocus:
-		return cFocus
+		return cArcane
 	case theme.ColorNamePlaceHolder, theme.ColorNameDisabled:
-		return cInkSoft
+		return cFaint
 	case theme.ColorNameError:
-		return cCopper
+		return cDanger
 	case theme.ColorNameSuccess:
-		return cOK
+		return cArcane
 	case theme.ColorNameWarning:
 		return cGold
 	case theme.ColorNameScrollBar:
-		return cInkSoft
+		return cFaint
 	case theme.ColorNameShadow:
 		return cShadow
 	}
-	return p.base.Color(n, theme.VariantLight)
+	return c.base.Color(n, theme.VariantDark)
 }
 
 func rgb(r, g, b uint8) color.NRGBA     { return color.NRGBA{R: r, G: g, B: b, A: 0xFF} }

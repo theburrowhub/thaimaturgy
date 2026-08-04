@@ -430,6 +430,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.entry.SetMinRowsVisible(3)
 	g.entry.SetPlaceHolder("Ask the oracle, or type a /command… (Enter sends, ⌘/Ctrl+Enter = newline)")
 	g.sendBtn = widget.NewButton("Send", func() { g.submit(g.entry.Text) })
+	g.sendBtn.Importance = widget.HighImportance
 	sendBtn := g.sendBtn
 
 	// Player-character panel, shown in virtual-DM mode in place of the adventure
@@ -460,8 +461,9 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.rightCard = modernPanel("Detail", "Scene notes, read-aloud text and artwork", container.NewBorder(g.detailActions, nil, nil, nil, detailBody))
 
 	g.centerRight = container.NewHSplit(g.centerCard, g.rightCard)
+	g.centerRight.SetOffset(0.64)
 	g.body = container.NewHSplit(left, g.centerRight)
-	g.body.SetOffset(0.24)
+	g.body.SetOffset(0.22)
 	body := g.body
 
 	g.locLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -472,14 +474,14 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.libraryBtn = widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary)
 	g.saveBtn = widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save)
 	g.exportBtn = widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel)
-	toolbar := modernToolbar(adv.Title,
+	toolbar := modernSessionToolbar(adv.Title,
+		g.locLabel,
 		g.libraryBtn,
 		g.saveBtn,
 		g.exportBtn,
 		g.diceBtn,
 		g.modeBtn,
 		g.telegramBtn,
-		g.locLabel,
 	)
 
 	g.win.SetContent(appShell(container.NewBorder(toolbar, nil, nil, nil, body)))
@@ -590,17 +592,17 @@ func (g *gui) treeLabel(uid widget.TreeNodeID) string {
 	adv, st := g.session.Adventure, g.session.State
 	switch uid {
 	case "about":
-		return "📖 Adventure"
+		return "Adventure"
 	case "zones":
-		return "🗺 Zones"
+		return "Zones"
 	case "npcs":
-		return "🧑 NPCs"
+		return "NPCs"
 	case "events":
-		return "⚡ Events"
+		return "Events"
 	case "items":
-		return "💎 Items"
+		return "Items"
 	case "tables":
-		return "🎲 Tables"
+		return "Random tables"
 	}
 	switch {
 	case strings.HasPrefix(uid, "zone:"):
@@ -612,11 +614,11 @@ func (g *gui) treeLabel(uid widget.TreeNodeID) string {
 		if r, _ := adv.Room(rid); r != nil {
 			marker := "·"
 			if st.CurrentRoom == rid {
-				marker = "▶"
+				marker = "● Party"
 			} else if st.VisitedRooms[rid] {
 				marker = "✓"
 			}
-			return marker + " " + labelOrID(r.Name, r.ID)
+			return marker + "  " + labelOrID(r.Name, r.ID)
 		}
 	case strings.HasPrefix(uid, "npc:"):
 		if n := adv.NPC(strings.TrimPrefix(uid, "npc:")); n != nil {
@@ -640,7 +642,7 @@ func (g *gui) treeLabel(uid widget.TreeNodeID) string {
 		}
 	case strings.HasPrefix(uid, "table:"):
 		if t := adv.Table(strings.TrimPrefix(uid, "table:")); t != nil {
-			return "🎲 " + labelOrID(t.Name, t.ID)
+			return labelOrID(t.Name, t.ID)
 		}
 	}
 	return uid
@@ -672,7 +674,9 @@ func (g *gui) showDetail(uid widget.TreeNodeID) {
 			groups = roomGroups(adv, r)
 			images = adv.RoomImages(r)
 			id := r.ID
-			actions = append(actions, widget.NewButton("▶ Move party here", func() { g.movePartyHere(id) }))
+			move := widget.NewButton("Move party here", func() { g.movePartyHere(id) })
+			move.Importance = widget.HighImportance
+			actions = append(actions, move)
 		}
 	case strings.HasPrefix(uid, "npc:"):
 		if n := adv.NPC(strings.TrimPrefix(uid, "npc:")); n != nil {
@@ -1320,7 +1324,7 @@ func (g *gui) refreshCurrentLabel() {
 			loc = zone.Name + " / " + room.Name
 		}
 	}
-	g.locLabel.SetText("📍 " + loc)
+	g.locLabel.SetText("● " + loc)
 }
 
 func (g *gui) refreshLog() {

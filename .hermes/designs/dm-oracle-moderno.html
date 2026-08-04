@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DM Oracle — The Sunken Crypt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,500;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1017;
+  --panel:#151923;
+  --panel-2:#1a1f2c;
+  --line:rgba(255,255,255,.07);
+  --line-strong:rgba(255,255,255,.13);
+  --text:#e9e9f0;
+  --muted:#8b92a6;
+  --faint:#5d6478;
+  --gold:#e2b25c;
+  --gold-soft:rgba(226,178,92,.14);
+  --arcane:#7ee0d2;
+  --arcane-soft:rgba(126,224,210,.10);
+  --danger:#e0705c;
+  --radius:12px;
+  --radius-sm:8px;
+  font-size:15px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Sora',system-ui,sans-serif;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+::-webkit-scrollbar{width:8px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ─── Top bar ─── */
+header{
+  height:56px;flex:none;
+  display:flex;align-items:center;gap:16px;
+  padding:0 20px;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,#131722,#10131c);
+}
+.brand{display:flex;flex-direction:column;line-height:1.15;min-width:200px}
+.brand .eyebrow{
+  font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--gold);font-weight:600;
+}
+.brand h1{font-size:1.02rem;font-weight:600}
+.actions{display:flex;align-items:center;gap:6px;margin-left:auto}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:7px 13px;border-radius:var(--radius-sm);
+  font-size:.82rem;font-weight:500;color:var(--muted);
+  border:1px solid transparent;
+  transition:background .15s,color .15s,border-color .15s;
+}
+.btn:hover{background:var(--panel-2);color:var(--text)}
+.btn:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--arcane);outline-offset:2px}
+.btn svg{width:15px;height:15px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.btn.primary{
+  color:#141311;background:var(--gold);font-weight:600;
+}
+.btn.primary:hover{background:#eec06e;color:#141311}
+.mode-pill{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:7px 13px;border-radius:999px;
+  font-size:.8rem;font-weight:500;
+  border:1px solid var(--line-strong);color:var(--text);
+  background:var(--panel);
+}
+.mode-pill .orb{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--arcane);
+  box-shadow:0 0 8px var(--arcane), 0 0 2px var(--arcane);
+  animation:pulse 2.6s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.mode-pill .orb,.typing i{animation:none}}
+.crumb{
+  display:flex;align-items:center;gap:6px;
+  font-size:.78rem;color:var(--muted);
+  padding-left:16px;border-left:1px solid var(--line);
+  white-space:nowrap;
+}
+.crumb b{color:var(--text);font-weight:500}
+.crumb .sep{color:var(--faint)}
+.crumb .pin{color:var(--danger);font-size:.7rem}
+
+/* ─── Layout ─── */
+main{flex:1;display:grid;grid-template-columns:264px 1fr 340px;min-height:0}
+.col{display:flex;flex-direction:column;min-height:0}
+.col + .col{border-left:1px solid var(--line)}
+.panel-head{
+  flex:none;padding:16px 18px 10px;
+  display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+}
+.panel-head h2{font-size:.85rem;font-weight:600}
+.panel-head .sub{font-size:.68rem;color:var(--faint)}
+
+/* ─── Left: adventure tree ─── */
+.sidebar{background:var(--panel)}
+.tree{flex:1;overflow-y:auto;padding:4px 10px 10px}
+.node{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 9px;border-radius:var(--radius-sm);
+  font-size:.83rem;color:var(--muted);
+  cursor:pointer;user-select:none;
+  transition:background .12s,color .12s;
+}
+.node:hover{background:var(--panel-2);color:var(--text)}
+.node .chev{width:12px;height:12px;flex:none;stroke:currentColor;stroke-width:2;fill:none;transition:transform .15s;color:var(--faint)}
+.node.open .chev{transform:rotate(90deg)}
+.node .ico{width:14px;height:14px;flex:none;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.node .spacer{width:12px;flex:none}
+.d1{margin-left:14px}.d2{margin-left:28px}
+.node.active{
+  background:var(--gold-soft);color:var(--gold);font-weight:500;
+}
+.node.active .party{
+  margin-left:auto;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--gold);border:1px solid rgba(226,178,92,.4);
+  padding:2px 6px;border-radius:999px;font-weight:600;
+}
+.tree-sep{height:1px;background:var(--line);margin:8px 6px}
+
+/* session log */
+.log{
+  flex:none;height:230px;display:flex;flex-direction:column;
+  border-top:1px solid var(--line);
+}
+.log-body{flex:1;overflow-y:auto;padding:2px 14px 14px;display:flex;flex-direction:column;gap:2px}
+.log-item{
+  position:relative;padding:7px 0 7px 20px;
+  font-size:.74rem;color:var(--muted);line-height:1.45;
+}
+.log-item::before{
+  content:"";position:absolute;left:5px;top:13px;
+  width:6px;height:6px;border-radius:50%;
+  background:var(--faint);
+}
+.log-item::after{
+  content:"";position:absolute;left:7.5px;top:22px;bottom:-6px;
+  width:1px;background:var(--line);
+}
+.log-item:last-child::after{display:none}
+.log-item.gold::before{background:var(--gold);box-shadow:0 0 6px rgba(226,178,92,.5)}
+.log-item .t{display:block;font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--faint)}
+
+/* ─── Center: oracle chat ─── */
+.oracle{background:var(--bg)}
+.chat{
+  flex:1;overflow-y:auto;
+  padding:20px 26px;
+  display:flex;flex-direction:column;gap:18px;
+}
+.msg{max-width:82%;display:flex;flex-direction:column;gap:5px}
+.msg .who{
+  font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;
+  font-weight:600;color:var(--faint);
+}
+.msg .bubble{
+  padding:12px 15px;border-radius:var(--radius);
+  font-size:.87rem;line-height:1.55;
+}
+.msg.user{align-self:flex-end;align-items:flex-end}
+.msg.user .bubble{
+  background:var(--panel-2);border:1px solid var(--line-strong);
+  border-bottom-right-radius:4px;
+}
+.msg.oracle-msg{align-self:flex-start}
+.msg.oracle-msg .who{color:var(--arcane)}
+.msg.oracle-msg .bubble{
+  background:var(--arcane-soft);
+  border:1px solid rgba(126,224,210,.18);
+  border-bottom-left-radius:4px;
+}
+.msg .roll{
+  display:inline-flex;align-items:center;gap:6px;
+  margin-top:8px;padding:4px 10px;border-radius:6px;
+  background:rgba(0,0,0,.25);border:1px solid var(--line);
+  font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--gold);
+}
+.readaloud{
+  align-self:stretch;max-width:100%;
+  margin:2px 0;
+  padding:18px 22px;
+  border-radius:var(--radius);
+  background:linear-gradient(160deg,rgba(226,178,92,.09),rgba(226,178,92,.03));
+  border:1px solid rgba(226,178,92,.22);
+  position:relative;
+}
+.readaloud::before{
+  content:"❝";position:absolute;top:10px;left:14px;
+  font-family:'Spectral',serif;font-size:1.6rem;color:rgba(226,178,92,.4);
+}
+.readaloud p{
+  font-family:'Spectral',serif;font-style:italic;
+  font-size:1.02rem;line-height:1.65;color:#f0e4c8;
+  padding-left:18px;
+}
+.readaloud .tag{
+  display:inline-block;margin-bottom:8px;margin-left:18px;
+  font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;
+  font-weight:600;color:var(--gold);
+}
+.typing{display:flex;gap:4px;padding:4px 2px}
+.typing i{width:5px;height:5px;border-radius:50%;background:var(--arcane);opacity:.4;animation:pulse 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.2s}
+.typing i:nth-child(3){animation-delay:.4s}
+
+.composer{
+  flex:none;padding:14px 26px 18px;
+  border-top:1px solid var(--line);
+  background:linear-gradient(180deg,transparent,rgba(0,0,0,.15));
+}
+.composer .box{
+  display:flex;align-items:flex-end;gap:10px;
+  background:var(--panel);
+  border:1px solid var(--line-strong);
+  border-radius:14px;padding:10px 10px 10px 16px;
+  transition:border-color .15s, box-shadow .15s;
+}
+.composer .box:focus-within{
+  border-color:rgba(126,224,210,.45);
+  box-shadow:0 0 0 3px rgba(126,224,210,.08);
+}
+.composer textarea{
+  flex:1;resize:none;background:none;border:none;outline:none;
+  color:var(--text);font:inherit;font-size:.88rem;line-height:1.5;
+  max-height:120px;min-height:22px;
+}
+.composer textarea::placeholder{color:var(--faint)}
+.send{
+  flex:none;width:36px;height:36px;border-radius:10px;
+  background:var(--gold);display:grid;place-items:center;
+  transition:background .15s;
+}
+.send:hover{background:#eec06e}
+.send svg{width:16px;height:16px;stroke:#141311;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.hint{
+  margin-top:8px;display:flex;gap:14px;
+  font-size:.66rem;color:var(--faint);
+}
+.hint kbd{
+  font-family:'JetBrains Mono',monospace;font-size:.62rem;
+  padding:1px 5px;border-radius:4px;
+  border:1px solid var(--line-strong);background:var(--panel);
+}
+
+/* ─── Right: detail ─── */
+.detail{background:var(--panel);overflow:hidden}
+.detail-body{flex:1;overflow-y:auto;padding:0 18px 18px;display:flex;flex-direction:column;gap:14px}
+.move-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px;border-radius:var(--radius-sm);
+  background:var(--gold-soft);border:1px solid rgba(226,178,92,.3);
+  color:var(--gold);font-size:.82rem;font-weight:600;
+  transition:background .15s;
+}
+.move-btn:hover{background:rgba(226,178,92,.22)}
+.move-btn svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.scene-title h3{font-size:1.05rem;font-weight:600;margin-bottom:4px}
+.slug{
+  display:inline-block;
+  font-family:'JetBrains Mono',monospace;font-size:.68rem;
+  color:var(--muted);background:var(--panel-2);
+  border:1px solid var(--line);
+  padding:2px 8px;border-radius:5px;
+}
+.card{
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:14px 16px;
+}
+.card .label{
+  font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;
+  font-weight:600;color:var(--faint);margin-bottom:9px;
+}
+.card.readcard{
+  background:linear-gradient(160deg,rgba(226,178,92,.08),rgba(226,178,92,.02));
+  border-color:rgba(226,178,92,.22);
+}
+.card.readcard .label{color:var(--gold)}
+.card.readcard p{
+  font-family:'Spectral',serif;font-style:italic;
+  font-size:.94rem;line-height:1.6;color:#f0e4c8;
+}
+.card.notes p{font-size:.8rem;line-height:1.6;color:var(--muted)}
+.card.notes b{color:var(--text);font-weight:500}
+.exit{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 10px;margin:0 -6px;border-radius:var(--radius-sm);
+  font-size:.8rem;cursor:pointer;
+  transition:background .12s;
+}
+.exit:hover{background:rgba(255,255,255,.04)}
+.exit .dir{
+  flex:none;font-family:'JetBrains Mono',monospace;font-size:.64rem;
+  color:var(--arcane);background:var(--arcane-soft);
+  border:1px solid rgba(126,224,210,.2);
+  padding:2px 7px;border-radius:5px;text-transform:uppercase;letter-spacing:.06em;
+}
+.exit .dest{color:var(--text)}
+.exit svg{width:13px;height:13px;margin-left:auto;stroke:var(--faint);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+@media (max-width:1100px){
+  main{grid-template-columns:230px 1fr}
+  .detail{display:none}
+}
+@media (max-width:760px){
+  main{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .crumb{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="eyebrow">DM Oracle</span>
+    <h1>The Sunken Crypt</h1>
+  </div>
+
+  <div class="crumb">
+    <span class="pin">●</span>
+    <b>Village of Mistmoor</b><span class="sep">/</span><span>The Village Green</span>
+  </div>
+
+  <div class="actions">
+    <button class="btn"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>Library</button>
+    <button class="btn"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>Save</button>
+    <button class="btn"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Export novel</button>
+    <button class="btn"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.2"/><circle cx="15.5" cy="15.5" r="1.2"/><circle cx="15.5" cy="8.5" r="1.2"/><circle cx="8.5" cy="15.5" r="1.2"/></svg>Dice</button>
+    <button class="mode-pill"><span class="orb"></span>Mode: Oracle</button>
+  </div>
+</header>
+
+<main>
+  <!-- ══ LEFT ══ -->
+  <div class="col sidebar">
+    <div class="panel-head"><h2>Adventure</h2><span class="sub">Module browser</span></div>
+    <nav class="tree">
+      <div class="node open">
+        <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+        <svg class="ico" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5v13z"/></svg>
+        Adventure
+      </div>
+      <div class="node open d1">
+        <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+        <svg class="ico" viewBox="0 0 24 24"><path d="M9 20l-5-2V4l5 2m0 14l6-2m-6 2V6m6 12l5 2V6l-5-2m0 14V4M9 6l6-2"/></svg>
+        Zones
+      </div>
+      <div class="node open d1">
+        <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+        <svg class="ico" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+        Village of Mistmoor
+      </div>
+      <div class="node active d2">
+        <span class="spacer"></span>
+        The Village Green
+        <span class="party">Party</span>
+      </div>
+      <div class="node d2">
+        <span class="spacer"></span>
+        The Drowned Duck Tavern
+      </div>
+      <div class="node open d1">
+        <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+        <svg class="ico" viewBox="0 0 24 24"><path d="M2 20h20M4 20V9l8-6 8 6v11M10 20v-5h4v5"/></svg>
+        The Sunken Crypt
+      </div>
+      <div class="node d2">
+        <span class="spacer"></span>
+        Flooded Entrance
+      </div>
+      <div class="node d2">
+        <span class="spacer"></span>
+        Hall of the Drowned
+      </div>
+      <div class="tree-sep"></div>
+      <div class="node">
+        <span class="spacer"></span>
+        <svg class="ico" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        NPCs
+      </div>
+      <div class="node">
+        <span class="spacer"></span>
+        <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+        Random tables
+      </div>
+    </nav>
+
+    <div class="log">
+      <div class="panel-head"><h2>Session log</h2><span class="sub">Timeline</span></div>
+      <div class="log-body">
+        <div class="log-item gold"><span class="t">21:14</span>Party arrives at The Village Green</div>
+        <div class="log-item"><span class="t">21:16</span>Oracle: mist thickens as dusk falls</div>
+        <div class="log-item"><span class="t">21:19</span>Roll — Wraith sighting: <b style="color:var(--gold)">17</b> (no encounter)</div>
+        <div class="log-item"><span class="t">21:23</span>Elder Rowan questioned about the crypt</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CENTER ══ -->
+  <div class="col oracle">
+    <div class="panel-head"><h2>Oracle</h2><span class="sub">Ask questions, roll forward, keep the session moving</span></div>
+
+    <div class="chat">
+      <div class="msg oracle-msg">
+        <span class="who">Oracle</span>
+        <div class="bubble">Running <b>The Sunken Crypt</b>. The party stands at the Village Green. Ask a question or type a <code>/command</code>.</div>
+      </div>
+
+      <div class="readaloud">
+        <span class="tag">Read aloud</span>
+        <p>A muddy commons around a mossy well. Iron charms hang from every eave, twisting in the damp wind.</p>
+      </div>
+
+      <div class="msg user">
+        <span class="who">DM</span>
+        <div class="bubble">Does Elder Rowan know what happened to the soldiers who served under Vail?</div>
+      </div>
+
+      <div class="msg oracle-msg">
+        <span class="who">Oracle</span>
+        <div class="bubble">
+          Yes, but he's afraid to say it aloud. Rowan lowers his voice: three men came back from Vail's campaign. Two drowned within the year. The third bolted the church doors from inside and hasn't left since.
+          <div><span class="roll">⚄ Likely → 2d6: 9 · Yes, but…</span></div>
+        </div>
+      </div>
+
+      <div class="msg oracle-msg">
+        <span class="who">Oracle</span>
+        <div class="typing"><i></i><i></i><i></i></div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="box">
+        <textarea rows="1" placeholder="Ask the oracle, or type a /command…"></textarea>
+        <button class="send" aria-label="Send">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+      <div class="hint">
+        <span><kbd>Enter</kbd> send</span>
+        <span><kbd>⌘/Ctrl</kbd> + <kbd>Enter</kbd> newline</span>
+        <span><kbd>/</kbd> commands</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT ══ -->
+  <div class="col detail">
+    <div class="panel-head"><h2>Detail</h2><span class="sub">Scene notes &amp; read-aloud</span></div>
+    <div class="detail-body">
+      <button class="move-btn">
+        <svg viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>
+        Move party here
+      </button>
+
+      <div class="scene-title">
+        <h3>The Village Green</h3>
+        <span class="slug">mistmoor-green</span>
+      </div>
+
+      <div class="card readcard">
+        <div class="label">Read aloud</div>
+        <p>A muddy commons around a mossy well. Iron charms hang from every eave, twisting in the damp wind.</p>
+      </div>
+
+      <div class="card notes">
+        <div class="label">DM notes</div>
+        <p><b>Elder Rowan</b> can be found here by day. At night (if the party lingers), roll for a wraith sighting: it appears at 60&nbsp;ft and asks, <i>“Soldier — did you serve under Vail?”</i> Anyone who answers <b>yes</b> is marked (disadvantage vs the wraith later).</p>
+      </div>
+
+      <div class="card">
+        <div class="label">Exits</div>
+        <div class="exit">
+          <span class="dir">East</span>
+          <span class="dest">The Drowned Duck Tavern</span>
+          <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+        <div class="exit">
+          <span class="dir">North</span>
+          <span class="dest">Chapel of the Still Water</span>
+          <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+        <div class="exit">
+          <span class="dir">Down</span>
+          <span class="dest">The Sunken Crypt — Flooded Entrance</span>
+          <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// autoexpand del textarea
+const ta=document.querySelector('.composer textarea');
+ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,120)+'px';});
+// toggle simple de nodos con chevron
+document.querySelectorAll('.node .chev').forEach(c=>{
+  c.parentElement.addEventListener('click',()=>c.parentElement.classList.toggle('open'));
+});
+</script>
+</body>
+</html>
