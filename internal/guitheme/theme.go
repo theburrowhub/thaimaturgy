@@ -1,6 +1,7 @@
-// Package guitheme provides a warm, tabletop-RPG "parchment & ink" Fyne theme
-// shared by the player GUI and the module editor, giving both a consistent,
-// more professional D&D look regardless of the OS light/dark setting.
+// Package guitheme provides a cinematic, modern tabletop-RPG Fyne theme
+// shared by the player GUI and the module editor. It is inspired by dark
+// starlit adventure pages: midnight chrome, warm parchment surfaces, sapphire
+// focus states and restrained gold accents.
 package guitheme
 
 import (
@@ -10,27 +11,28 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
-// Palette — parchment background, dark ink text, burgundy/gold accents.
+// Palette — midnight shell, parchment work surfaces, sapphire/gold accents.
 var (
-	cParchment = rgb(0xF3, 0xE9, 0xCF) // window background
-	cParchDark = rgb(0xE8, 0xDA, 0xB4) // panels / hover
-	cInk       = rgb(0x2B, 0x20, 0x16) // primary text
-	cInkSoft   = rgb(0x6B, 0x5A, 0x3E) // placeholder / secondary
-	cBurgundy  = rgb(0x7B, 0x2D, 0x26) // primary accent (buttons, focus)
-	cGold      = rgb(0xA9, 0x79, 0x1C) // headings / borders
-	cInput     = rgb(0xFB, 0xF5, 0xE3) // entry background
-	cButton    = rgb(0xE3, 0xD3, 0xAA) // button face
-	cErr       = rgb(0x9E, 0x2B, 0x25)
-	cOK        = rgb(0x4F, 0x7A, 0x3F)
-	cOverlay   = rgb(0xF7, 0xEF, 0xD8)
-	cSelection = rgba(0x7B, 0x2D, 0x26, 0x55)
-	cFocus     = rgba(0xA9, 0x79, 0x1C, 0x99)
-	cShadow    = rgba(0x2B, 0x20, 0x16, 0x33)
+	cNight     = rgb(0x0B, 0x12, 0x24) // app shell / gaps
+	cNight2    = rgb(0x13, 0x22, 0x43) // hover chrome
+	cPaper     = rgb(0xF6, 0xEF, 0xDE) // main panels
+	cPaper2    = rgb(0xEA, 0xDF, 0xC7) // secondary panels / hover
+	cPaper3    = rgb(0xFF, 0xFB, 0xF0) // inputs
+	cInk       = rgb(0x18, 0x22, 0x32) // primary text
+	cInkSoft   = rgb(0x68, 0x5B, 0x48) // placeholder / secondary
+	cSapphire  = rgb(0x1D, 0x4E, 0x9B) // primary action
+	cSapphire2 = rgb(0x2D, 0x6C, 0xD6) // focus / link
+	cGold      = rgb(0xC9, 0x92, 0x2E) // accent / warnings
+	cCopper    = rgb(0xB7, 0x4B, 0x3A) // danger / dramatic accent
+	cOK        = rgb(0x3F, 0x7E, 0x53)
+	cSelection = rgba(0x2D, 0x6C, 0xD6, 0x38)
+	cFocus     = rgba(0xC9, 0x92, 0x2E, 0xAA)
+	cShadow    = rgba(0x05, 0x08, 0x12, 0x88)
 )
 
 type parchment struct{ base fyne.Theme }
 
-// New returns the parchment theme.
+// New returns the thAImaturgy theme.
 func New() fyne.Theme { return &parchment{base: theme.DefaultTheme()} }
 
 func (p *parchment) Font(s fyne.TextStyle) fyne.Resource     { return p.base.Font(s) }
@@ -41,15 +43,15 @@ func (p *parchment) Size(n fyne.ThemeSizeName) float32 {
 	case theme.SizeNameText:
 		return 14
 	case theme.SizeNamePadding:
-		return 5
+		return 7
 	case theme.SizeNameInnerPadding:
-		return 8
+		return 10
 	case theme.SizeNameHeadingText:
-		return 22
+		return 24
 	case theme.SizeNameSubHeadingText:
 		return 17
 	case theme.SizeNameInputRadius, theme.SizeNameSelectionRadius:
-		return 5
+		return 9
 	}
 	return p.base.Size(n)
 }
@@ -57,34 +59,29 @@ func (p *parchment) Size(n fyne.ThemeSizeName) float32 {
 func (p *parchment) Color(n fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
 	switch n {
 	case theme.ColorNameBackground:
-		return cParchment
-	case theme.ColorNameForeground, theme.ColorNameForegroundOnPrimary:
-		if n == theme.ColorNameForegroundOnPrimary {
-			return cParchment // light text on burgundy
-		}
+		return cNight
+	case theme.ColorNameForeground:
 		return cInk
+	case theme.ColorNameForegroundOnPrimary:
+		return cPaper3
 	case theme.ColorNamePrimary, theme.ColorNameHyperlink:
-		return cBurgundy
+		return cSapphire
 	case theme.ColorNameButton:
-		return cButton
-	case theme.ColorNameInputBackground:
-		return cInput
+		return cPaper2
+	case theme.ColorNameInputBackground, theme.ColorNameMenuBackground, theme.ColorNameOverlayBackground:
+		return cPaper3
 	case theme.ColorNameInputBorder, theme.ColorNameSeparator:
 		return cGold
 	case theme.ColorNameHover:
-		return cParchDark
-	case theme.ColorNamePressed:
-		return cSelection
-	case theme.ColorNameSelection:
+		return cPaper2
+	case theme.ColorNamePressed, theme.ColorNameSelection:
 		return cSelection
 	case theme.ColorNameFocus:
 		return cFocus
-	case theme.ColorNamePlaceHolder:
-		return cInkSoft
-	case theme.ColorNameDisabled:
+	case theme.ColorNamePlaceHolder, theme.ColorNameDisabled:
 		return cInkSoft
 	case theme.ColorNameError:
-		return cErr
+		return cCopper
 	case theme.ColorNameSuccess:
 		return cOK
 	case theme.ColorNameWarning:
@@ -93,8 +90,6 @@ func (p *parchment) Color(n fyne.ThemeColorName, _ fyne.ThemeVariant) color.Colo
 		return cInkSoft
 	case theme.ColorNameShadow:
 		return cShadow
-	case theme.ColorNameMenuBackground, theme.ColorNameOverlayBackground:
-		return cOverlay
 	}
 	return p.base.Color(n, theme.VariantLight)
 }

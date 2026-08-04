@@ -84,8 +84,8 @@ type gui struct {
 	tgCancel  context.CancelFunc
 	hosting   bool // the Telegram bot is driving the session; GUI inputs are paused
 	leftSplit *container.Split
-	navCard   *widget.Card
-	pcCard    *widget.Card
+	navCard   fyne.CanvasObject
+	pcCard    fyne.CanvasObject
 	pcSheet   *fyne.Container // tabletop-style character sheet (rebuilt on refresh)
 	pcScroll  *container.Scroll
 
@@ -94,8 +94,8 @@ type gui struct {
 	// centerRight split (transcript + detail).
 	body        *container.Split
 	centerRight *container.Split
-	centerCard  *widget.Card
-	rightCard   *widget.Card
+	centerCard  fyne.CanvasObject
+	rightCard   fyne.CanvasObject
 }
 
 func main() {
@@ -151,12 +151,11 @@ func (g *gui) showLibrary() {
 	}
 	g.session, g.oracle, g.cmd = nil, nil, nil
 
-	title := widget.NewLabelWithStyle("🐉  thAImaturgy", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	subtitle := widget.NewLabelWithStyle("An AI oracle for the Dungeon Master", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
-
 	newBtn := widget.NewButtonWithIcon("New / author…", theme.DocumentCreateIcon(), g.newAuthoring)
 	importBtn := widget.NewButtonWithIcon("Import (.tar.gz)…", theme.FolderOpenIcon(), g.importDialog)
 	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.showSettings)
+	actions := container.NewHBox(newBtn, importBtn, settingsBtn)
+	hero := modernLibraryHero("thAImaturgy", "A starlit oracle for running tabletop adventures", actions)
 
 	list := container.NewVBox()
 
@@ -207,10 +206,8 @@ func (g *gui) showLibrary() {
 			fyne.TextAlignCenter, fyne.TextStyle{Italic: true}))
 	}
 
-	top := container.NewVBox(title, subtitle, widget.NewSeparator(),
-		container.NewHBox(newBtn, importBtn, settingsBtn), widget.NewSeparator())
-	content := container.NewBorder(top, bottom, nil, nil, widget.NewCard("Library", "", container.NewVScroll(list)))
-	g.win.SetContent(content)
+	content := container.NewBorder(hero, bottom, nil, nil, modernPanel("Library", "Imported modules and saved sessions", container.NewVScroll(list)))
+	g.win.SetContent(appShell(content))
 }
 
 // showEditor renders the editor view on the shared window.
@@ -440,27 +437,27 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	// sheet by refreshPCPanel.
 	g.pcSheet = container.NewVBox()
 	g.pcScroll = container.NewVScroll(g.pcSheet)
-	g.navCard = widget.NewCard("Adventure", "", g.navTree)
-	g.pcCard = widget.NewCard("Character", "", g.pcScroll)
+	g.navCard = modernPanel("Adventure", "Module browser", g.navTree)
+	g.pcCard = modernPanel("Character", "Virtual DM sheet", g.pcScroll)
 
 	// Left column: adventure browser / character sheet (top) + session log (bottom).
 	g.leftSplit = container.NewVSplit(
 		g.navCard,
-		widget.NewCard("Session Log", "", g.logScroll),
+		modernPanel("Session Log", "Timeline and table state", g.logScroll),
 	)
 	g.leftSplit.SetOffset(0.62)
 	left := g.leftSplit
 
 	// Center: oracle transcript + input.
 	inputRow := container.NewBorder(nil, nil, nil, sendBtn, g.entry)
-	g.centerCard = widget.NewCard("Oracle", "", container.NewBorder(nil, inputRow, nil, nil, g.transScroll))
+	g.centerCard = modernPanel("Oracle", "Ask questions, roll forward, keep the session moving", container.NewBorder(nil, inputRow, nil, nil, g.transScroll))
 
 	// Right: detail of the selected zone/room/NPC/event/item — prose + navigable
 	// links (top, scrolls together) and the inline image (bottom).
 	detailContent := container.NewVScroll(container.NewVBox(g.detailText, g.detailLinks))
 	detailBody := container.NewVSplit(detailContent, container.NewVScroll(g.detailImage))
 	detailBody.SetOffset(0.6)
-	g.rightCard = widget.NewCard("Detail", "", container.NewBorder(g.detailActions, nil, nil, nil, detailBody))
+	g.rightCard = modernPanel("Detail", "Scene notes, read-aloud text and artwork", container.NewBorder(g.detailActions, nil, nil, nil, detailBody))
 
 	g.centerRight = container.NewHSplit(g.centerCard, g.rightCard)
 	g.body = container.NewHSplit(left, g.centerRight)
@@ -468,29 +465,24 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	body := g.body
 
 	g.locLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	title := widget.NewLabelWithStyle("🐉  "+adv.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	g.modeBtn = widget.NewButtonWithIcon("", theme.MediaPlayIcon(), g.toggleMode)
-	g.diceBtn = widget.NewButton("🎲 Dice", g.showDiceRoller)
+	g.diceBtn = widget.NewButton("Dice", g.showDiceRoller)
 	g.telegramBtn = widget.NewButton("Telegram", g.toggleTelegram)
 	g.telegramBtn.Hide() // shown only in virtual-DM mode (applyMode)
 	g.libraryBtn = widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary)
 	g.saveBtn = widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save)
 	g.exportBtn = widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel)
-	toolbar := container.NewVBox(
-		container.NewHBox(
-			g.libraryBtn,
-			g.saveBtn,
-			g.exportBtn,
-			g.diceBtn,
-			g.modeBtn,
-			g.telegramBtn,
-			title,
-			g.locLabel,
-		),
-		widget.NewSeparator(),
+	toolbar := modernToolbar(adv.Title,
+		g.libraryBtn,
+		g.saveBtn,
+		g.exportBtn,
+		g.diceBtn,
+		g.modeBtn,
+		g.telegramBtn,
+		g.locLabel,
 	)
 
-	g.win.SetContent(container.NewBorder(toolbar, nil, nil, nil, body))
+	g.win.SetContent(appShell(container.NewBorder(toolbar, nil, nil, nil, body)))
 	g.applyMode() // reflect the (possibly restored) session mode in the UI
 	g.refreshState()
 	// Show the current room in the detail pane to start.
@@ -1109,13 +1101,7 @@ func (g *gui) applyMode() {
 		}
 		g.body.Refresh()
 	}
-	if g.centerCard != nil {
-		if dm {
-			g.centerCard.SetTitle("Dungeon Master")
-		} else {
-			g.centerCard.SetTitle("Oracle")
-		}
-	}
+	// modernPanel titles are static; mode is reflected by the toolbar button and placeholder.
 	// The Telegram host button is only meaningful in virtual-DM mode; leaving DM
 	// mode stops any running bot.
 	if g.telegramBtn != nil {
