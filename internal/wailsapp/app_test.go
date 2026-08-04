@@ -155,6 +155,43 @@ func TestAppFullSettingsAndExports(t *testing.T) {
 	}
 }
 
+func TestAppAssetPackagingAndModeParity(t *testing.T) {
+	store := testStore(t)
+	writeAdventure(t, store, sampleAdventure())
+	app, _ := NewWithStorage(store)
+	src := filepath.Join(t.TempDir(), "portrait.png")
+	if err := os.WriteFile(src, []byte("fakepng"), 0644); err != nil {
+		t.Fatalf("write asset source: %v", err)
+	}
+	rel, err := app.AddImageAsset("crypt", src, "npcs")
+	if err != nil {
+		t.Fatalf("AddImageAsset: %v", err)
+	}
+	if rel != "assets/npcs/portrait.png" {
+		t.Fatalf("asset rel = %q", rel)
+	}
+	if _, err := os.Stat(filepath.Join(store.AdventureDir("crypt"), filepath.FromSlash(rel))); err != nil {
+		t.Fatalf("asset not copied: %v", err)
+	}
+	pkg := filepath.Join(t.TempDir(), "crypt.tar.gz")
+	if _, err := app.PackageAdventure("crypt", pkg); err != nil {
+		t.Fatalf("PackageAdventure: %v", err)
+	}
+	if info, err := os.Stat(pkg); err != nil || info.Size() == 0 {
+		t.Fatalf("package not created: %v / %+v", err, info)
+	}
+	if _, err := app.StartSession("crypt"); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	p, err := app.ToggleMode()
+	if err != nil {
+		t.Fatalf("ToggleMode: %v", err)
+	}
+	if p.State.EffectiveMode() != domain.ModeVirtualDM || len(p.State.PartySnapshot()) == 0 {
+		t.Fatalf("virtual DM mode did not ensure party: mode=%s party=%d", p.State.EffectiveMode(), len(p.State.PartySnapshot()))
+	}
+}
+
 func testStore(t *testing.T) *storage.Storage {
 	t.Helper()
 	store, err := storage.NewWithPath(t.TempDir())

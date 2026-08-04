@@ -3,6 +3,18 @@
 import {wailsapp} from '../models';
 import {domain} from '../models';
 
+export function AddImageAsset(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function ChooseImageFile():Promise<string>;
+
+export function ChooseImagesFolder():Promise<string>;
+
+export function ChooseModuleFile():Promise<string>;
+
+export function ChoosePDFFile():Promise<string>;
+
+export function ChooseSaveFile(arg1:string):Promise<string>;
+
 export function DeleteAdventure(arg1:string):Promise<wailsapp.LibraryPayload>;
 
 export function DeleteSession(arg1:string):Promise<wailsapp.LibraryPayload>;
@@ -23,6 +35,10 @@ export function GetSession():Promise<wailsapp.SessionPayload>;
 
 export function ImportAdventure(arg1:string):Promise<wailsapp.ActionResult>;
 
+export function ImportAdventureFromImages(arg1:string):Promise<domain.Adventure>;
+
+export function ImportAdventureFromPDF(arg1:string):Promise<domain.Adventure>;
+
 export function LoadSession(arg1:string):Promise<wailsapp.SessionPayload>;
 
 export function MarkNPCMet(arg1:string):Promise<wailsapp.SessionPayload>;
@@ -41,10 +57,18 @@ export function SaveAdventure(arg1:domain.Adventure):Promise<domain.Adventure>;
 
 export function SaveConfig(arg1:wailsapp.ConfigPayload):Promise<wailsapp.ConfigPayload>;
 
+export function SaveParty(arg1:Array<domain.Character>):Promise<wailsapp.SessionPayload>;
+
 export function SaveSession():Promise<wailsapp.SubmitResult>;
 
 export function StartSession(arg1:string):Promise<wailsapp.SessionPayload>;
 
+export function StartTelegram():Promise<wailsapp.SubmitResult>;
+
+export function StopTelegram():Promise<wailsapp.SubmitResult>;
+
 export function Submit(arg1:string):Promise<wailsapp.SubmitResult>;
+
+export function ToggleMode():Promise<wailsapp.SessionPayload>;
 
 export function TriggerEvent(arg1:string):Promise<wailsapp.SessionPayload>;

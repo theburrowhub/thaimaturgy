@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/theburrowhub/thaimaturgy/internal/aibuild"
 	"github.com/theburrowhub/thaimaturgy/internal/bookpdf"
 	"github.com/theburrowhub/thaimaturgy/internal/dmbook"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -17,16 +19,20 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/novel"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
+	"github.com/theburrowhub/thaimaturgy/internal/tgbot"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App is the Go backend exposed to the Wails frontend.
 type App struct {
-	ctx     context.Context
-	store   *storage.Storage
-	config  *domain.Config
-	prov    providers.Provider
-	oracle  *engine.Oracle
-	session *domain.Session
+	ctx      context.Context
+	store    *storage.Storage
+	config   *domain.Config
+	prov     providers.Provider
+	oracle   *engine.Oracle
+	tg       *tgbot.Bot
+	tgCancel context.CancelFunc
+	session  *domain.Session
 }
 
 type LibraryPayload struct {
@@ -504,6 +510,195 @@ func (a *App) PackageAdventure(adventureID, path string) (*SubmitResult, error) 
 	}
 	p, _ := a.payload()
 	return &SubmitResult{Success: true, Message: "Adventure package saved: " + path, Session: p}, nil
+}
+
+func (a *App) AddImageAsset(adventureID, sourcePath, kind string) (string, error) {
+	adventureID = strings.TrimSpace(adventureID)
+	sourcePath = strings.TrimSpace(sourcePath)
+	kind = safeAssetSegment(kind, "images")
+	if adventureID == "" || sourcePath == "" {
+		return "", fmt.Errorf("adventure id and image path are required")
+	}
+	in, err := os.Open(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
+	name := filepath.Base(sourcePath)
+	if name == "." || name == string(filepath.Separator) || strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("invalid image filename")
+	}
+	rel := filepath.ToSlash(filepath.Join("assets", kind, name))
+	dst := filepath.Join(a.store.AdventureDir(adventureID), filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return "", err
+	}
+	out, err := os.Create(dst)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		return "", err
+	}
+	return rel, nil
+}
+
+func (a *App) ToggleMode() (*SessionPayload, error) {
+	if a.session == nil {
+		return nil, fmt.Errorf("no active session")
+	}
+	a.session.State.ToggleMode()
+	if a.session.State.EffectiveMode() == domain.ModeVirtualDM {
+		a.session.State.EnsureParty()
+		if a.session.State.StartGame() && a.oracle != nil {
+			a.session.State.AddNote("Virtual DM mode started.")
+		}
+	}
+	a.session.MarkModified()
+	_ = a.store.SaveSession(a.session.State)
+	return a.payload()
+}
+
+func (a *App) SaveParty(party []*domain.Character) (*SessionPayload, error) {
+	if a.session == nil {
+		return nil, fmt.Errorf("no active session")
+	}
+	a.session.State.Characters = party
+	a.session.State.EnsureParty()
+	a.session.MarkModified()
+	if err := a.store.SaveSession(a.session.State); err != nil {
+		return nil, err
+	}
+	return a.payload()
+}
+
+func (a *App) StartTelegram() (*SubmitResult, error) {
+	if a.session == nil {
+		return nil, fmt.Errorf("no active session")
+	}
+	if a.tg != nil {
+		p, _ := a.payload()
+		return &SubmitResult{Success: true, Message: "Telegram already hosting.", Session: p}, nil
+	}
+	if strings.TrimSpace(a.config.TelegramToken) == "" {
+		return nil, fmt.Errorf("no Telegram bot token configured")
+	}
+	if a.oracle == nil {
+		a.oracle = engine.NewOracle(a.session, a.prov)
+	}
+	a.session.State.Mode = domain.ModeVirtualDM
+	a.session.State.EnsureParty()
+	bot, err := tgbot.New(a.store, a.session, a.oracle, tgbot.Options{
+		Token:  a.config.TelegramToken,
+		ChatID: a.config.TelegramChatID,
+		OnEvent: func(line string) {
+			if a.ctx != nil {
+				runtime.EventsEmit(a.ctx, "telegram:event", line)
+			}
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.tg, a.tgCancel = bot, cancel
+	go bot.Run(ctx)
+	p, _ := a.payload()
+	return &SubmitResult{Success: true, Message: "Hosting on Telegram as @" + bot.Username(), Session: p}, nil
+}
+
+func (a *App) StopTelegram() (*SubmitResult, error) {
+	if a.tgCancel != nil {
+		a.tgCancel()
+	}
+	if a.tg != nil {
+		a.tg.Stop()
+	}
+	a.tg, a.tgCancel = nil, nil
+	p, _ := a.payload()
+	return &SubmitResult{Success: true, Message: "Telegram bot stopped.", Session: p}, nil
+}
+
+func (a *App) ChooseModuleFile() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Import adventure module", Filters: []runtime.FileFilter{{DisplayName: "Adventure module", Pattern: "*.tar.gz;*.tgz;*.gz"}}})
+}
+
+func (a *App) ChoosePDFFile() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose a PDF", Filters: []runtime.FileFilter{{DisplayName: "PDF", Pattern: "*.pdf"}}})
+}
+
+func (a *App) ChooseImagesFolder() (string, error) {
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose a folder of images"})
+}
+
+func (a *App) ChooseImageFile() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose image", Filters: []runtime.FileFilter{{DisplayName: "Images", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.gif"}}})
+}
+
+func (a *App) ChooseSaveFile(defaultName string) (string, error) {
+	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "Save file", DefaultFilename: defaultName, CanCreateDirectories: true})
+}
+
+func (a *App) ImportAdventureFromPDF(path string) (*domain.Adventure, error) {
+	if a.prov == nil {
+		return nil, fmt.Errorf("AI import needs a configured provider")
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("PDF path is required")
+	}
+	dir, err := os.MkdirTemp("", "thaim-wails-pdf-*")
+	if err != nil {
+		return nil, err
+	}
+	title := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+	defer cancel()
+	return aibuild.FromPDF(ctx, a.prov, a.importConfig(), path, dir, title, nil, nil, nil)
+}
+
+func (a *App) ImportAdventureFromImages(path string) (*domain.Adventure, error) {
+	if a.prov == nil {
+		return nil, fmt.Errorf("AI import needs a configured provider")
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("images folder is required")
+	}
+	dir, err := os.MkdirTemp("", "thaim-wails-images-*")
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+	defer cancel()
+	return aibuild.FromImages(ctx, a.prov, a.importConfig(), path, dir, filepath.Base(path), nil, nil, nil)
+}
+
+func (a *App) importConfig() *domain.Config {
+	cfg := *a.config
+	if strings.TrimSpace(cfg.ImportLanguage) == "" {
+		cfg.ImportLanguage = string(cfg.Language)
+	}
+	return &cfg
+}
+
+func safeAssetSegment(s, fallback string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			return r
+		}
+		return '-'
+	}, s)
+	s = strings.Trim(s, "-")
+	if s == "" || s == "." || s == ".." {
+		return fallback
+	}
+	return s
 }
 
 func (a *App) Submit(input string) (*SubmitResult, error) {

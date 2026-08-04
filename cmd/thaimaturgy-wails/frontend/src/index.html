@@ -16,6 +16,7 @@
         <button id="settings-btn" class="btn ghost">Settings</button>
         <button id="dice-btn" class="btn ghost hidden">Dice</button>
         <button id="mode-btn" class="btn ghost hidden">Mode: Oracle</button>
+        <button id="telegram-btn" class="btn ghost hidden">Telegram</button>
         <button id="export-dmbook-btn" class="btn ghost hidden">Export DM book</button>
         <button id="export-novel-btn" class="btn ghost hidden">Export novel</button>
         <button id="save-session-btn" class="btn ghost hidden">Save</button>
@@ -42,7 +43,7 @@
 
     <main id="editor-view" class="editor-view hidden">
       <aside class="panel tree-panel"><div class="panel-title"><span>Adventure</span><small>Authoring tree</small></div><div class="tool-row wrap"><button data-add="zone" class="btn tiny">+Zone</button><button data-add="room" class="btn tiny">+Room</button><button data-add="npc" class="btn tiny">+NPC</button><button data-add="event" class="btn tiny">+Event</button><button data-add="item" class="btn tiny">+Item</button><button data-add="table" class="btn tiny">+Table</button></div><div id="editor-tree" class="tree"></div></aside>
-      <section class="panel editor-panel"><div class="panel-title"><span>Editor</span><small>JSON source + form metadata</small></div><div class="editor-actions"><button id="editor-back" class="btn ghost">← Library</button><button id="editor-save" class="btn primary">Save</button><button id="editor-play" class="btn">▶ Play</button><button id="editor-validate" class="btn">Validate</button></div><textarea id="editor-json" spellcheck="false"></textarea><p id="editor-status" class="status"></p></section>
+      <section class="panel editor-panel"><div class="panel-title"><span>Editor</span><small>Visual form + JSON source</small></div><div class="editor-actions"><button id="editor-back" class="btn ghost">← Library</button><button id="editor-save" class="btn primary">Save</button><button id="editor-play" class="btn">▶ Play</button><button id="editor-validate" class="btn">Validate</button><button id="editor-import-pdf" class="btn">AI import PDF…</button><button id="editor-import-images" class="btn">AI import images…</button><button id="editor-add-image" class="btn">Add image asset…</button><button id="editor-package" class="btn">Package .tar.gz…</button></div><div id="editor-form" class="property-form"></div><textarea id="editor-json" spellcheck="false"></textarea><p id="editor-status" class="status"></p></section>
     </main>
 
     <main id="session-view" class="session-grid hidden">
