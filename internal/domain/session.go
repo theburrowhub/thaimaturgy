@@ -130,10 +130,14 @@ type SessionState struct {
 	Quests          []QuestProgress       `json:"quests,omitempty"`
 
 	// Mode selects oracle behaviour: assistant (default) or virtual DM. It can be
-	// toggled at any point during a session. PC holds the player character used in
-	// virtual-DM mode (nil in assistant mode).
+	// toggled at any point during a session.
 	Mode SessionMode `json:"mode,omitempty"`
-	PC   *Character  `json:"pc,omitempty"`
+
+	// Characters is the player party used in virtual-DM mode (nil/empty in
+	// assistant mode). PC is the legacy single-character field kept for loading old
+	// sessions; it is migrated into Characters on first use (see EnsureParty).
+	Characters []*Character `json:"characters,omitempty"`
+	PC         *Character   `json:"pc,omitempty"`
 
 	// Free-form timeline and running summary.
 	Log     *SessionLog `json:"log"`
@@ -167,6 +171,46 @@ func (s *SessionState) MarshalJSON() ([]byte, error) {
 	defer s.mu.Unlock()
 	type alias SessionState
 	return json.Marshal((*alias)(s))
+}
+
+// UnmarshalJSON decodes the state and re-initializes the maps/pointers that use
+// `omitempty` (they come back nil when the saved JSON omitted an empty value).
+// Without this, a state reloaded from disk — notably in the Claude-CLI MCP tools
+// subprocess — panics with "assignment to entry in nil map" the first time a tool
+// records an NPC, flag, visited room, etc.
+func (s *SessionState) UnmarshalJSON(b []byte) error {
+	type alias SessionState
+	if err := json.Unmarshal(b, (*alias)(s)); err != nil {
+		return err
+	}
+	s.ensureInitialized()
+	return nil
+}
+
+// ensureInitialized guarantees the structured maps and the log/conversation
+// pointers are non-nil, so every mutator is safe on a freshly loaded state.
+func (s *SessionState) ensureInitialized() {
+	if s.VisitedRooms == nil {
+		s.VisitedRooms = make(map[string]bool)
+	}
+	if s.KnownNPCs == nil {
+		s.KnownNPCs = make(map[string]*NPCStatus)
+	}
+	if s.TriggeredEvents == nil {
+		s.TriggeredEvents = make(map[string]bool)
+	}
+	if s.Flags == nil {
+		s.Flags = make(map[string]bool)
+	}
+	if s.Variables == nil {
+		s.Variables = make(map[string]string)
+	}
+	if s.Log == nil {
+		s.Log = &SessionLog{Entries: []LogEntry{}, MaxSize: 0}
+	}
+	if s.Conversation == nil {
+		s.Conversation = &Conversation{Messages: []Message{}, MaxSize: 0}
+	}
 }
 
 // SetLogHook registers a callback invoked for every timeline entry the moment it
@@ -303,17 +347,46 @@ func (s *SessionState) SetNPCAlive(id string, alive bool) {
 	s.touch()
 }
 
-// MutatePC runs fn against the player character under the lock, creating the
-// default character first if needed. All PC-sheet mutations go through here so
-// they are synchronized against serialization.
-func (s *SessionState) MutatePC(fn func(*Character)) {
+// migratePC moves a legacy single PC into the party. Caller holds s.mu.
+func (s *SessionState) migratePC() {
+	if s.PC != nil {
+		s.Characters = append(s.Characters, s.PC)
+		s.PC = nil
+	}
+}
+
+// resolveCharacter finds a party member by name (case-insensitive). An empty name
+// returns the sole member when the party has exactly one. Caller holds s.mu.
+func (s *SessionState) resolveCharacter(name string) *Character {
+	s.migratePC()
+	name = strings.TrimSpace(name)
+	if name == "" {
+		if len(s.Characters) == 1 {
+			return s.Characters[0]
+		}
+		return nil
+	}
+	for _, c := range s.Characters {
+		if c != nil && strings.EqualFold(c.Name, name) {
+			return c
+		}
+	}
+	return nil
+}
+
+// MutateCharacter runs fn against the named party member under the lock and
+// returns the resolved name and whether a member matched. An empty name targets
+// the sole member when the party has exactly one (ambiguous otherwise).
+func (s *SessionState) MutateCharacter(name string, fn func(*Character)) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.PC == nil {
-		s.PC = NewCharacter("Adventurer", "Human", "Fighter")
+	c := s.resolveCharacter(name)
+	if c == nil {
+		return "", false
 	}
-	fn(s.PC)
+	fn(c)
 	s.touch()
+	return c.Name, true
 }
 
 // AddUserMessage appends a user message to the conversation under the lock.
@@ -364,6 +437,7 @@ func (s *SessionState) ImportStructured(src *SessionState) {
 	s.Variables = src.Variables
 	s.Party = src.Party
 	s.Quests = src.Quests
+	s.Characters = src.Characters
 	s.PC = src.PC
 }
 
@@ -488,18 +562,69 @@ func (s *SessionState) ToggleMode() SessionMode {
 	return s.EffectiveMode()
 }
 
-// EnsurePC guarantees a player character exists (creating the default adventurer
-// used by virtual-DM mode) and reports whether it created one just now. This is
-// the single place the default sheet is defined, so both frontends and the tool
-// router share it instead of duplicating the literal.
-func (s *SessionState) EnsurePC() bool {
+// EnsureParty guarantees the player party exists — migrating a legacy PC or
+// generating the default heterogeneous level-1 party — and reports whether it
+// created the party just now. This is the single entry point both frontends and
+// the tool router use, so the default roster lives in one place.
+func (s *SessionState) EnsureParty() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.PC != nil {
+	s.migratePC()
+	if len(s.Characters) > 0 {
 		return false
 	}
-	s.PC = NewCharacter("Adventurer", "Human", "Fighter")
+	s.Characters = DefaultParty()
 	return true
+}
+
+// SetParty replaces the whole player party under the lock and logs it.
+func (s *SessionState) SetParty(party []*Character) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	EnsureUniqueNames(party)
+	s.PC = nil
+	s.Characters = party
+	names := make([]string, 0, len(party))
+	for _, c := range party {
+		if c != nil {
+			names = append(names, c.Name)
+		}
+	}
+	s.record(LogEntry{Type: LogParty, Message: "Party set: " + strings.Join(names, ", ")})
+	s.touch()
+}
+
+// PartyNames returns the party members' names (copy) under the lock.
+func (s *SessionState) PartyNames() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.Characters))
+	for _, c := range s.Characters {
+		if c != nil {
+			out = append(out, c.Name)
+		}
+	}
+	return out
+}
+
+// PartySnapshot returns deep value copies of the party members under the lock, so
+// a reader (UI panel, prompt builder) never races a concurrent mutation.
+func (s *SessionState) PartySnapshot() []Character {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.migratePC()
+	out := make([]Character, 0, len(s.Characters))
+	for _, c := range s.Characters {
+		if c == nil {
+			continue
+		}
+		cp := *c
+		cp.Skills = append([]Skill(nil), c.Skills...)
+		cp.Inventory = append([]InventoryItem(nil), c.Inventory...)
+		cp.Conditions = append([]Condition(nil), c.Conditions...)
+		out = append(out, cp)
+	}
+	return out
 }
 
 // UpsertPartyMember creates or updates a tracked party member under the lock.

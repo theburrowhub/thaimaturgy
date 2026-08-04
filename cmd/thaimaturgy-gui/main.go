@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -163,6 +164,11 @@ func runMCPTools(args []string) error {
 	if err := json.Unmarshal(data, &st); err != nil {
 		return err
 	}
+	// In virtual-DM mode make sure the party exists, so the character tools have
+	// members to target even if this subprocess is the first to touch it.
+	if st.EffectiveMode() == domain.ModeVirtualDM {
+		st.EnsureParty()
+	}
 	session := domain.NewSession(&st, adv, domain.DefaultConfig())
 	router := engine.NewToolRouter(session)
 	save := func() {
@@ -205,14 +211,21 @@ func (g *gui) showLibrary() {
 
 	sessions, _ := g.store.ListSessions()
 	if len(sessions) > 0 {
+		// Most recently saved first, so the latest session is at the top.
+		sort.Slice(sessions, func(i, j int) bool {
+			return sessionModTime(sessions[i]).After(sessionModTime(sessions[j]))
+		})
 		list.Add(widget.NewLabelWithStyle("Resume session", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
 		for _, s := range sessions {
 			name := s.Name
-			label := fmt.Sprintf("↻  %s — %s", s.Name, s.AdventureTitle)
+			label := fmt.Sprintf("↻  %s — %s   (%s)", s.Name, s.AdventureTitle, formatSessionTime(sessionModTime(s)))
 			resume := widget.NewButton(label, func() { g.resumeSession(name) })
+			resume.Alignment = widget.ButtonAlignLeading
+			rename := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() { g.renameSession(name) })
+			rename.Importance = widget.LowImportance
 			del := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() { g.deleteSession(name) })
 			del.Importance = widget.LowImportance
-			list.Add(container.NewBorder(nil, nil, nil, del, resume))
+			list.Add(container.NewBorder(nil, nil, nil, container.NewHBox(rename, del), resume))
 		}
 	}
 
@@ -317,6 +330,59 @@ func (g *gui) deleteSession(name string) {
 		}
 		fyne.Do(func() { g.showLibrary() })
 	}()
+}
+
+// sessionModTime extracts the save time from a SessionInfo (ModifiedAt is an
+// interface value holding a time.Time).
+func sessionModTime(s storage.SessionInfo) time.Time {
+	if t, ok := s.ModifiedAt.(time.Time); ok {
+		return t
+	}
+	return time.Time{}
+}
+
+// formatSessionTime renders a save time in the local zone for the library list.
+func formatSessionTime(t time.Time) string {
+	if t.IsZero() {
+		return "—"
+	}
+	return t.Local().Format("2006-01-02 15:04")
+}
+
+// renameSession prompts for a new name and renames the saved session in place.
+func (g *gui) renameSession(name string) {
+	entry := widget.NewEntry()
+	entry.SetText(name)
+
+	var pop *widget.PopUp
+	doRename := func() {
+		newName := strings.TrimSpace(entry.Text)
+		if newName == "" || newName == name {
+			pop.Hide()
+			return
+		}
+		if err := g.store.RenameSession(name, newName); err != nil {
+			g.showErr(err)
+			return
+		}
+		pop.Hide()
+		g.showLibrary()
+	}
+	entry.OnSubmitted = func(string) { doRename() }
+
+	save := widget.NewButton("Rename", doRename)
+	save.Importance = widget.HighImportance
+	cancel := widget.NewButton("Cancel", func() { pop.Hide() })
+
+	content := container.NewVBox(
+		widget.NewLabelWithStyle("Rename session", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+		entry,
+		container.NewHBox(save, cancel),
+	)
+	pop = widget.NewModalPopUp(container.NewPadded(content), g.win.Canvas())
+	pop.Resize(fyne.NewSize(380, 160))
+	pop.Show()
+	g.win.Canvas().Focus(entry)
 }
 
 // --- Session screen ------------------------------------------------------
@@ -1082,21 +1148,30 @@ func (g *gui) applyMode() {
 	g.refreshPCPanel()
 }
 
-// refreshPCPanel rebuilds the tabletop-style player-character sheet shown in
-// virtual-DM mode.
+// refreshPCPanel rebuilds the tabletop-style party sheet shown in virtual-DM
+// mode: an "Edit party…" button (create/adjust with AI) followed by one sheet per
+// party member.
 func (g *gui) refreshPCPanel() {
 	if g.pcSheet == nil || g.session == nil {
 		return
 	}
-	pc := g.session.State.PC
-	if pc == nil {
-		g.pcSheet.Objects = []fyne.CanvasObject{
-			widget.NewLabelWithStyle("No character yet.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
-			widget.NewLabel("Switch to Virtual DM and a default adventurer is created so you can start playing to test the module."),
-		}
-	} else {
-		g.pcSheet.Objects = buildPCSheet(pc)
+	objs := []fyne.CanvasObject{
+		widget.NewButtonWithIcon("Edit party…", theme.DocumentCreateIcon(), g.showPartyEditor),
+		widget.NewSeparator(),
 	}
+	party := g.session.State.PartySnapshot()
+	if len(party) == 0 {
+		objs = append(objs,
+			widget.NewLabelWithStyle("No party yet.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
+			wrapLabel("Switch to Virtual DM (a default party is created) or use “Edit party…”."))
+	}
+	for i := range party {
+		if i > 0 {
+			objs = append(objs, widget.NewSeparator())
+		}
+		objs = append(objs, buildPCSheet(&party[i])...)
+	}
+	g.pcSheet.Objects = objs
 	g.pcSheet.Refresh()
 	if g.pcScroll != nil {
 		g.pcScroll.Refresh()
@@ -1124,12 +1199,12 @@ func (g *gui) onModeChanged() {
 	dm := g.modeIsDM()
 	firstTime := false
 	if dm {
-		firstTime = g.session.State.EnsurePC()
+		firstTime = g.session.State.EnsureParty()
 	}
 	g.applyMode()
 	g.refreshLog()
 	if dm {
-		g.appendTranscript("_🎲 **Virtual DM mode** — the AI now runs the game and you play the character. Type what you do; toggle back to Oracle any time._")
+		g.appendTranscript("_🎲 **Virtual DM mode** — the AI now runs the game for your party. Type what you do; toggle back to Oracle any time._")
 		if firstTime {
 			g.ask(domain.DMKickoffPrompt(g.config.Language))
 		}

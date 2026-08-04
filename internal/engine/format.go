@@ -287,6 +287,19 @@ func FormatCharacter(c *domain.Character) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+// FormatParty renders a whole player party, one sheet per member, separated by
+// blank lines. Takes value copies (a PartySnapshot) to stay race-free.
+func FormatParty(party []domain.Character) string {
+	if len(party) == 0 {
+		return "(no party)"
+	}
+	blocks := make([]string, 0, len(party))
+	for i := range party {
+		blocks = append(blocks, FormatCharacter(&party[i]))
+	}
+	return strings.Join(blocks, "\n\n")
+}
+
 func writeField(sb *strings.Builder, label, value string) {
 	if strings.TrimSpace(value) == "" {
 		return

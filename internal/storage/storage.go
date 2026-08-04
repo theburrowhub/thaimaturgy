@@ -218,6 +218,39 @@ func (s *Storage) DeleteSession(name string) error {
 	return nil
 }
 
+// RenameSession renames a persisted session, updating the name stored inside the
+// file and moving it to the new path. It rejects empty or unsafe names and won't
+// overwrite an existing session.
+func (s *Storage) RenameSession(oldName, newName string) error {
+	newName = strings.TrimSpace(newName)
+	if newName == "" {
+		return fmt.Errorf("new name is required")
+	}
+	if newName == oldName {
+		return nil
+	}
+	if strings.ContainsAny(newName, `/\`) || strings.Contains(newName, "..") {
+		return fmt.Errorf("invalid session name: %q", newName)
+	}
+	if s.SessionExists(newName) {
+		return fmt.Errorf("a session named %q already exists", newName)
+	}
+	state, err := s.LoadSession(oldName)
+	if err != nil {
+		return err
+	}
+	state.Name = newName
+	if err := s.SaveSession(state); err != nil {
+		return err
+	}
+	// Move the append-only journal alongside the session so the chronicle stays
+	// with it (and a later session reusing the old name can't inherit it).
+	if err := os.Rename(s.sessionJournalPath(oldName), s.sessionJournalPath(newName)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to move session journal: %w", err)
+	}
+	return s.DeleteSession(oldName)
+}
+
 // ListSessions enumerates persisted sessions with lightweight metadata.
 func (s *Storage) ListSessions() ([]SessionInfo, error) {
 	entries, err := os.ReadDir(filepath.Join(s.basePath, SessionsDir))
