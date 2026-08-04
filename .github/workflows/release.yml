@@ -1,63 +1,38 @@
-name: Release
+name: CI
 
+# Publishing is PAUSED: the single app binary is now the Fyne desktop GUI
+# (cmd/thaimaturgy), which needs CGO + OpenGL/X11 and can't be cross-built by the
+# previous CGO_ENABLED=0 goreleaser pipeline. A multiplatform GUI release (e.g.
+# via fyne-cross with per-OS runners) will be set up separately. This workflow no
+# longer auto-tags or publishes — it just tests and builds on every push/PR so
+# regressions are caught. Build/release locally with `make build`.
 on:
   push:
     branches:
       - main
+  pull_request:
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
 
-      - name: Install audio dependencies
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - name: Install build dependencies (audio + Fyne GUI)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgl1-mesa-dev xorg-dev
 
-      - name: Run tests
+      - name: Test
         run: go test ./... -race
 
-      - name: Get next version
-        id: version
-        run: |
-          # Get the latest tag, default to v0.0.0 if none exists
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Latest tag: $LATEST_TAG"
-
-          # Extract version numbers
-          VERSION=${LATEST_TAG#v}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-
-          # Increment patch version
-          PATCH=$((PATCH + 1))
-          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
-
-          echo "New version: $NEW_VERSION"
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Create and push tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a ${{ steps.version.outputs.new_version }} -m "Release ${{ steps.version.outputs.new_version }}"
-          git push origin ${{ steps.version.outputs.new_version }}
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: '~> v2'
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build app + bot
+        run: make build build-bot
