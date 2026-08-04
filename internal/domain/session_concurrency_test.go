@@ -34,6 +34,7 @@ func TestSessionStateConcurrentAccess(t *testing.T) {
 				st.MutateCharacter("", func(c *Character) { c.Heal(1) }) // empty name → sole member
 				_, _ = st.SubmitAction("p1", "swing")
 				st.ResetRound()
+				st.StartGame()
 				st.SetNPCDisposition("n", "friendly")
 				st.SetNPCAlive("n", true)
 				hp := 7
@@ -60,6 +61,7 @@ func TestSessionStateConcurrentAccess(t *testing.T) {
 				_ = st.PartyNames()
 				_ = st.RoundActions()
 				_ = st.PendingPlayers()
+				_ = st.GameStarted()
 			}
 		})
 	}

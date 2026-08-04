@@ -196,6 +196,27 @@ func (s *SessionState) Controllers() map[string]string {
 	return out
 }
 
+// GameStarted reports whether the game has begun.
+func (s *SessionState) GameStarted() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Started
+}
+
+// StartGame marks the game as begun and returns whether it did so now (false if it
+// was already started).
+func (s *SessionState) StartGame() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Started {
+		return false
+	}
+	s.Started = true
+	s.record(LogEntry{Type: LogSystem, Message: "Game started"})
+	s.touch()
+	return true
+}
+
 // PlayerCount returns how many players currently control a character.
 func (s *SessionState) PlayerCount() int {
 	s.mu.Lock()

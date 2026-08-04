@@ -11,6 +11,22 @@ func partyState() *SessionState {
 	return st
 }
 
+func TestGameLifecycle(t *testing.T) {
+	st := partyState()
+	if st.GameStarted() {
+		t.Fatal("a new game should not be started")
+	}
+	if !st.StartGame() {
+		t.Error("StartGame should report it started the game")
+	}
+	if !st.GameStarted() {
+		t.Error("game should be started now")
+	}
+	if st.StartGame() {
+		t.Error("StartGame should be idempotent (false the second time)")
+	}
+}
+
 func TestClaimCharacter(t *testing.T) {
 	st := partyState()
 
