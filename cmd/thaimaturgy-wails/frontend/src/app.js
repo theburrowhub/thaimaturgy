@@ -1,171 +1,49 @@
-const state = {
-  library: { adventures: [], sessions: [] },
-  current: null,
-  selectedAdventure: null,
-};
+const state = { library:null, current:null, selectedAdventure:null, selectedUID:'about', editorAdventure:null };
+const $ = id => document.getElementById(id);
+function backend(){ return window.go?.wailsapp?.App || demoBackend; }
 
-const $ = (id) => document.getElementById(id);
+const demoAdventure = { schema_version:'1.0', id:'the-sunken-crypt', title:'The Sunken Crypt', author:'Demo', system:'D&D 5e', language:'en', summary:'A compact crypt adventure demo.', context:'For level 1 characters.', background:'A drowned saint still whispers below.', introduction:'The stairs descend under black water.', conclusion:'The relic can be recovered or lost.', hooks:['A bell rings under the marsh.'], zones:[{id:'upper-crypt', name:'Upper Crypt', overview:'Wet stones and old vows.', rooms:[{id:'entry', name:'Entry Hall', read_aloud:'Cold air rolls down the stair.', dm_notes:'The floor is slick.', npc_ids:['warden'], event_ids:['bell'], exits:[{to:'altar', direction:'east'}]},{id:'altar', name:'Drowned Altar', read_aloud:'Black water pools around a cracked altar.', dm_notes:'A hidden reliquary waits here.'}]}], npcs:[{id:'warden', name:'Crypt Warden', role:'guardian', appearance:'A moss-cloaked skeleton with blue witchlight eyes.', personality:'Formal, tired and suspicious.', motivations:'Keep the oath sealed.', default_location:'entry'}], events:[{id:'bell', name:'The Bell Rings', trigger:'The party crosses the threshold.', description:'A submerged bell tolls once.', read_aloud:'A single bell-note rolls through the crypt.'}], items:[{id:'relic', name:'Saint Oria’s Relic', rarity:'rare', description:'A silver fingerbone case.'}], tables:[{id:'omens', name:'Crypt Omens', dice:'d6', rows:[{roll:'1-3', cells:['A candle gutters.']},{roll:'4-6', cells:['Water ripples against gravity.']}]}] };
+function demoTree(adv=demoAdventure){ return [{uid:'about',label:'Adventure',kind:'about'},{uid:'zones',label:'Zones',kind:'section',children:adv.zones.map(z=>({uid:`zone:${z.id}`,label:'▸ '+z.name,kind:'zone',children:z.rooms.map(r=>({uid:`room:${z.id}::${r.id}`,label:(r.id==='entry'?'● Party':'·')+'  '+r.name,kind:'room'}))}))},{uid:'npcs',label:'NPCs',kind:'section',children:adv.npcs.map(n=>({uid:`npc:${n.id}`,label:n.name,kind:'npc'}))},{uid:'events',label:'Events',kind:'section',children:adv.events.map(e=>({uid:`event:${e.id}`,label:e.name,kind:'event'}))},{uid:'items',label:'Items',kind:'section',children:adv.items.map(i=>({uid:`item:${i.id}`,label:i.name,kind:'item'}))},{uid:'tables',label:'Random tables',kind:'section',children:adv.tables.map(t=>({uid:`table:${t.id}`,label:t.name,kind:'table'}))}]; }
+const demoBackend = { async GetLibrary(){ return {adventures:[{id:demoAdventure.id,title:demoAdventure.title,author:'Demo',system:'D&D 5e'}],sessions:[{name:'demo-session',adventure_title:demoAdventure.title,current_room:'entry'}],config:{provider:'claude-cli',model:'sonnet',language:'en',auto_save:true,configured:true,config_path:'demo',data_path:'demo'}}}, async GetAdventure(){return demoAdventure}, async NewAdventureTemplate(){return JSON.parse(JSON.stringify(demoAdventure))}, async SaveAdventure(a){demoAdventure.title=a.title;return a}, async StartSession(){return demoSession('room:upper-crypt::entry')}, async LoadSession(){return demoSession('room:upper-crypt::entry')}, async GetDetail(uid){return demoDetail(uid)}, async MoveParty(id){return demoSession(`room:upper-crypt::${id}`)}, async Submit(input){return {success:true,message: input.startsWith('/')?'Command executed.':'Oracle prompt recorded.',session:demoSession('room:upper-crypt::entry')}}, async SaveSession(){return {success:true,message:'Session saved.',session:demoSession('room:upper-crypt::entry')}}, async MarkNPCMet(id){let s=demoSession('npc:'+id);return s}, async TriggerEvent(id){return demoSession('event:'+id)}, async RollTable(){return {success:true,message:'🎲 Crypt Omens — rolled 4: Water ripples against gravity.',session:demoSession('table:omens')}}, async DeleteAdventure(){return this.GetLibrary()}, async DeleteSession(){return this.GetLibrary()}, async RenameSession(){return this.GetLibrary()}, async ImportAdventure(){return {message:'Imported demo',library:await this.GetLibrary()}}, async SaveConfig(c){return c}, async GetConfig(){return (await this.GetLibrary()).config} };
+function demoSession(uid){ return {state:{name:'demo-session',adventure_id:demoAdventure.id,adventure_title:demoAdventure.title,current_zone:'upper-crypt',current_room: uid.includes('altar')?'altar':'entry',visited_rooms:{entry:true},log:{entries:[]}}, adventure:demoAdventure, current_room:demoAdventure.zones[0].rooms.find(r=>r.id===(uid.includes('altar')?'altar':'entry')), current_zone:demoAdventure.zones[0], tree:demoTree(), detail:demoDetail(uid)} }
+function demoDetail(uid){ const adv=demoAdventure; let md=`## ${adv.title}\n\n**Summary**\n\n${adv.summary}`; let actions=[]; let groups=[]; if(uid?.startsWith('room:')){ const rid=uid.split('::')[1]; const r=adv.zones[0].rooms.find(x=>x.id===rid); md=`## ${r.name}\n\n\` ${r.id} \`\n\n**Read-aloud**\n\n> ${r.read_aloud}\n\n**DM notes**\n\n${r.dm_notes}`; actions=['move']; groups=[{title:'Exits',refs:[{label:'east → Drowned Altar',uid:'room:upper-crypt::altar'}]},{title:'NPCs here',refs:[{label:'Crypt Warden',uid:'npc:warden'}]}]; } if(uid==='npc:warden') md='## Crypt Warden — guardian\n\n**Appearance**\n\nA moss-cloaked skeleton with blue witchlight eyes.\n\n**Personality**\n\nFormal, tired and suspicious.'; return {uid,kind:(uid||'about').split(':')[0],title:'Detail',markdown:md,groups,actions}; }
 
-function api() {
-  const app = window.go?.wailsapp?.App || window.go?.main?.App;
-  if (app) return app;
-  return demoBackend;
-}
-
-const demoAdventure = {
-  id: 'the-sunken-crypt', title: 'The Sunken Crypt', system: 'D&D 5e', summary: 'A sunken shrine full of drowned vows.',
-  zones: [{ id: 'crypt', name: 'Sunken Crypt', overview: 'Wet stone, candle smoke and old bells.', rooms: [
-    { id: 'stair', name: 'Flooded Stair', read_aloud: 'Cold water laps against worn steps. A bell rings once somewhere below.', dm_notes: 'A pressure plate is hidden under the third submerged step.', exits: [{ to: 'altar', direction: 'east' }] },
-    { id: 'altar', name: 'Drowned Altar', read_aloud: 'Black water mirrors a cracked altar crowned by a tarnished sun-disc.', dm_notes: 'The reliquary opens only when the old hymn is spoken.', exits: [{ to: 'stair', direction: 'west' }] }
-  ]}]
-};
-
-const demoBackend = {
-  async GetLibrary() { return { adventures: [{ id: demoAdventure.id, title: demoAdventure.title, system: demoAdventure.system }], sessions: [] }; },
-  async StartSession() { return demoPayload('stair'); },
-  async LoadSession() { return demoPayload('stair'); },
-  async MoveParty(roomID) { return demoPayload(roomID); },
-  async Submit(input) { return { success: true, message: `Demo command accepted: ${input}`, session: demoPayload('stair') }; }
-};
-function demoPayload(roomID) {
-  const room = demoAdventure.zones[0].rooms.find((r) => r.id === roomID) || demoAdventure.zones[0].rooms[0];
-  return { adventure: demoAdventure, current_room: room, current_zone: demoAdventure.zones[0], state: { name: 'demo-wails-session', current_room: room.id, visited_rooms: { [room.id]: true }, log: { entries: [{ type: 'location', message: `Entered ${room.name}` }] } } };
-}
-
-async function loadLibrary() {
-  try {
-    state.library = await api().GetLibrary();
-    if (!state.selectedAdventure && state.library.adventures?.length) {
-      state.selectedAdventure = state.library.adventures[0].id;
-    }
-    renderLibrary();
-    if (!window.go && new URLSearchParams(window.location.search).get('demo') === 'session' && !state.current) {
-      await startSelectedAdventure();
-    }
-  } catch (err) {
-    renderMessage('system', `Could not load library: ${err.message || err}`);
-  }
-}
-
-function renderLibrary() {
-  const adventures = state.library.adventures || [];
-  const sessions = state.library.sessions || [];
-  $('adventure-count').textContent = `${adventures.length} modules`;
-  $('session-count').textContent = `${sessions.length} saves`;
-  $('library-list').innerHTML = adventures.map((adv) => `
-    <button class="node ${adv.id === state.selectedAdventure ? 'active' : ''}" data-adventure="${escapeAttr(adv.id)}">
-      <span class="node-dot"></span>
-      <span><strong>${escapeHtml(adv.title || adv.id)}</strong><small>${escapeHtml(adv.system || 'Adventure module')}</small></span>
-    </button>`).join('') || '<p class="empty">No imported adventures yet.</p>';
-  $('session-list').innerHTML = sessions.map((s) => `
-    <button class="save" data-session="${escapeAttr(s.name)}">
-      <strong>${escapeHtml(s.name)}</strong><small>${escapeHtml(s.adventure_title || s.adventure_id || '')}</small>
-    </button>`).join('') || '<p class="empty">No saved sessions.</p>';
-}
-
-function renderSession(payload) {
-  state.current = payload;
-  const adv = payload.adventure;
-  const room = payload.current_room;
-  $('crumb-adventure').textContent = adv?.title || 'Adventure';
-  $('crumb-room').textContent = room?.name || 'No location';
-  $('session-title').textContent = adv?.title || 'DM Oracle';
-  $('session-subtitle').textContent = payload.state?.name ? `Session ${payload.state.name}` : 'Running locally in Wails';
-  $('room-id').textContent = room?.id || '—';
-  renderTree(adv, payload.state);
-  renderDetail(payload);
-  renderTranscript(payload);
-}
-
-function renderTree(adv, session) {
-  if (!adv) return renderLibrary();
-  $('library-list').innerHTML = (adv.zones || []).map((zone) => `
-    <div class="zone">
-      <div class="zone-title">${escapeHtml(zone.name || zone.id)}</div>
-      ${(zone.rooms || []).map((room) => `
-        <button class="node room ${room.id === session.current_room ? 'active' : ''}" data-room="${escapeAttr(room.id)}">
-          <span class="node-dot"></span>
-          <span><strong>${escapeHtml(room.name || room.id)}</strong><small>${escapeHtml(room.id)}</small></span>
-        </button>`).join('')}
-    </div>`).join('');
-}
-
-function renderDetail(payload) {
-  const room = payload.current_room;
-  if (!room) {
-    $('detail-content').innerHTML = '<p class="empty">No room selected.</p>';
-    return;
-  }
-  $('detail-content').innerHTML = `
-    <article class="detail-card readaloud">
-      <p class="kicker">Read aloud</p>
-      <p>${escapeHtml(room.read_aloud || 'No boxed text for this room.')}</p>
-    </article>
-    <article class="detail-card">
-      <p class="kicker">DM notes</p>
-      <p>${escapeHtml(room.dm_notes || 'No DM notes recorded.')}</p>
-    </article>
-    <article class="detail-card">
-      <p class="kicker">Exits</p>
-      ${(room.exits || []).length ? room.exits.map((exit) => `<button class="exit" data-room="${escapeAttr(exit.to)}">${escapeHtml(exit.direction || 'Exit')} → ${escapeHtml(exit.to)}</button>`).join('') : '<p class="muted">No exits listed.</p>'}
-    </article>`;
-}
-
-function renderTranscript(payload) {
-  const entries = payload.state?.log?.entries || [];
-  $('transcript').innerHTML = entries.map((entry) => `
-    <div class="bubble ${entry.type || 'system'}"><span>${escapeHtml(entry.type || 'system')}</span><p>${escapeHtml(entry.message || '')}</p></div>`).join('') || '<div class="bubble system"><span>system</span><p>Session ready. Use the adventure tree or type a slash command.</p></div>';
-  $('transcript').scrollTop = $('transcript').scrollHeight;
-}
-
-function renderMessage(type, text) {
-  $('transcript').insertAdjacentHTML('beforeend', `<div class="bubble ${type}"><span>${escapeHtml(type)}</span><p>${escapeHtml(text)}</p></div>`);
-}
-
-async function startSelectedAdventure() {
-  const id = state.selectedAdventure || state.library.adventures?.[0]?.id;
-  if (!id) return renderMessage('system', 'Import an adventure module first.');
-  renderSession(await api().StartSession(id));
-  await loadLibrary();
-}
-
-async function submitCommand(event) {
-  event.preventDefault();
-  const input = $('command').value.trim();
-  if (!input) return;
-  $('command').value = '';
-  renderMessage('dm', input);
-  try {
-    const result = await api().Submit(input);
-    if (result?.message) renderMessage(result.success ? 'oracle' : 'system', result.message);
-    if (result?.session) renderSession(result.session);
-  } catch (err) {
-    renderMessage('system', err.message || String(err));
-  }
-}
-
-document.addEventListener('click', async (event) => {
-  const adv = event.target.closest('[data-adventure]');
-  const room = event.target.closest('[data-room]');
-  const save = event.target.closest('[data-session]');
-  if (adv) { state.selectedAdventure = adv.dataset.adventure; renderLibrary(); }
-  if (room) { renderSession(await api().MoveParty(room.dataset.room)); }
-  if (save) { renderSession(await api().LoadSession(save.dataset.session)); }
-});
-
-$('refresh-btn').addEventListener('click', loadLibrary);
-$('new-session-btn').addEventListener('click', startSelectedAdventure);
-$('composer').addEventListener('submit', submitCommand);
-$('command').addEventListener('input', (event) => {
-  event.target.style.height = 'auto';
-  event.target.style.height = `${event.target.scrollHeight}px`;
-});
-
-function escapeHtml(value) { return String(value ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
-function escapeAttr(value) { return escapeHtml(value).replace(/'/g, '&#39;'); }
-
-if (document.readyState === 'loading') {
-  window.addEventListener('DOMContentLoaded', loadLibrary);
-} else {
-  loadLibrary();
-}
+async function init(){ bindEvents(); await loadLibrary(); if(new URLSearchParams(location.search).get('demo')==='session') await startSelectedAdventure(); }
+function bindEvents(){ $('library-btn').onclick=showLibrary; $('settings-btn').onclick=openSettings; $('start-btn').onclick=startSelectedAdventure; $('new-adventure-btn').onclick=newAdventure; $('import-btn').onclick=importAdventure; $('editor-back').onclick=showLibrary; $('editor-save').onclick=saveEditor; $('editor-play').onclick=playEditor; $('editor-validate').onclick=validateEditor; $('send-btn').onclick=submitComposer; $('save-session-btn').onclick=saveSession; $('settings-save').onclick=saveSettings; document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>addEntity(b.dataset.add)); $('composer').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submitComposer();}}); }
+async function loadLibrary(){ state.library=await backend().GetLibrary(); if(!state.selectedAdventure && state.library.adventures?.length) state.selectedAdventure=state.library.adventures[0].id; renderLibrary(); }
+function show(view){ ['library-view','editor-view','session-view'].forEach(id=>$(id).classList.toggle('hidden', id!==view)); $('save-session-btn').classList.toggle('hidden', view!=='session-view'); $('start-btn').classList.toggle('hidden', view!=='library-view'); }
+function showLibrary(){ show('library-view'); $('crumb').textContent='Library'; loadLibrary(); }
+function renderLibrary(){ const advBox=$('adventure-list'); const sessBox=$('session-list'); advBox.innerHTML=''; sessBox.innerHTML=''; (state.library.adventures||[]).forEach(a=>{ const el=div('lib-card'); el.innerHTML=`<h3>${esc(a.title||a.id)}</h3><p>${esc(a.system||'')} ${a.author?`· ${esc(a.author)}`:''}</p><div class="card-actions"><button class="btn primary" data-play="${escAttr(a.id)}">▶ Play</button><button class="btn" data-edit="${escAttr(a.id)}">Edit</button><button class="btn ghost" data-deladv="${escAttr(a.id)}">Delete</button></div>`; advBox.append(el); }); (state.library.sessions||[]).forEach(s=>{ const el=div('lib-card'); el.innerHTML=`<h3>${esc(s.name)}</h3><p>${esc(s.adventure_title||s.adventure_id||'')} ${s.current_room?`· ${esc(s.current_room)}`:''}</p><div class="card-actions"><button class="btn primary" data-load="${escAttr(s.name)}">↻ Resume</button><button class="btn" data-renamesess="${escAttr(s.name)}">Rename</button><button class="btn ghost" data-delsess="${escAttr(s.name)}">Delete</button></div>`; sessBox.append(el); }); advBox.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>startAdventure(b.dataset.play)); advBox.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editAdventure(b.dataset.edit)); advBox.querySelectorAll('[data-deladv]').forEach(b=>b.onclick=()=>deleteAdventure(b.dataset.deladv)); sessBox.querySelectorAll('[data-load]').forEach(b=>b.onclick=()=>loadSession(b.dataset.load)); sessBox.querySelectorAll('[data-renamesess]').forEach(b=>b.onclick=()=>renameSession(b.dataset.renamesess)); sessBox.querySelectorAll('[data-delsess]').forEach(b=>b.onclick=()=>deleteSession(b.dataset.delsess)); }
+async function startSelectedAdventure(){ const id=state.selectedAdventure || state.library?.adventures?.[0]?.id; if(id) await startAdventure(id); }
+async function startAdventure(id){ state.current=await backend().StartSession(id); showSession(); renderSession(); addMsg('system',`Running ${state.current.adventure.title}.`); }
+async function loadSession(name){ state.current=await backend().LoadSession(name); showSession(); renderSession(); addMsg('system',`Resumed ${name}.`); }
+function showSession(){ show('session-view'); $('crumb').textContent=`Session / ${state.current?.adventure?.title||''}`; }
+function renderSession(){ if(!state.current)return; renderTree($('adventure-tree'), state.current.tree||[]); renderDetail(state.current.detail); renderTimeline(); $('oracle-subtitle').textContent=state.current.state?.name||'Ask questions and run commands'; }
+function renderTree(host,nodes){ host.innerHTML=''; const walk=(arr,depth=0)=>arr.forEach(n=>{ const e=div(`node ${n.kind||''} ${state.selectedUID===n.uid?'selected':''}`); e.style.paddingLeft=(8+depth*16)+'px'; e.textContent=n.label; e.onclick=()=>selectNode(n.uid); host.append(e); if(n.children) walk(n.children,depth+1); }); walk(nodes); }
+async function selectNode(uid){ state.selectedUID=uid; const detail=await backend().GetDetail(uid); state.current.detail=detail; renderTree($('adventure-tree'), state.current.tree||[]); renderDetail(detail); }
+function renderDetail(d){ if(!d)return; $('detail-subtitle').textContent=d.kind||''; $('detail').innerHTML=markdownLite(d.markdown||''); const actions=$('detail-actions'); actions.innerHTML=''; (d.actions||[]).forEach(a=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=a==='move'?'Move party here':a==='mark_npc_met'?'Mark as met':a==='trigger_event'?'Mark triggered':a==='roll_table'?'Roll on table':a; b.onclick=()=>runDetailAction(a,d.uid); actions.append(b); }); const links=$('detail-links'); links.innerHTML=''; (d.groups||[]).forEach(g=>{ if(!g.refs?.length)return; const h=document.createElement('h4'); h.textContent=g.title; links.append(h); g.refs.forEach(r=>{ const l=div('link'); l.textContent='› '+r.label; l.onclick=()=>selectNode(r.uid); links.append(l); }); }); }
+async function runDetailAction(action,uid){ let res; if(action==='move') res=await backend().MoveParty(uid.split('::').pop()); else if(action==='mark_npc_met') res=await backend().MarkNPCMet(uid.replace('npc:','')); else if(action==='trigger_event') res=await backend().TriggerEvent(uid.replace('event:','')); else if(action==='roll_table'){ const out=await backend().RollTable(uid.replace('table:','')); addMsg('system',out.message); res=out.session; } if(res){ state.current=res; renderSession(); } }
+function addMsg(role,text){ const el=div('msg '+role); el.textContent=text; $('transcript').append(el); $('transcript').scrollTop=$('transcript').scrollHeight; }
+async function submitComposer(){ const raw=$('composer').value.trim(); if(!raw)return; $('composer').value=''; addMsg('user',raw); const res=await backend().Submit(raw); addMsg(res.success?'system':'error',res.message||''); if(res.session){state.current=res.session;renderSession();} }
+async function saveSession(){ const res=await backend().SaveSession(); addMsg('system',res.message); }
+function renderTimeline(){ const log=state.current.state?.log?.entries || []; $('timeline').innerHTML=log.length?log.slice(-8).map(e=>`<div>${esc(e.type||'note')}: ${esc(e.text||e.room_name||'')}</div>`).join(''):'<div>No timeline entries yet.</div>'; }
+async function newAdventure(){ state.editorAdventure=await backend().NewAdventureTemplate(); openEditor(); }
+async function editAdventure(id){ state.editorAdventure=await backend().GetAdventure(id); openEditor(); }
+function openEditor(){ show('editor-view'); $('crumb').textContent=`Editor / ${state.editorAdventure.title||state.editorAdventure.id}`; $('editor-json').value=JSON.stringify(state.editorAdventure,null,2); renderEditorTree(); }
+function renderEditorTree(){ $('editor-tree').innerHTML=''; const a=state.editorAdventure; const rows=[['meta','Adventure']]; (a.zones||[]).forEach(z=>{ rows.push(['zone:'+z.id,'▸ '+z.name]); (z.rooms||[]).forEach(r=>rows.push(['room:'+z.id+'::'+r.id,'·  '+r.name])); }); (a.npcs||[]).forEach(n=>rows.push(['npc:'+n.id,n.name])); (a.events||[]).forEach(e=>rows.push(['event:'+e.id,e.name])); (a.items||[]).forEach(i=>rows.push(['item:'+i.id,i.name])); (a.tables||[]).forEach(t=>rows.push(['table:'+t.id,t.name])); rows.forEach(([uid,label])=>{ const n=div('node'); n.textContent=label; n.onclick=()=>{ $('editor-status').textContent=`Selected ${uid}. Edit JSON directly, then Save.`; }; $('editor-tree').append(n); }); }
+function parseEditor(){ state.editorAdventure=JSON.parse($('editor-json').value); return state.editorAdventure; }
+async function saveEditor(){ try{ const saved=await backend().SaveAdventure(parseEditor()); state.editorAdventure=saved; $('editor-status').textContent='Saved and installed in library.'; $('editor-json').value=JSON.stringify(saved,null,2); renderEditorTree(); await loadLibrary(); }catch(e){ $('editor-status').textContent='⚠ '+(e.message||e); } }
+async function playEditor(){ await saveEditor(); if(state.editorAdventure?.id) await startAdventure(state.editorAdventure.id); }
+function validateEditor(){ try{ parseEditor(); $('editor-status').textContent='JSON is valid. Save will run adventure validation.'; renderEditorTree(); }catch(e){ $('editor-status').textContent='⚠ '+e.message; } }
+function addEntity(kind){ const a=parseEditor(); const id=kind+'-'+Date.now().toString(36); if(kind==='zone') (a.zones ||= []).push({id,name:'New Zone',rooms:[]}); if(kind==='room') { (a.zones ||= [{id:'zone-1',name:'Starting Zone',rooms:[]}]); (a.zones[0].rooms ||= []).push({id,name:'New Room',read_aloud:'',dm_notes:''}); } if(kind==='npc') (a.npcs ||= []).push({id,name:'New NPC',role:''}); if(kind==='event') (a.events ||= []).push({id,name:'New Event',description:''}); if(kind==='item') (a.items ||= []).push({id,name:'New Item',description:''}); if(kind==='table') (a.tables ||= []).push({id,name:'New Table',dice:'d6',rows:[]}); $('editor-json').value=JSON.stringify(a,null,2); renderEditorTree(); }
+async function importAdventure(){ const path=$('import-path').value.trim(); if(!path){ alert('Pega la ruta local del .tar.gz en el campo de importación.'); return; } const res=await backend().ImportAdventure(path); state.library=res.library; renderLibrary(); }
+async function deleteAdventure(id){ if(confirm('Delete adventure '+id+'?')){ state.library=await backend().DeleteAdventure(id); renderLibrary(); } }
+async function deleteSession(name){ if(confirm('Delete session '+name+'?')){ state.library=await backend().DeleteSession(name); renderLibrary(); } }
+async function renameSession(name){ const n=prompt('New session name',name); if(n&&n!==name){ state.library=await backend().RenameSession(name,n); renderLibrary(); } }
+async function openSettings(){ const c=await backend().GetConfig(); $('cfg-provider').value=c.provider||''; $('cfg-model').value=c.model||''; $('cfg-run-model').value=c.run_model||''; $('cfg-edit-model').value=c.edit_model||''; $('cfg-language').value=c.language||''; $('cfg-autosave').checked=!!c.auto_save; $('cfg-chat-id').value=c.telegram_chat_id||0; $('settings-meta').textContent=`Config: ${c.config_path||''}`; $('settings-dialog').showModal(); }
+async function saveSettings(e){ e.preventDefault(); await backend().SaveConfig({provider:$('cfg-provider').value,model:$('cfg-model').value,run_model:$('cfg-run-model').value,edit_model:$('cfg-edit-model').value,language:$('cfg-language').value,auto_save:$('cfg-autosave').checked,telegram_chat_id:Number($('cfg-chat-id').value||0),request_timeout_seconds:90}); $('settings-dialog').close(); await loadLibrary(); }
+function markdownLite(md){ return esc(md).replace(/^## (.*)$/gm,'<h2>$1</h2>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/^&gt; (.*)$/gm,'<blockquote>$1</blockquote>').replace(/\n/g,'<br>'); }
+function div(cls){ const e=document.createElement('div'); e.className=cls; return e; }
+function esc(v){ return String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escAttr(v){ return esc(v).replace(/'/g,'&#39;'); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -54,6 +55,9 @@ func TestAppMovePartyAndSubmitSlashCommand(t *testing.T) {
 	if moved.State.CurrentRoom != "altar" || !moved.State.VisitedRooms["altar"] {
 		t.Fatalf("state after MoveParty = %+v", moved.State)
 	}
+	if moved.Detail == nil || !strings.Contains(moved.Detail.Markdown, "hidden reliquary") {
+		t.Fatalf("detail after MoveParty = %+v", moved.Detail)
+	}
 
 	result, err := app.Submit("/goto entry")
 	if err != nil {
@@ -61,6 +65,44 @@ func TestAppMovePartyAndSubmitSlashCommand(t *testing.T) {
 	}
 	if !result.Success || result.Session.State.CurrentRoom != "entry" {
 		t.Fatalf("Submit result = %+v", result)
+	}
+}
+
+func TestAppLibraryManagementAndAdventureDetail(t *testing.T) {
+	store := testStore(t)
+	writeAdventure(t, store, sampleAdventure())
+	app, _ := NewWithStorage(store)
+
+	adv := app.NewAdventureTemplate()
+	adv.ID = "new-one"
+	adv.Title = "New One"
+	if _, err := app.SaveAdventure(adv); err != nil {
+		t.Fatalf("SaveAdventure: %v", err)
+	}
+	lib, err := app.GetLibrary()
+	if err != nil {
+		t.Fatalf("GetLibrary: %v", err)
+	}
+	if len(lib.Adventures) != 2 {
+		t.Fatalf("adventure count = %d, want 2", len(lib.Adventures))
+	}
+
+	if _, err := app.StartSession("crypt"); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	detail, err := app.GetDetail("about")
+	if err != nil {
+		t.Fatalf("GetDetail: %v", err)
+	}
+	if !strings.Contains(detail.Markdown, "compact test crypt") {
+		t.Fatalf("about detail = %q", detail.Markdown)
+	}
+	room, err := app.GetDetail("room:z1::entry")
+	if err != nil {
+		t.Fatalf("GetDetail room: %v", err)
+	}
+	if len(room.Groups) == 0 || !strings.Contains(room.Markdown, "Cold air") {
+		t.Fatalf("room detail = %+v", room)
 	}
 }
 

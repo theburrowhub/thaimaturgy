@@ -4,55 +4,56 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>thAImaturgy — DM Oracle</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div id="app">
+  <div id="app" class="app-shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark"></span><div><strong>thAImaturgy</strong><small>DM ORACLE COCKPIT</small></div></div>
-      <div class="crumbs"><span id="crumb-adventure">Library</span><span>/</span><span id="crumb-room">Choose an adventure</span></div>
-      <div class="top-actions"><button id="refresh-btn" class="ghost">Refresh</button><button id="new-session-btn" class="primary">Start session</button></div>
+      <div class="brand"><strong>thAImaturgy</strong><span>DM ORACLE COCKPIT</span></div>
+      <div id="crumb" class="crumb">Library</div>
+      <div class="top-actions">
+        <button id="library-btn" class="btn ghost">Library</button>
+        <button id="settings-btn" class="btn ghost">Settings</button>
+        <button id="save-session-btn" class="btn ghost hidden">Save</button>
+        <button id="start-btn" class="btn primary">Start session</button>
+      </div>
     </header>
 
-    <main class="shell">
-      <aside class="col library-col">
-        <section class="panel">
-          <div class="panel-head"><span>Adventure tree</span><em id="adventure-count">0 modules</em></div>
-          <input id="search" class="search" placeholder="Search rooms, NPCs, events…" />
-          <div id="library-list" class="adventure-list"></div>
-        </section>
-        <section class="panel sessions-panel">
-          <div class="panel-head"><span>Sessions</span><em id="session-count">0 saves</em></div>
-          <div id="session-list" class="session-list"></div>
-        </section>
-      </aside>
-
-      <section class="col oracle-col">
-        <div class="oracle-stage">
-          <div class="orb"></div>
-          <div>
-            <p class="kicker">Current operation</p>
-            <h1 id="session-title">Select an adventure</h1>
-            <p id="session-subtitle">Wails desktop shell with the approved DM Oracle design.</p>
-          </div>
+    <main id="library-view" class="library-view">
+      <section class="hero panel">
+        <p class="eyebrow">Adventure library</p>
+        <h1>Run, import, edit or author tabletop adventures.</h1>
+        <p>Calco funcional de la pantalla inicial: módulos importados, editor, configuración y sesiones guardadas.</p>
+        <div class="hero-actions">
+          <button id="new-adventure-btn" class="btn primary">New / author…</button>
+          <button id="import-btn" class="btn">Import .tar.gz…</button>
+          <input id="import-path" class="path-input" placeholder="/path/to/adventure.tar.gz">
         </div>
-        <div id="transcript" class="transcript"></div>
-        <form id="composer" class="composer">
-          <textarea id="command" rows="1" placeholder="Type /goto room_id, /room, /roll 1d20+4, or a DM note…"></textarea>
-          <button class="primary" type="submit">Send</button>
-        </form>
       </section>
-
-      <aside class="col detail-col">
-        <section class="panel inspector">
-          <div class="panel-head"><span>Detail inspector</span><em id="room-id">—</em></div>
-          <div id="detail-content" class="detail-content empty">Start or load a session to inspect the current room.</div>
-        </section>
-      </aside>
+      <section class="library-grid">
+        <article class="panel"><div class="panel-title"><span>Adventures</span><small>Imported modules</small></div><div id="adventure-list" class="card-list"></div></article>
+        <article class="panel"><div class="panel-title"><span>Resume session</span><small>Saved games</small></div><div id="session-list" class="card-list"></div></article>
+      </section>
     </main>
+
+    <main id="editor-view" class="editor-view hidden">
+      <aside class="panel tree-panel"><div class="panel-title"><span>Adventure</span><small>Authoring tree</small></div><div class="tool-row wrap"><button data-add="zone" class="btn tiny">+Zone</button><button data-add="room" class="btn tiny">+Room</button><button data-add="npc" class="btn tiny">+NPC</button><button data-add="event" class="btn tiny">+Event</button><button data-add="item" class="btn tiny">+Item</button><button data-add="table" class="btn tiny">+Table</button></div><div id="editor-tree" class="tree"></div></aside>
+      <section class="panel editor-panel"><div class="panel-title"><span>Editor</span><small>JSON source + form metadata</small></div><div class="editor-actions"><button id="editor-back" class="btn ghost">← Library</button><button id="editor-save" class="btn primary">Save</button><button id="editor-play" class="btn">▶ Play</button><button id="editor-validate" class="btn">Validate</button></div><textarea id="editor-json" spellcheck="false"></textarea><p id="editor-status" class="status"></p></section>
+    </main>
+
+    <main id="session-view" class="session-grid hidden">
+      <aside class="panel tree-panel">
+        <div class="panel-title"><span>Adventure</span><small>Module browser</small></div>
+        <input id="search" class="search" placeholder="Search rooms, NPCs, events…" />
+        <div id="adventure-tree" class="tree"></div>
+        <div class="panel-title timeline-title"><span>Session Log</span><small>Timeline</small></div>
+        <div id="timeline" class="timeline"></div>
+      </aside>
+      <section class="panel oracle-panel"><div class="panel-title"><span>Oracle</span><small id="oracle-subtitle">Ask questions and run commands</small></div><div id="transcript" class="transcript"></div><div class="composer"><textarea id="composer" placeholder="Ask the oracle, or type /goto room_id, /roll 1d20+4…"></textarea><button id="send-btn" class="btn primary">Send</button></div></section>
+      <aside class="panel detail-panel"><div class="panel-title"><span>Detail</span><small id="detail-subtitle">Scene notes and references</small></div><div id="detail-actions" class="tool-row"></div><article id="detail" class="detail-content"></article><div id="detail-links" class="detail-links"></div></aside>
+    </main>
+
+    <dialog id="settings-dialog"><form method="dialog" class="settings"><h2>Settings</h2><label>Provider<input id="cfg-provider"></label><label>Model<input id="cfg-model"></label><label>Run model<input id="cfg-run-model"></label><label>Edit model<input id="cfg-edit-model"></label><label>Language<input id="cfg-language"></label><label>Telegram chat ID<input id="cfg-chat-id" type="number"></label><label class="check"><input id="cfg-autosave" type="checkbox"> Auto-save</label><div class="dialog-actions"><button value="cancel" class="btn ghost">Cancel</button><button id="settings-save" value="default" class="btn primary">Save settings</button></div><p id="settings-meta" class="status"></p></form></dialog>
   </div>
   <script src="./app.js"></script>
 </body>
