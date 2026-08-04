@@ -42,7 +42,9 @@ type Bot struct {
 
 	mu        sync.Mutex // guards resolving
 	resolving bool
-	saveMu    sync.Mutex // serializes session file writes
+	saveMu    sync.Mutex      // serializes session file writes
+	runCtx    context.Context // set by Run; parents each /dm turn so Stop cancels it
+	turns     sync.WaitGroup  // tracks in-flight /dm turns so Stop can wait them out
 }
 
 // New builds a Bot bound to a live session and oracle. The session should already
@@ -72,6 +74,7 @@ func (b *Bot) Username() string { return b.api.Self.UserName }
 // the standalone binary, or in a goroutine with a cancellable context for the
 // in-app host; Stop cancels the receive loop.
 func (b *Bot) Run(ctx context.Context) {
+	b.runCtx = ctx
 	log.Printf("thaimaturgy-bot online as @%s — adventure %q, session %q", b.api.Self.UserName, b.session.Adventure.ID, b.session.State.Name)
 	if b.chatID == 0 {
 		log.Printf("WARNING: chat id not set — any chat that finds this bot can play and trigger LLM turns; set a chat id to restrict.")
@@ -92,8 +95,13 @@ func (b *Bot) Run(ctx context.Context) {
 	}
 }
 
-// Stop ends the receive loop.
-func (b *Bot) Stop() { b.api.StopReceivingUpdates() }
+// Stop ends the receive loop and waits for any in-flight /dm turn to finish, so a
+// torn-down host never keeps mutating/saving the (now abandoned) session. Cancel
+// the context passed to Run first to abort a slow turn promptly.
+func (b *Bot) Stop() {
+	b.api.StopReceivingUpdates()
+	b.turns.Wait()
+}
 
 func (b *Bot) onUpdate(update tgbotapi.Update) {
 	m := update.Message
@@ -170,7 +178,9 @@ func (b *Bot) runDM(m *tgbotapi.Message) {
 	b.mu.Unlock()
 
 	b.reply(m, "🎲 The DM is thinking…")
+	b.turns.Add(1)
 	go func() {
+		defer b.turns.Done()
 		defer func() {
 			b.mu.Lock()
 			b.resolving = false
@@ -180,10 +190,19 @@ func (b *Bot) runDM(m *tgbotapi.Message) {
 		if timeout <= 0 {
 			timeout = 90 * time.Second
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		base := b.runCtx
+		if base == nil {
+			base = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(base, timeout)
 		defer cancel()
 
 		resp := b.oracle.RunGroupTurn(ctx)
+		// If the host was torn down (Run ctx cancelled) mid-turn, don't save or
+		// post to a game that's been abandoned.
+		if base.Err() != nil {
+			return
+		}
 		if resp.Error != nil {
 			log.Printf("group turn: %v", resp.Error) // don't leak details to the chat
 			b.send(m.Chat.ID, "⚠ The DM couldn't resolve the turn right now. Try /dm again in a moment.")

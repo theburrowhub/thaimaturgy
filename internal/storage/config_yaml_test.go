@@ -92,3 +92,36 @@ func TestConfigMigratesLegacyJSON(t *testing.T) {
 		t.Error("migration should have written the YAML config")
 	}
 }
+
+func TestConfigTelegramRoundTripAndPerms(t *testing.T) {
+	clearProviderEnv(t)
+	store, _ := NewWithPath(t.TempDir())
+
+	c := domain.DefaultConfig()
+	c.TelegramToken = "123:ABC-secret"
+	c.TelegramChatID = -1001234567890
+
+	if err := store.SaveConfig(c); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	// The Telegram token is persisted (unlike API keys), so keep the file 0600.
+	info, err := os.Stat(store.ConfigPath())
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Errorf("config perms = %o, want 600", perm)
+	}
+
+	loaded, err := store.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if loaded.TelegramToken != "123:ABC-secret" {
+		t.Errorf("token round-trip = %q", loaded.TelegramToken)
+	}
+	if loaded.TelegramChatID != -1001234567890 {
+		t.Errorf("chat id round-trip = %d", loaded.TelegramChatID)
+	}
+}

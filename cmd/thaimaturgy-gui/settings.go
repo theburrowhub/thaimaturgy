@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -129,6 +130,9 @@ func (g *gui) showSettings() {
 			cfg.TelegramChatID = 0
 		} else if v, perr := strconv.ParseInt(s, 10, 64); perr == nil {
 			cfg.TelegramChatID = v
+		} else {
+			g.showErr(fmt.Errorf("Telegram chat id must be a number (e.g. -1001234567890): %q", s))
+			return
 		}
 		if err := g.applySettings(cfg); err != nil {
 			g.showErr(err)

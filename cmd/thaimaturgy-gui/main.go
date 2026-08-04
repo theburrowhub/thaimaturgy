@@ -83,6 +83,7 @@ type gui struct {
 	// In-process Telegram bot hosting the current DM session (nil when stopped).
 	tg        *tgbot.Bot
 	tgCancel  context.CancelFunc
+	hosting   bool // the Telegram bot is driving the session; GUI inputs are paused
 	leftSplit *container.Split
 	navCard   *widget.Card
 	pcCard    *widget.Card
@@ -470,6 +471,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.modeBtn = widget.NewButtonWithIcon("", theme.MediaPlayIcon(), g.toggleMode)
 	g.diceBtn = widget.NewButton("🎲 Dice", g.showDiceRoller)
 	g.telegramBtn = widget.NewButton("Telegram", g.toggleTelegram)
+	g.telegramBtn.Hide() // shown only in virtual-DM mode (applyMode)
 	g.libraryBtn = widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary)
 	g.saveBtn = widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save)
 	g.exportBtn = widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel)
@@ -526,7 +528,7 @@ func (g *gui) buildAdvTree() *widget.Tree {
 		},
 	)
 	t.OnSelected = func(uid widget.TreeNodeID) {
-		if g.busy {
+		if g.busy || g.hosting {
 			return
 		}
 		g.showDetail(uid)
@@ -766,7 +768,7 @@ func (g *gui) selectNode(uid widget.TreeNodeID) {
 }
 
 func (g *gui) movePartyHere(roomID string) {
-	if g.busy {
+	if g.busy || g.hosting {
 		return
 	}
 	res := g.cmd.Execute(engine.ParseCommand("/goto " + roomID))
@@ -780,7 +782,7 @@ func (g *gui) movePartyHere(roomID string) {
 }
 
 func (g *gui) markNPCMet(id, name string) {
-	if g.busy {
+	if g.busy || g.hosting {
 		return
 	}
 	g.session.State.MeetNPC(id, name)
@@ -790,7 +792,7 @@ func (g *gui) markNPCMet(id, name string) {
 }
 
 func (g *gui) triggerEvent(id, name string) {
-	if g.busy {
+	if g.busy || g.hosting {
 		return
 	}
 	g.session.State.TriggerEvent(id, name)
@@ -802,7 +804,7 @@ func (g *gui) triggerEvent(id, name string) {
 // rollTable rolls on a table, shows the result in the oracle transcript, and
 // records it in the session log.
 func (g *gui) rollTable(id string) {
-	if g.busy {
+	if g.busy || g.hosting {
 		return
 	}
 	t := g.session.Adventure.Table(id)
@@ -837,7 +839,7 @@ func splitRoomUID(uid string) (zoneID, roomID string) {
 }
 
 func (g *gui) submit(raw string) {
-	if g.busy { // an oracle request is in flight; ignore further submissions
+	if g.busy || g.hosting { // an oracle request is in flight; ignore further submissions
 		return
 	}
 	raw = strings.TrimSpace(raw)
@@ -915,6 +917,7 @@ func (g *gui) setBusy(busy bool) {
 	toggle(g.saveBtn)
 	toggle(g.exportBtn)
 	toggle(g.libraryBtn)
+	toggle(g.telegramBtn)
 	if g.entry != nil {
 		if busy {
 			g.entry.Disable()
@@ -1201,6 +1204,10 @@ func (g *gui) toggleTelegram() {
 		g.stopTelegram("_📴 Telegram bot stopped._")
 		return
 	}
+	if g.busy || g.hosting {
+		g.showErr(fmt.Errorf("wait for the current oracle turn to finish before hosting"))
+		return
+	}
 	if !g.modeIsDM() {
 		g.showErr(fmt.Errorf("switch to Virtual DM mode to host a Telegram game"))
 		return
@@ -1260,10 +1267,13 @@ func (g *gui) stopTelegram(note string) {
 	}
 }
 
-// setHosting pauses the GUI's own oracle-driving inputs while the Telegram bot
-// runs the game, so both don't drive the same session's oracle concurrently.
+// setHosting pauses every GUI path that mutates the session while the Telegram
+// bot drives the game, so the two don't run the oracle on the same session
+// concurrently. Library and the Telegram button stay enabled (to stop/leave);
+// tree and detail actions are gated via the hosting flag (see their guards).
 func (g *gui) setHosting(on bool) {
-	for _, b := range []*widget.Button{g.sendBtn, g.diceBtn, g.modeBtn} {
+	g.hosting = on
+	for _, b := range []*widget.Button{g.sendBtn, g.diceBtn, g.modeBtn, g.saveBtn, g.exportBtn} {
 		if b == nil {
 			continue
 		}
