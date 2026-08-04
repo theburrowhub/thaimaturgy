@@ -57,6 +57,9 @@ func New(store *storage.Storage, session *domain.Session, oracle *engine.Oracle,
 	if err != nil {
 		return nil, err
 	}
+	// A session already played (in the GUI or a prior run) shouldn't demand /begin
+	// or re-narrate an opening — treat it as started when there's evidence.
+	session.State.MarkStartedIfInProgress()
 	return &Bot{
 		api:     api,
 		store:   store,
@@ -122,9 +125,11 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 	arg := strings.TrimSpace(m.CommandArguments())
 
 	switch m.Command() {
-	case "start", "begin":
+	case "begin", "beginadventure":
 		b.startGame(m)
-	case "help":
+	case "start", "help":
+		// /start is what Telegram auto-sends when a user opens the chat, so it must
+		// stay harmless (help) — the game is begun explicitly with /begin.
 		b.reply(m, helpText)
 	case "chatid":
 		b.reply(m, fmt.Sprintf("This chat's id is: %d\nUse it as the chat id to restrict the bot to this chat.", m.Chat.ID))
@@ -176,6 +181,10 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 func (b *Bot) startGame(m *tgbotapi.Message) {
 	if b.session.State.GameStarted() {
 		b.reply(m, "The game is already underway — declare actions with /do, then /dm.")
+		return
+	}
+	if b.session.State.PlayerCount() == 0 {
+		b.reply(m, "Everyone pick a character first (/party then /pick <name>), then /begin.")
 		return
 	}
 	b.mu.Lock()
@@ -400,15 +409,15 @@ func displayName(u *tgbotapi.User) string {
 	return "Player" + strconv.FormatInt(u.ID, 10)
 }
 
-const notStartedMsg = "The game hasn't started yet. Pick characters with /pick, then a player runs /start and the DM sets the scene."
+const notStartedMsg = "The game hasn't started yet. Pick characters with /pick, then a player runs /begin and the DM sets the scene."
 
 const helpText = `thAImaturgy — multiplayer DM bot
-/start — begin the game (the DM sets the opening scene)
 /party — list characters and who plays them
 /pick <name> — claim a character to play
 /me — show your character sheet
-/do <action> — declare your character's action this round (after /start)
-/dm — let the AI Dungeon Master resolve the round and narrate (after /start)
+/begin — start the game (the DM sets the opening scene)
+/do <action> — declare your character's action this round (after /begin)
+/dm — let the AI Dungeon Master resolve the round and narrate (after /begin)
 /roll <dice> — roll dice (e.g. 2d6+3)
 /chatid — show this chat's id
 /help — this help`

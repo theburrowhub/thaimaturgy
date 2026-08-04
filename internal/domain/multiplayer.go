@@ -217,6 +217,31 @@ func (s *SessionState) StartGame() bool {
 	return true
 }
 
+// MarkStartedIfInProgress marks the game started when there's evidence it is
+// already underway — the DM has narrated (an assistant message) or a round is
+// buffered — so a session played in the GUI or saved before this feature isn't
+// treated as fresh (which would demand /begin and re-narrate an opening).
+func (s *SessionState) MarkStartedIfInProgress() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Started {
+		return
+	}
+	inProgress := s.Round != nil && len(s.Round.Actions) > 0
+	if s.Conversation != nil {
+		for _, m := range s.Conversation.Messages {
+			if m.Role == RoleAssistant {
+				inProgress = true
+				break
+			}
+		}
+	}
+	if inProgress {
+		s.Started = true
+		s.touch()
+	}
+}
+
 // PlayerCount returns how many players currently control a character.
 func (s *SessionState) PlayerCount() int {
 	s.mu.Lock()

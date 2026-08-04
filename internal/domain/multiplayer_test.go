@@ -27,6 +27,23 @@ func TestGameLifecycle(t *testing.T) {
 	}
 }
 
+func TestMarkStartedIfInProgress(t *testing.T) {
+	// Fresh session: no evidence of play → stays not-started.
+	fresh := partyState()
+	fresh.MarkStartedIfInProgress()
+	if fresh.GameStarted() {
+		t.Error("a fresh session should not be marked started")
+	}
+
+	// A session where the DM has narrated → treated as started.
+	played := partyState()
+	played.Conversation.AddAssistantMessage("You stand at the gate.")
+	played.MarkStartedIfInProgress()
+	if !played.GameStarted() {
+		t.Error("a session with prior narration should be marked started")
+	}
+}
+
 func TestClaimCharacter(t *testing.T) {
 	st := partyState()
 
