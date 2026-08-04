@@ -17,6 +17,7 @@ func TestSessionStateConcurrentAccess(t *testing.T) {
 	// the point is to exercise concurrent access, not to grow the state.
 	st.Log.MaxSize = 64
 	st.Conversation.MaxSize = 64
+	st.Characters = []*Character{NewCharacter("Hero", "Human", "Fighter")}
 
 	const iters = 150
 	var wg sync.WaitGroup
@@ -28,7 +29,8 @@ func TestSessionStateConcurrentAccess(t *testing.T) {
 				st.AppendLog(LogEntry{Type: LogNote, Message: "note"})
 				st.SetFlag("gate", true)
 				st.SetVariable("k", "v")
-				st.MutatePC(func(c *Character) { c.AwardXP(1); c.SetHP(5); c.SetGold(3) })
+				st.MutateCharacter("Hero", func(c *Character) { c.AwardXP(1); c.SetHP(5); c.SetGold(3) })
+				st.MutateCharacter("", func(c *Character) { c.Heal(1) }) // empty name → sole member
 				st.SetNPCDisposition("n", "friendly")
 				st.SetNPCAlive("n", true)
 				hp := 7
@@ -51,6 +53,8 @@ func TestSessionStateConcurrentAccess(t *testing.T) {
 				_ = st.RecentLog(10)
 				_ = st.LogLen()
 				_ = st.EffectiveMode()
+				_ = st.PartySnapshot()
+				_ = st.PartyNames()
 			}
 		})
 	}

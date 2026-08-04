@@ -656,8 +656,8 @@ func (m *Model) handleSessionInput(raw string) tea.Cmd {
 			m.statusMsg = result.Message
 			st := m.session.State
 			if st.EffectiveMode() == domain.ModeVirtualDM {
-				firstTime := st.EnsurePC()
-				m.appendOracle("🎲 Virtual DM mode — the AI runs the game; type what your character does.")
+				firstTime := st.EnsureParty()
+				m.appendOracle("🎲 Virtual DM mode — the AI runs the game for your party; type what you do.")
 				if firstTime {
 					return m.askOracle(domain.DMKickoffPrompt(m.config.Language))
 				}

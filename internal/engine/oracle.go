@@ -387,10 +387,12 @@ func (o *Oracle) buildSystemPrompt() string {
 		fmt.Fprintf(&sb, "PC %s: HP %d/%d AC %d %s\n", p.Name, p.CurrentHP, p.MaxHP, p.AC, p.Notes)
 	}
 
-	if st.EffectiveMode() == domain.ModeVirtualDM && st.PC != nil {
-		sb.WriteString("\n=== PLAYER CHARACTER (you are the DM; never act for them) ===\n")
-		sb.WriteString(FormatCharacter(st.PC))
-		sb.WriteString("\n")
+	if st.EffectiveMode() == domain.ModeVirtualDM {
+		if party := st.PartySnapshot(); len(party) > 0 {
+			sb.WriteString("\n=== PLAYER PARTY (you are the DM; never act for them; target tools by character name) ===\n")
+			sb.WriteString(FormatParty(party))
+			sb.WriteString("\n")
+		}
 	}
 
 	if st.Summary != "" {

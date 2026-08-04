@@ -1082,21 +1082,30 @@ func (g *gui) applyMode() {
 	g.refreshPCPanel()
 }
 
-// refreshPCPanel rebuilds the tabletop-style player-character sheet shown in
-// virtual-DM mode.
+// refreshPCPanel rebuilds the tabletop-style party sheet shown in virtual-DM
+// mode: an "Edit party…" button (create/adjust with AI) followed by one sheet per
+// party member.
 func (g *gui) refreshPCPanel() {
 	if g.pcSheet == nil || g.session == nil {
 		return
 	}
-	pc := g.session.State.PC
-	if pc == nil {
-		g.pcSheet.Objects = []fyne.CanvasObject{
-			widget.NewLabelWithStyle("No character yet.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
-			widget.NewLabel("Switch to Virtual DM and a default adventurer is created so you can start playing to test the module."),
-		}
-	} else {
-		g.pcSheet.Objects = buildPCSheet(pc)
+	objs := []fyne.CanvasObject{
+		widget.NewButtonWithIcon("Edit party…", theme.DocumentCreateIcon(), g.showPartyEditor),
+		widget.NewSeparator(),
 	}
+	party := g.session.State.PartySnapshot()
+	if len(party) == 0 {
+		objs = append(objs,
+			widget.NewLabelWithStyle("No party yet.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
+			wrapLabel("Switch to Virtual DM (a default party is created) or use “Edit party…”."))
+	}
+	for i := range party {
+		if i > 0 {
+			objs = append(objs, widget.NewSeparator())
+		}
+		objs = append(objs, buildPCSheet(&party[i])...)
+	}
+	g.pcSheet.Objects = objs
 	g.pcSheet.Refresh()
 	if g.pcScroll != nil {
 		g.pcScroll.Refresh()
@@ -1124,12 +1133,12 @@ func (g *gui) onModeChanged() {
 	dm := g.modeIsDM()
 	firstTime := false
 	if dm {
-		firstTime = g.session.State.EnsurePC()
+		firstTime = g.session.State.EnsureParty()
 	}
 	g.applyMode()
 	g.refreshLog()
 	if dm {
-		g.appendTranscript("_🎲 **Virtual DM mode** — the AI now runs the game and you play the character. Type what you do; toggle back to Oracle any time._")
+		g.appendTranscript("_🎲 **Virtual DM mode** — the AI now runs the game for your party. Type what you do; toggle back to Oracle any time._")
 		if firstTime {
 			g.ask(domain.DMKickoffPrompt(g.config.Language))
 		}
