@@ -182,6 +182,18 @@ func (s *SessionState) PendingPlayers() []string {
 	return pending
 }
 
+// Controllers returns a map of character name → controlling player's display
+// name, for showing who plays whom.
+func (s *SessionState) Controllers() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]string, len(s.Players))
+	for _, slot := range s.Players {
+		out[slot.CharacterName] = slot.DisplayName
+	}
+	return out
+}
+
 // PlayerCount returns how many players currently control a character.
 func (s *SessionState) PlayerCount() int {
 	s.mu.Lock()

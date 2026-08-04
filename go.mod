@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/bubbletea v0.25.0
 	github.com/charmbracelet/lipgloss v0.10.0
 	github.com/go-pdf/fpdf v0.9.0
+	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/gopxl/beep/v2 v2.1.1
 	github.com/hhrutter/tiff v1.0.3
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
