@@ -67,6 +67,15 @@ func (g *gui) showSettings() {
 		e.SetPlaceHolder("(applied this session; not written to disk)")
 	}
 
+	telegramToken := widget.NewPasswordEntry()
+	telegramToken.SetText(cfg.TelegramToken)
+	telegramToken.SetPlaceHolder("(bot token from @BotFather; saved to config)")
+	telegramChat := widget.NewEntry()
+	if cfg.TelegramChatID != 0 {
+		telegramChat.SetText(strconv.FormatInt(cfg.TelegramChatID, 10))
+	}
+	telegramChat.SetPlaceHolder("(optional: restrict the bot to one chat)")
+
 	form := widget.NewForm(
 		widget.NewFormItem("Provider", provider),
 		widget.NewFormItem("Model", model),
@@ -86,6 +95,8 @@ func (g *gui) showSettings() {
 		widget.NewFormItem("OpenAI API key", openaiKey),
 		widget.NewFormItem("Anthropic API key", anthropicKey),
 		widget.NewFormItem("Gemini API key", geminiKey),
+		widget.NewFormItem("Telegram bot token", telegramToken),
+		widget.NewFormItem("Telegram chat id", telegramChat),
 	)
 
 	save := func() {
@@ -113,6 +124,12 @@ func (g *gui) showSettings() {
 		if k := strings.TrimSpace(geminiKey.Text); k != "" {
 			cfg.GeminiAPIKey = k
 		}
+		cfg.TelegramToken = strings.TrimSpace(telegramToken.Text)
+		if s := strings.TrimSpace(telegramChat.Text); s == "" {
+			cfg.TelegramChatID = 0
+		} else if v, perr := strconv.ParseInt(s, 10, 64); perr == nil {
+			cfg.TelegramChatID = v
+		}
 		if err := g.applySettings(cfg); err != nil {
 			g.showErr(err)
 			return
@@ -121,7 +138,7 @@ func (g *gui) showSettings() {
 	}
 
 	title := widget.NewLabelWithStyle("⚙  Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	hint := widget.NewLabelWithStyle("Saved to "+g.store.ConfigPath()+". API keys apply this session only (persist them via environment variables or a local login).",
+	hint := widget.NewLabelWithStyle("Saved to "+g.store.ConfigPath()+". API keys apply this session only (persist them via env or a local login); the Telegram token IS saved to the config file.",
 		fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
 	hint.Wrapping = fyne.TextWrapWord
 

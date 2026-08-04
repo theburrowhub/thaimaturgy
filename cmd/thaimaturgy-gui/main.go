@@ -31,6 +31,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/novel"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
+	"github.com/theburrowhub/thaimaturgy/internal/tgbot"
 )
 
 type gui struct {
@@ -70,18 +71,23 @@ type gui struct {
 
 	// Mode toggle (Oracle ↔ Virtual DM) and the player-character panel shown in
 	// virtual-DM mode in place of the adventure browser.
-	modeBtn    *widget.Button
-	sendBtn    *widget.Button
-	diceBtn    *widget.Button
-	saveBtn    *widget.Button
-	exportBtn  *widget.Button
-	libraryBtn *widget.Button
-	busy       bool // an oracle request is in flight; block state reads/mutations from the UI
-	leftSplit  *container.Split
-	navCard    *widget.Card
-	pcCard     *widget.Card
-	pcSheet    *fyne.Container // tabletop-style character sheet (rebuilt on refresh)
-	pcScroll   *container.Scroll
+	modeBtn     *widget.Button
+	sendBtn     *widget.Button
+	diceBtn     *widget.Button
+	saveBtn     *widget.Button
+	exportBtn   *widget.Button
+	libraryBtn  *widget.Button
+	telegramBtn *widget.Button
+	busy        bool // an oracle request is in flight; block state reads/mutations from the UI
+
+	// In-process Telegram bot hosting the current DM session (nil when stopped).
+	tg        *tgbot.Bot
+	tgCancel  context.CancelFunc
+	leftSplit *container.Split
+	navCard   *widget.Card
+	pcCard    *widget.Card
+	pcSheet   *fyne.Container // tabletop-style character sheet (rebuilt on refresh)
+	pcScroll  *container.Scroll
 
 	// Body layout, so virtual-DM mode can hide the detail pane (spoilers): in DM
 	// mode the body's trailing side is just centerCard; in oracle mode it is the
@@ -138,6 +144,7 @@ func main() {
 // --- Library screen ------------------------------------------------------
 
 func (g *gui) showLibrary() {
+	g.shutdownTelegram() // stop any running host bot when leaving the session
 	if g.journal != nil {
 		_ = g.journal.Close()
 		g.journal = nil
@@ -462,6 +469,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	title := widget.NewLabelWithStyle("🐉  "+adv.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	g.modeBtn = widget.NewButtonWithIcon("", theme.MediaPlayIcon(), g.toggleMode)
 	g.diceBtn = widget.NewButton("🎲 Dice", g.showDiceRoller)
+	g.telegramBtn = widget.NewButton("Telegram", g.toggleTelegram)
 	g.libraryBtn = widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary)
 	g.saveBtn = widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save)
 	g.exportBtn = widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel)
@@ -472,6 +480,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 			g.exportBtn,
 			g.diceBtn,
 			g.modeBtn,
+			g.telegramBtn,
 			title,
 			g.locLabel,
 		),
@@ -1103,6 +1112,16 @@ func (g *gui) applyMode() {
 			g.centerCard.SetTitle("Oracle")
 		}
 	}
+	// The Telegram host button is only meaningful in virtual-DM mode; leaving DM
+	// mode stops any running bot.
+	if g.telegramBtn != nil {
+		if dm {
+			g.telegramBtn.Show()
+		} else {
+			g.stopTelegram("_📴 Telegram bot stopped (left DM mode)._")
+			g.telegramBtn.Hide()
+		}
+	}
 	g.refreshPCPanel()
 }
 
@@ -1170,6 +1189,104 @@ func (g *gui) onModeChanged() {
 		g.appendTranscript("_📖 **Oracle mode** — the AI assists you as the human DM again._")
 	}
 	g.autosave()
+}
+
+// toggleTelegram starts or stops the in-process Telegram bot hosting the current
+// virtual-DM session. Available only in virtual-DM mode.
+func (g *gui) toggleTelegram() {
+	if g.session == nil {
+		return
+	}
+	if g.tg != nil {
+		g.stopTelegram("_📴 Telegram bot stopped._")
+		return
+	}
+	if !g.modeIsDM() {
+		g.showErr(fmt.Errorf("switch to Virtual DM mode to host a Telegram game"))
+		return
+	}
+	token := strings.TrimSpace(g.config.TelegramToken)
+	if token == "" {
+		g.showErr(fmt.Errorf("no Telegram bot token configured — set it in Settings"))
+		return
+	}
+	if g.oracle == nil {
+		g.showErr(fmt.Errorf("no AI provider configured; set an API key"))
+		return
+	}
+	g.session.State.EnsureParty()
+	bot, err := tgbot.New(g.store, g.session, g.oracle, tgbot.Options{
+		Token:   token,
+		ChatID:  g.config.TelegramChatID,
+		OnEvent: func(line string) { fyne.Do(func() { g.onTelegramEvent(line) }) },
+	})
+	if err != nil {
+		g.showErr(err)
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	g.tg, g.tgCancel = bot, cancel
+	go bot.Run(ctx)
+	g.setHosting(true)
+	g.telegramBtn.SetText("Telegram: on")
+	g.appendTranscript(fmt.Sprintf("_📡 Hosting on Telegram as @%s. Players: /party, /pick, /do, then /dm. GUI input is paused while hosting._", bot.Username()))
+}
+
+// shutdownTelegram stops the bot without touching the session UI (used when the
+// session is being torn down).
+func (g *gui) shutdownTelegram() {
+	if g.tg == nil {
+		return
+	}
+	if g.tgCancel != nil {
+		g.tgCancel()
+	}
+	g.tg.Stop()
+	g.tg, g.tgCancel = nil, nil
+}
+
+// stopTelegram stops the bot and restores the GUI, posting a note.
+func (g *gui) stopTelegram(note string) {
+	if g.tg == nil {
+		return
+	}
+	g.shutdownTelegram()
+	g.setHosting(false)
+	if g.telegramBtn != nil {
+		g.telegramBtn.SetText("Telegram")
+	}
+	if note != "" {
+		g.appendTranscript(note)
+	}
+}
+
+// setHosting pauses the GUI's own oracle-driving inputs while the Telegram bot
+// runs the game, so both don't drive the same session's oracle concurrently.
+func (g *gui) setHosting(on bool) {
+	for _, b := range []*widget.Button{g.sendBtn, g.diceBtn, g.modeBtn} {
+		if b == nil {
+			continue
+		}
+		if on {
+			b.Disable()
+		} else {
+			b.Enable()
+		}
+	}
+	if g.entry != nil {
+		if on {
+			g.entry.Disable()
+		} else {
+			g.entry.Enable()
+		}
+	}
+}
+
+// onTelegramEvent mirrors bot activity into the GUI transcript and refreshes the
+// panels (the bot mutates the shared session from its own goroutine).
+func (g *gui) onTelegramEvent(line string) {
+	g.appendTranscript("· " + line)
+	g.refreshState()
 }
 
 // refreshState re-renders the browser tree, the current-location label, the log
