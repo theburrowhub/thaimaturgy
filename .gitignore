@@ -6,9 +6,9 @@ bin/
 *.so
 *.dylib
 
-# Stray root binaries from `go build ./cmd/...` without -o
+# Stray root binaries from `go build ./cmd/...` without -o (glob so no name is missed)
 /thaimaturgy
-/thaimaturgy-bot
+/thaimaturgy-*
 
 # Test binary
 *.test

@@ -203,7 +203,6 @@ internal/
                         commands.go (DM commands), format.go, dice.go
   providers/            LLM provider interface + OpenAI/Anthropic
   storage/              module.go (import/validate .tar.gz), storage.go (config/sessions)
-  platform/             OS image-viewer helper
   tgbot/                Telegram multiplayer front-end (reusable)
   mcpserve/             Shared `__mcp-tools` subcommand (Claude-CLI MCP backend)
   tts/                  Optional OpenAI text-to-speech (narrate read-aloud)

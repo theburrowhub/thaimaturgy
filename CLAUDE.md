@@ -76,7 +76,6 @@ internal/
                            vision (classify/caption, drop decorative), hands text+images
                            to an LLM (with continuation for large outputs) → structured
                            Adventure; sanitizes references, enriches the image catalog
-  platform/open.go         OS image-viewer launcher (open/xdg-open/start)
   nativeui/                Native OS file/save/folder pickers + message dialogs
                            (wraps ncruces/zenity); used by the GUI and editor
   tgbot/                   Telegram multiplayer front-end (reusable): hosts a virtual-DM

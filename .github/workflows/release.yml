@@ -1,12 +1,16 @@
-name: Release
+name: CI
 
-# Automatic releases are PAUSED. The single app binary is now the Fyne desktop
-# GUI (cmd/thaimaturgy), which needs CGO + OpenGL/X11 and can't be cross-built by
-# the previous CGO_ENABLED=0 goreleaser pipeline. A multiplatform GUI release
-# (e.g. via fyne-cross with per-OS runners) will be set up separately. Until then
-# this workflow only runs on manual dispatch and just builds/tests — it no longer
-# auto-tags or publishes. Build locally with `make build`.
+# Publishing is PAUSED: the single app binary is now the Fyne desktop GUI
+# (cmd/thaimaturgy), which needs CGO + OpenGL/X11 and can't be cross-built by the
+# previous CGO_ENABLED=0 goreleaser pipeline. A multiplatform GUI release (e.g.
+# via fyne-cross with per-OS runners) will be set up separately. This workflow no
+# longer auto-tags or publishes — it just tests and builds on every push/PR so
+# regressions are caught. Build/release locally with `make build`.
 on:
+  push:
+    branches:
+      - main
+  pull_request:
   workflow_dispatch:
 
 permissions:
