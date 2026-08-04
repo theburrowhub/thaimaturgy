@@ -1,3 +1,7 @@
+# NOTE: not wired into CI right now (the Release workflow is paused). cmd/thaimaturgy
+# is the Fyne desktop GUI, which needs CGO + OpenGL/X11 and can't be cross-built with
+# CGO_ENABLED=0 as configured below. A real multiplatform GUI release needs fyne-cross
+# (or per-OS runners); this config is kept as a starting point for that work.
 version: 2
 
 project_name: thaimaturgy

@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Build
-make build              # Build binary to bin/thaimaturgy
-make run                # Build and run
+make build              # Build the app binary to bin/thaimaturgy (Fyne GUI)
+make build-bot          # Build the Telegram bot to bin/thaimaturgy-bot
+make run                # Build and run the app
 make dev                # Run with go run (faster iteration)
 
 # Testing
@@ -28,22 +29,23 @@ make tidy               # Tidy go.mod
 
 ## Architecture Overview
 
-thAImaturgy (v2) is a **DM assistant / oracle** TUI. The human is the Dungeon Master;
-the app loads a pre-authored adventure module and answers the DM's questions grounded in
-that module, while tracking the running session state. (v1 — where the AI *was* the DM
-and the human played a character — has been removed and its infrastructure repurposed.)
+thAImaturgy (v2) is a **DM assistant / oracle** desktop app (Fyne GUI). The human is the
+Dungeon Master; the app loads a pre-authored adventure module and answers the DM's
+questions grounded in that module, while tracking the running session state. It also has
+a **virtual-DM** mode (the AI runs the game for a party of player characters) which can be
+hosted for multiplayer over Telegram.
 
-**Guiding principle:** all logic lives in `internal/` and is UI-agnostic, so the TUI
-(`cmd/thaimaturgy`) and the Fyne desktop GUI (`cmd/thaimaturgy-gui`, renders maps/art
-inline) are thin frontends over the same core. Build/run the GUI with `make build-gui` /
-`make run-gui`.
+**Guiding principle:** all logic lives in `internal/` and is UI-agnostic, so the desktop
+app (`cmd/thaimaturgy`, Fyne GUI, renders maps/art inline) and the Telegram bot
+(`cmd/thaimaturgy-bot`) are thin frontends over the same core. Build/run with
+`make build` / `make run`; the bot with `make build-bot`. (The earlier Bubble Tea TUI has
+been removed — the GUI is the single app binary.)
 
 ### Layer Structure
 
 ```
-cmd/thaimaturgy/main.go       Entry point (TUI)
-cmd/thaimaturgy-gui/main.go   Entry point (Fyne GUI; inline maps/art)
-cmd/thaimaturgy-edit/         Entry point (module authoring editor; forms → .tar.gz)
+cmd/thaimaturgy/main.go       Entry point (Fyne desktop GUI; inline maps/art; editor view)
+cmd/thaimaturgy-bot/main.go   Entry point (Telegram multiplayer bot; thin wrapper on internal/tgbot)
 internal/
   domain/                  Core types
     adventure.go           Authored module (immutable): Adventure, Zone, Room, NPC,
@@ -56,7 +58,7 @@ internal/
     oracle.go              LLM loop + context builder (grounded in the module)
     tools.go               Tool set + ToolRouter (retrieval + session mutation + dice)
     commands.go            DM command parser/handler (/goto, /npc, /map, /note, …)
-    format.go              Renders adventure content to text (shared by tools/commands/TUI)
+    format.go              Renders adventure content to text (shared by tools/commands/GUI)
     dice.go                Dice rolling engine (unchanged from v1)
   providers/               LLM provider interface + OpenAI/Anthropic/Gemini (text +
                            vision via Message.Images); providers.New(config) factory.
@@ -77,25 +79,27 @@ internal/
   platform/open.go         OS image-viewer launcher (open/xdg-open/start)
   nativeui/                Native OS file/save/folder pickers + message dialogs
                            (wraps ncruces/zenity); used by the GUI and editor
-  tui/
-    model.go               Bubble Tea model + update logic (screens/state)
-    views.go               View rendering for each screen
-    styles.go              Lip Gloss styles
+  tgbot/                   Telegram multiplayer front-end (reusable): hosts a virtual-DM
+                           session over a chat (/party, /pick, /do, /dm…); used by the
+                           bot binary and, in-process, by the desktop app
+  mcpserve/                Shared `__mcp-tools` subcommand (serves the ToolRouter over MCP
+                           for the Claude-CLI backend); used by the app and the bot
   tts/                     Optional OpenAI TTS (narrate read-aloud text)
   types/                   Shared tool types
 ```
 
 ### Key Data Flow
 
-1. DM input in `tui/model.go` → `engine/commands.go` (`ParseCommand`/`CommandHandler`).
+1. DM input in the GUI (`cmd/thaimaturgy`) → `engine/commands.go` (`ParseCommand`/`CommandHandler`).
 2. Slash commands act locally (look up module content, mutate session, open images).
-   Free-form text → `engine/oracle.go` (`Oracle.Ask`).
+   Free-form text → `engine/oracle.go` (`Oracle.Ask`); a multiplayer round →
+   `Oracle.RunGroupTurn`.
 3. The oracle builds a grounded system prompt (adventure summary + current room + present
    NPCs + session state + recent timeline) and runs a tool-calling loop.
 4. Tools (`engine/tools.go`) either **retrieve** authored content (`get_room`, `get_npc`,
    `get_event`, `search_module`) or **mutate** the session (`set_location`,
-   `trigger_event`, `set_flag`, `log_note`, …) via `ToolRouter.Execute()`.
-5. TUI renders the three session panels: Location, Oracle transcript, Session log.
+   `trigger_event`, `set_flag`, `log_note`, player-character tools…) via `ToolRouter.Execute()`.
+5. The GUI renders the three session panels: Location/Character, Oracle/DM transcript, Session log.
 
 ### Adventure modules
 
@@ -104,15 +108,15 @@ Imported to `~/.thaimaturgy/adventures/<id>/`; sessions saved in `~/.thaimaturgy
 Schema: `docs/adventure-schema.md`. Authoring: `docs/authoring-guide.md`. Example:
 `examples/adventures/the-sunken-crypt/`. Package with `make example-module` / `make modules`.
 
-### TUI Screens
+### App Screens (GUI, `cmd/thaimaturgy`)
 
-Defined in `tui/model.go`:
-- `ScreenBoot` - Splash screen
-- `ScreenConfig` - Language + API key setup wizard
-- `ScreenLibrary` - Imported adventures, resumable sessions, import/settings/help/quit
-- `ScreenImport` - Enter a module path to import
-- `ScreenSession` - 3-panel play view (Location / Oracle / Session log) + input
-- `ScreenHelp` - Help screen
+- **Library** — imported adventures (play / edit / delete), resumable sessions (with save
+  time + rename), New/author, Import, Settings.
+- **Session** — 3 panels (adventure browser or party sheet / Oracle-or-DM transcript /
+  Session log) with a mode toggle (Oracle ↔ Virtual DM), dice mini-app, and a Telegram
+  host button (virtual-DM mode only).
+- **Editor** — module authoring (forms → `.tar.gz`), AI import.
+- **Settings** — provider/model, languages, timeouts, API keys, Telegram token/chat id.
 
 ### Provider Configuration
 

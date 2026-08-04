@@ -3,10 +3,8 @@
 
 # Variables
 BINARY_NAME := thaimaturgy
-GUI_BINARY_NAME := thaimaturgy-gui
 BINARY_DIR := bin
 CMD_DIR := ./cmd/thaimaturgy
-GUI_CMD_DIR := ./cmd/thaimaturgy-gui
 BOT_BINARY_NAME := thaimaturgy-bot
 BOT_CMD_DIR := ./cmd/thaimaturgy-bot
 PKG := github.com/theburrowhub/thaimaturgy
@@ -38,7 +36,7 @@ YELLOW := \033[33m
 RED := \033[31m
 RESET := \033[0m
 
-.PHONY: all build build-gui build-bot run run-gui clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall release example-module modules
+.PHONY: all build build-bot run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall release example-module modules
 
 # Adventure modules
 EXAMPLES_DIR := examples/adventures
@@ -64,16 +62,6 @@ build: ## Build the binary
 run: build ## Build and run the application
 	@echo "$(CYAN)Running $(BINARY_NAME)...$(RESET)"
 	./$(BINARY_DIR)/$(BINARY_NAME)
-
-build-gui: ## Build the desktop GUI binary
-	@echo "$(CYAN)Building $(GUI_BINARY_NAME)...$(RESET)"
-	@mkdir -p $(BINARY_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BINARY_DIR)/$(GUI_BINARY_NAME) $(GUI_CMD_DIR)
-	@echo "$(GREEN)Built: $(BINARY_DIR)/$(GUI_BINARY_NAME)$(RESET)"
-
-run-gui: build-gui ## Build and run the desktop GUI
-	@echo "$(CYAN)Running $(GUI_BINARY_NAME)...$(RESET)"
-	./$(BINARY_DIR)/$(GUI_BINARY_NAME)
 
 build-bot: ## Build the Telegram bot binary
 	@echo "$(CYAN)Building $(BOT_BINARY_NAME)...$(RESET)"

@@ -32,13 +32,15 @@ resolves quick mechanics, and tracks the running state of your session.
   contextual as the adventure unfolds.
 - **Roleplay & mechanics support** — NPC voice/motivations/secrets, read-aloud text,
   stat blocks, and dice (`/roll`, ability checks).
-- **Images** — in the TUI, `/map` and `/art` open maps and artwork in your system's
-  image viewer; the **desktop GUI** (`make run-gui`) renders them inline.
-- **Adventure browser (GUI)** — a live tree of zones/rooms, NPCs, events and items;
-  click any entry to view its full detail (with inline art) and act on it — move the
-  party to a room, mark an NPC met or an event triggered — right beside the oracle chat.
-- **Two frontends, one core** — a terminal UI (`cmd/thaimaturgy`) and a Fyne desktop GUI
-  (`cmd/thaimaturgy-gui`) over the same `internal/` engine. The GUI and the module editor
+- **Images** — the desktop app renders maps and artwork **inline** (no external viewer).
+- **Adventure browser** — a live tree of zones/rooms, NPCs, events and items; click any
+  entry to view its full detail (with inline art) and act on it — move the party to a
+  room, mark an NPC met or an event triggered — right beside the oracle chat.
+- **Virtual DM & multiplayer** — toggle to a mode where the AI runs the game for a party
+  of characters, and host it for several players over **Telegram** (`cmd/thaimaturgy-bot`,
+  or the in-app "Telegram" button).
+- **One core, thin frontends** — the Fyne desktop app (`cmd/thaimaturgy`) and the Telegram
+  bot (`cmd/thaimaturgy-bot`) over the same `internal/` engine. The app and module editor
   use the operating system's **native** file/save/folder pickers and message dialogs.
 
 ## Session view
@@ -70,10 +72,11 @@ resolves quick mechanics, and tracks the running state of your session.
 # Package the bundled example adventure
 make example-module            # → dist/modules/the-sunken-crypt.tar.gz
 
-# Run the terminal UI …
+# Run the desktop app (maps/art render inline)
 make run
-# … or the desktop GUI (maps/art render inline)
-make run-gui
+
+# Optional: build the Telegram multiplayer bot
+make build-bot
 ```
 
 In the app: **Import module…** → select `dist/modules/the-sunken-crypt.tar.gz` → pick the
@@ -117,9 +120,11 @@ wizard collects a provider and API key.
 
 Settings live in a single, organized **`config.yaml`** in your OS config directory
 (`~/Library/Application Support/thaimaturgy/` on macOS, `~/.config/thaimaturgy/` on
-Linux, `%AppData%\thaimaturgy\` on Windows), shared by the TUI, GUI and editor. It is
+Linux, `%AppData%\thaimaturgy\` on Windows), shared by the app and the Telegram bot. It is
 **auto-generated on first run** from what was detected and can then be edited by hand.
-Secrets are never written to it. Sections:
+API keys are never written to it (session-only; persist them via env or a local login);
+the Telegram bot token, if you set one, *is* stored here (the file is written `0600`).
+Sections:
 
 ```yaml
 provider:   # name (openai|anthropic|gemini), model, temperature, max_tokens, *_api_key
@@ -189,9 +194,8 @@ make modules      # package every example adventure into dist/modules/
 ### Project structure
 
 ```
-cmd/thaimaturgy/        Entry point (TUI)
-cmd/thaimaturgy-gui/    Entry point (Fyne desktop GUI, inline images)
-cmd/thaimaturgy-edit/   Entry point (module authoring editor)
+cmd/thaimaturgy/        Entry point (Fyne desktop app; inline images; editor view)
+cmd/thaimaturgy-bot/    Entry point (Telegram multiplayer bot)
 internal/
   domain/               Core types: adventure.go (module), session.go (play state),
                         character.go, message.go, config.go
@@ -200,7 +204,8 @@ internal/
   providers/            LLM provider interface + OpenAI/Anthropic
   storage/              module.go (import/validate .tar.gz), storage.go (config/sessions)
   platform/             OS image-viewer helper
-  tui/                  Bubble Tea model + views + styles
+  tgbot/                Telegram multiplayer front-end (reusable)
+  mcpserve/             Shared `__mcp-tools` subcommand (Claude-CLI MCP backend)
   tts/                  Optional OpenAI text-to-speech (narrate read-aloud)
 examples/adventures/    Example modules
 docs/                   Schema + authoring guides
@@ -212,4 +217,4 @@ MIT License
 
 ## Acknowledgments
 
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Lip Gloss](https://github.com/charmbracelet/lipgloss), [Bubbles](https://github.com/charmbracelet/bubbles)
+- [Fyne](https://fyne.io) (desktop GUI), [telegram-bot-api](https://github.com/go-telegram-bot-api/telegram-bot-api) (Telegram bot)
