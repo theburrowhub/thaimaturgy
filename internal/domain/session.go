@@ -139,6 +139,12 @@ type SessionState struct {
 	Characters []*Character `json:"characters,omitempty"`
 	PC         *Character   `json:"pc,omitempty"`
 
+	// Multiplayer (virtual-DM mode): Players maps a player id to the party member
+	// they control; Round buffers each player's declared action for the current
+	// turn until the DM resolves it. Both are empty in single-player use.
+	Players map[string]*PlayerSlot `json:"players,omitempty"`
+	Round   *TurnRound             `json:"round,omitempty"`
+
 	// Free-form timeline and running summary.
 	Log     *SessionLog `json:"log"`
 	Summary string      `json:"summary,omitempty"`

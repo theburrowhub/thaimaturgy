@@ -18,6 +18,7 @@ func TestSessionStateConcurrentAccess(t *testing.T) {
 	st.Log.MaxSize = 64
 	st.Conversation.MaxSize = 64
 	st.Characters = []*Character{NewCharacter("Hero", "Human", "Fighter")}
+	_, _ = st.ClaimCharacter("p1", "P1", "Hero")
 
 	const iters = 150
 	var wg sync.WaitGroup
@@ -31,6 +32,8 @@ func TestSessionStateConcurrentAccess(t *testing.T) {
 				st.SetVariable("k", "v")
 				st.MutateCharacter("Hero", func(c *Character) { c.AwardXP(1); c.SetHP(5); c.SetGold(3) })
 				st.MutateCharacter("", func(c *Character) { c.Heal(1) }) // empty name → sole member
+				_, _ = st.SubmitAction("p1", "swing")
+				st.ResetRound()
 				st.SetNPCDisposition("n", "friendly")
 				st.SetNPCAlive("n", true)
 				hp := 7
@@ -55,6 +58,8 @@ func TestSessionStateConcurrentAccess(t *testing.T) {
 				_ = st.EffectiveMode()
 				_ = st.PartySnapshot()
 				_ = st.PartyNames()
+				_ = st.RoundActions()
+				_ = st.PendingPlayers()
 			}
 		})
 	}

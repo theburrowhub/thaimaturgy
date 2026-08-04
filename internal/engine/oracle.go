@@ -120,6 +120,40 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 	return resp
 }
 
+// RunGroupTurn resolves a multiplayer round: it aggregates the players' declared
+// actions from the round buffer into a single DM prompt, runs the normal GM turn,
+// and clears the buffer on success. Returns an error if no actions were declared.
+func (o *Oracle) RunGroupTurn(ctx context.Context) *Response {
+	actions := o.session.State.RoundActions()
+	if len(actions) == 0 {
+		return &Response{Error: fmt.Errorf("no actions have been declared this round")}
+	}
+	resp := o.Ask(ctx, composeRoundInput(actions, o.session.Config.Language))
+	if resp.Error == nil {
+		o.session.State.ResetRound()
+	}
+	return resp
+}
+
+// composeRoundInput renders the round's declared actions into the DM prompt.
+func composeRoundInput(actions []domain.RoundAction, lang domain.Language) string {
+	var sb strings.Builder
+	if lang == domain.LangSpanish {
+		sb.WriteString("Acciones declaradas por los jugadores esta ronda:\n")
+	} else {
+		sb.WriteString("The players declared these actions this round:\n")
+	}
+	for _, a := range actions {
+		fmt.Fprintf(&sb, "- %s (%s): %s\n", a.CharacterName, a.DisplayName, a.Text)
+	}
+	if lang == domain.LangSpanish {
+		sb.WriteString("\nResuelve el resultado de todas estas acciones, narra la escena y pregunta qué hacen a continuación.")
+	} else {
+		sb.WriteString("\nResolve the outcome of all these actions, narrate the scene, and ask what they do next.")
+	}
+	return sb.String()
+}
+
 // conversationContextWindow bounds how many recent conversation messages are
 // sent to the model each turn (the full conversation is still persisted).
 const conversationContextWindow = 60
