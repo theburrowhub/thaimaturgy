@@ -92,6 +92,11 @@ type Config struct {
 	ImportLanguage string `json:"import_language,omitempty"`
 
 	TTS TTSConfig `json:"tts"`
+
+	// Telegram multiplayer bot. The token lets the app launch the bot to host the
+	// current virtual-DM game; ChatID (optional) restricts it to one chat.
+	TelegramToken  string `json:"telegram_token,omitempty"`
+	TelegramChatID int64  `json:"telegram_chat_id,omitempty"`
 }
 
 func DefaultConfig() *Config {

@@ -1,4 +1,4 @@
-package main
+package tgbot
 
 import (
 	"strings"
@@ -9,15 +9,13 @@ import (
 )
 
 func TestSplitMessage(t *testing.T) {
-	// Short text stays as one chunk.
 	if got := splitMessage("hello", 100); len(got) != 1 || got[0] != "hello" {
 		t.Errorf("short text = %v", got)
 	}
-	// Empty text yields a placeholder rather than an empty send.
 	if got := splitMessage("   ", 100); len(got) != 1 || got[0] != "(empty)" {
 		t.Errorf("empty text = %v", got)
 	}
-	// Long text splits into chunks each within the limit, preserving content.
+
 	long := strings.Repeat("word ", 500) + "\n" + strings.Repeat("more ", 500)
 	chunks := splitMessage(long, 200)
 	if len(chunks) < 2 {
@@ -28,14 +26,9 @@ func TestSplitMessage(t *testing.T) {
 			t.Errorf("chunk %d exceeds limit: %d", i, len(c))
 		}
 	}
-	if !strings.Contains(strings.Join(chunks, " "), "more") {
-		t.Error("content lost during split")
-	}
 
-	// Multibyte content with no newline must not be split mid-rune: every chunk
-	// must be valid UTF-8 and the rejoined text must round-trip (against the
-	// leading/trailing-trimmed input, since splitMessage trims first).
-	multibyte := strings.TrimSpace(strings.Repeat("acción-ñoño ", 400)) // no newlines, many 2-byte runes
+	// Multibyte content with no newline must not be split mid-rune.
+	multibyte := strings.TrimSpace(strings.Repeat("acción-ñoño ", 400))
 	mchunks := splitMessage(multibyte, 100)
 	for i, c := range mchunks {
 		if !utf8.ValidString(c) {

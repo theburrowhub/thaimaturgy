@@ -150,10 +150,11 @@ func (s *Storage) SaveConfig(config *domain.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(s.configPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.configPath), 0700); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
-	if err := os.WriteFile(s.configPath, data, 0644); err != nil {
+	// 0600: the config may carry the Telegram bot token, so keep it owner-only.
+	if err := os.WriteFile(s.configPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 	return nil

@@ -63,6 +63,11 @@ type fileConfig struct {
 		Speed   float64 `yaml:"speed"`
 	} `yaml:"tts"`
 
+	Telegram struct {
+		BotToken string `yaml:"bot_token"` // token to host the multiplayer bot
+		ChatID   int64  `yaml:"chat_id"`   // optional: restrict the bot to this chat
+	} `yaml:"telegram"`
+
 	SystemPrompt string `yaml:"system_prompt,omitempty"`
 }
 
@@ -102,6 +107,9 @@ func fromConfig(c *domain.Config) fileConfig {
 	fc.TTS.Model = c.TTS.Model
 	fc.TTS.Speed = c.TTS.Speed
 
+	fc.Telegram.BotToken = c.TelegramToken
+	fc.Telegram.ChatID = c.TelegramChatID
+
 	fc.SystemPrompt = c.SystemPrompt
 	return fc
 }
@@ -140,6 +148,9 @@ func toConfig(fc *fileConfig, c *domain.Config) {
 	c.TTS.Voice = domain.TTSVoice(fc.TTS.Voice)
 	c.TTS.Model = fc.TTS.Model
 	c.TTS.Speed = fc.TTS.Speed
+
+	c.TelegramToken = fc.Telegram.BotToken
+	c.TelegramChatID = fc.Telegram.ChatID
 
 	c.SystemPrompt = fc.SystemPrompt
 }
