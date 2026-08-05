@@ -114,6 +114,13 @@ func (b *Bot) onUpdate(update tgbotapi.Update) {
 	if b.chatID != 0 && m.Chat.ID != b.chatID {
 		return // ignore other chats
 	}
+	// Bind any character reserved for this sender's @username (via /assign) the
+	// first time they appear.
+	if pc, bound := b.session.State.ResolvePending(strconv.FormatInt(m.From.ID, 10), m.From.UserName, displayName(m.From)); bound {
+		b.save()
+		b.event(fmt.Sprintf("%s → %s (assigned)", displayName(m.From), pc))
+		b.send(m.Chat.ID, fmt.Sprintf("%s is now playing %s.", displayName(m.From), pc))
+	}
 	if m.IsCommand() {
 		b.handleCommand(m)
 	}
@@ -144,6 +151,8 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.save()
 		b.event(fmt.Sprintf("%s picked %s", display, name))
 		b.reply(m, fmt.Sprintf("%s now plays %s. Declare actions with /do.", display, name))
+	case "assign":
+		b.assign(m)
 	case "me":
 		b.reply(m, b.sheetText(playerID))
 	case "do":
@@ -173,6 +182,50 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 	default:
 		b.reply(m, "Unknown command. "+helpText)
 	}
+}
+
+// assign lets a host give a character to a player who hasn't picked. Two forms:
+//   - reply to the target player's message with `/assign <character>` → bound
+//     immediately (works for anyone, even without a public @username);
+//   - `/assign @username <character>` → reserved for that username and bound when
+//     they next send a message (Telegram can't resolve @username → id directly).
+func (b *Bot) assign(m *tgbotapi.Message) {
+	arg := strings.TrimSpace(m.CommandArguments())
+
+	// Reply form: /assign <character>, replying to the target's message.
+	if m.ReplyToMessage != nil && m.ReplyToMessage.From != nil {
+		if arg == "" {
+			b.reply(m, "Usage: reply to the player's message with /assign <character>")
+			return
+		}
+		target := m.ReplyToMessage.From
+		name, err := b.session.State.ClaimCharacter(strconv.FormatInt(target.ID, 10), displayName(target), arg)
+		if err != nil {
+			b.reply(m, "⚠ "+err.Error())
+			return
+		}
+		b.save()
+		b.event(fmt.Sprintf("%s assigned %s to %s", displayName(m.From), name, displayName(target)))
+		b.reply(m, fmt.Sprintf("%s now plays %s.", displayName(target), name))
+		return
+	}
+
+	// Username form: /assign @username <character>.
+	fields := strings.Fields(arg)
+	if len(fields) < 2 || !strings.HasPrefix(fields[0], "@") {
+		b.reply(m, "Usage: /assign @username <character>  (or reply to their message with /assign <character>)")
+		return
+	}
+	username := fields[0]
+	pc := strings.TrimSpace(strings.TrimPrefix(arg, fields[0]))
+	name, err := b.session.State.AssignByUsername(username, pc)
+	if err != nil {
+		b.reply(m, "⚠ "+err.Error())
+		return
+	}
+	b.save()
+	b.event(fmt.Sprintf("%s assigned %s to %s", displayName(m.From), name, username))
+	b.reply(m, fmt.Sprintf("%s reserved for %s — it takes effect when they send a message here.", name, username))
 }
 
 // startGame begins the game: the DM sets the opening scene, then hands off to the
@@ -293,6 +346,7 @@ func (b *Bot) partyText() string {
 		return "The party is empty."
 	}
 	controllers := b.session.State.Controllers()
+	pending := b.session.State.PendingByCharacter()
 	var sb strings.Builder
 	sb.WriteString("Party — pick one with /pick <name>:\n")
 	for i := range party {
@@ -300,6 +354,8 @@ func (b *Bot) partyText() string {
 		line := fmt.Sprintf("• %s — Lvl %d %s %s", c.Name, c.Level, c.Race, c.Class)
 		if who, ok := controllers[c.Name]; ok {
 			line += " — played by " + who
+		} else if u, ok := pending[c.Name]; ok {
+			line += " — reserved for @" + u
 		}
 		sb.WriteString(line + "\n")
 	}
@@ -414,6 +470,7 @@ const notStartedMsg = "The game hasn't started yet. Pick characters with /pick, 
 const helpText = `thAImaturgy — multiplayer DM bot
 /party — list characters and who plays them
 /pick <name> — claim a character to play
+/assign @user <name> — assign a character to a player (or reply to them with /assign <name>)
 /me — show your character sheet
 /begin — start the game (the DM sets the opening scene)
 /do <action> — declare your character's action this round (after /begin)
