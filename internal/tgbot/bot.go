@@ -29,6 +29,9 @@ type Options struct {
 	// OnEvent, if set, is called with short human-readable activity lines (player
 	// joins, actions, narration) so a host UI can mirror what happens in the chat.
 	OnEvent func(string)
+	// Speech, when set, generates an audio version of AI DM narration. The bot
+	// always sends text first, then attempts audio; failures fall back to text only.
+	Speech SpeechGenerator
 }
 
 // Bot hosts a multiplayer virtual-DM session over Telegram.
@@ -39,6 +42,9 @@ type Bot struct {
 	oracle  *engine.Oracle
 	chatID  int64
 	onEvent func(string)
+	speech  SpeechGenerator
+	// sendFunc lets tests observe outgoing Telegram messages without network calls.
+	sendFunc func(tgbotapi.Chattable) (tgbotapi.Message, error)
 
 	mu        sync.Mutex // guards resolving
 	resolving bool
@@ -61,12 +67,14 @@ func New(store *storage.Storage, session *domain.Session, oracle *engine.Oracle,
 	// or re-narrate an opening — treat it as started when there's evidence.
 	session.State.MarkStartedIfInProgress()
 	return &Bot{
-		api:     api,
-		store:   store,
-		session: session,
-		oracle:  oracle,
-		chatID:  opts.ChatID,
-		onEvent: opts.OnEvent,
+		api:      api,
+		store:    store,
+		session:  session,
+		oracle:   oracle,
+		chatID:   opts.ChatID,
+		onEvent:  opts.OnEvent,
+		speech:   opts.Speech,
+		sendFunc: api.Send,
 	}, nil
 }
 
@@ -290,7 +298,7 @@ func (b *Bot) startGame(m *tgbotapi.Message) {
 		b.session.State.StartGame()
 		b.save()
 		b.event("DM: " + resp.Answer)
-		b.send(m.Chat.ID, resp.Answer)
+		b.sendNarration(m.Chat.ID, resp.Answer)
 	}()
 }
 
@@ -353,7 +361,7 @@ func (b *Bot) runDM(m *tgbotapi.Message) {
 		}
 		b.save()
 		b.event("DM: " + resp.Answer)
-		b.send(m.Chat.ID, resp.Answer)
+		b.sendNarration(m.Chat.ID, resp.Answer)
 	}()
 }
 
@@ -437,7 +445,7 @@ func (b *Bot) reply(m *tgbotapi.Message, text string) { b.send(m.Chat.ID, text) 
 func (b *Bot) send(chatID int64, text string) {
 	const limit = 4000
 	for _, chunk := range splitMessage(text, limit) {
-		if _, err := b.api.Send(tgbotapi.NewMessage(chatID, chunk)); err != nil {
+		if _, err := b.sendChattable(tgbotapi.NewMessage(chatID, chunk)); err != nil {
 			log.Printf("send: %v", err)
 			return
 		}

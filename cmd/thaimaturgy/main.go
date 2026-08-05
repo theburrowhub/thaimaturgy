@@ -31,6 +31,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 	"github.com/theburrowhub/thaimaturgy/internal/tgbot"
+	"github.com/theburrowhub/thaimaturgy/internal/tts"
 )
 
 type gui struct {
@@ -1255,6 +1256,7 @@ func (g *gui) toggleTelegram() {
 	bot, err := tgbot.New(g.store, g.session, g.oracle, tgbot.Options{
 		Token:   token,
 		ChatID:  g.config.TelegramChatID,
+		Speech:  tts.NewTelegramSpeechGenerator(g.config, g.store.BasePath()),
 		OnEvent: func(line string) { fyne.Do(func() { g.onTelegramEvent(line) }) },
 	})
 	if err != nil {

@@ -53,6 +53,12 @@ func (g *gui) showSettings() {
 
 	ttsEnabled := widget.NewCheck("", nil)
 	ttsEnabled.SetChecked(cfg.TTS.Enabled)
+	ttsProvider := widget.NewSelect([]string{string(domain.TTSProviderOpenAI), string(domain.TTSProviderMagnificMCP)}, nil)
+	if cfg.TTS.Provider != "" {
+		ttsProvider.SetSelected(string(cfg.TTS.Provider))
+	} else {
+		ttsProvider.SetSelected(string(domain.TTSProviderOpenAI))
+	}
 	ttsVoice := widget.NewSelect([]string{
 		string(domain.TTSVoiceAlloy), string(domain.TTSVoiceEcho), string(domain.TTSVoiceFable),
 		string(domain.TTSVoiceOnyx), string(domain.TTSVoiceNova), string(domain.TTSVoiceShimmer),
@@ -60,6 +66,17 @@ func (g *gui) showSettings() {
 	if cfg.TTS.Voice != "" {
 		ttsVoice.SetSelected(string(cfg.TTS.Voice))
 	}
+	ttsModel := entryWith(cfg.TTS.Model)
+	ttsModel.SetPlaceHolder("openai: tts-1; Magnific: eleven_v3")
+	ttsSpeed := entryWith(strconv.FormatFloat(cfg.TTS.Speed, 'g', -1, 64))
+	magnificCommand := entryWith(cfg.TTS.MagnificMCPCommand)
+	magnificCommand.SetPlaceHolder("python3 /path/to/scripts/magnific_tts_from_hermes.py")
+	magnificVoice := entryWith("")
+	if cfg.TTS.MagnificVoiceID != 0 {
+		magnificVoice.SetText(strconv.Itoa(cfg.TTS.MagnificVoiceID))
+	}
+	magnificVoice.SetPlaceHolder("Magnific voice id, e.g. 467")
+	magnificStability := entryWith(strconv.FormatFloat(cfg.TTS.MagnificStability, 'g', -1, 64))
 
 	openaiKey := widget.NewPasswordEntry()
 	anthropicKey := widget.NewPasswordEntry()
@@ -92,7 +109,13 @@ func (g *gui) showSettings() {
 		widget.NewFormItem("Auto-save sessions", autoSave),
 		widget.NewFormItem("Auto-save interval (s)", autoSaveInterval),
 		widget.NewFormItem("TTS enabled", ttsEnabled),
+		widget.NewFormItem("TTS provider", ttsProvider),
 		widget.NewFormItem("TTS voice", ttsVoice),
+		widget.NewFormItem("TTS model", ttsModel),
+		widget.NewFormItem("TTS speed", ttsSpeed),
+		widget.NewFormItem("Magnific MCP command", magnificCommand),
+		widget.NewFormItem("Magnific voice id", magnificVoice),
+		widget.NewFormItem("Magnific stability", magnificStability),
 		widget.NewFormItem("OpenAI API key", openaiKey),
 		widget.NewFormItem("Anthropic API key", anthropicKey),
 		widget.NewFormItem("Gemini API key", geminiKey),
@@ -115,7 +138,13 @@ func (g *gui) showSettings() {
 		cfg.AutoSave = autoSave.Checked
 		cfg.AutoSaveInterval = parseInt(autoSaveInterval.Text, cfg.AutoSaveInterval)
 		cfg.TTS.Enabled = ttsEnabled.Checked
+		cfg.TTS.Provider = domain.TTSProvider(ttsProvider.Selected)
 		cfg.TTS.Voice = domain.TTSVoice(ttsVoice.Selected)
+		cfg.TTS.Model = strings.TrimSpace(ttsModel.Text)
+		cfg.TTS.Speed = parseFloat(ttsSpeed.Text, cfg.TTS.Speed)
+		cfg.TTS.MagnificMCPCommand = strings.TrimSpace(magnificCommand.Text)
+		cfg.TTS.MagnificVoiceID = parseInt(magnificVoice.Text, cfg.TTS.MagnificVoiceID)
+		cfg.TTS.MagnificStability = parseFloat(magnificStability.Text, cfg.TTS.MagnificStability)
 		if k := strings.TrimSpace(openaiKey.Text); k != "" {
 			cfg.OpenAIAPIKey = k
 		}

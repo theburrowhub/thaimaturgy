@@ -57,10 +57,17 @@ type fileConfig struct {
 	} `yaml:"import"`
 
 	TTS struct {
-		Enabled bool    `yaml:"enabled"`
-		Voice   string  `yaml:"voice"`
-		Model   string  `yaml:"model"`
-		Speed   float64 `yaml:"speed"`
+		Enabled                 bool    `yaml:"enabled"`
+		Provider                string  `yaml:"provider"` // openai | magnific-mcp
+		Voice                   string  `yaml:"voice"`
+		Model                   string  `yaml:"model"`
+		Speed                   float64 `yaml:"speed"`
+		MagnificMCPCommand      string  `yaml:"magnific_mcp_command"`
+		MagnificVoiceID         int     `yaml:"magnific_voice_id"`
+		MagnificStability       float64 `yaml:"magnific_stability"`
+		MagnificSimilarityBoost float64 `yaml:"magnific_similarity_boost"`
+		MagnificUseSpeakerBoost bool    `yaml:"magnific_use_speaker_boost"`
+		CacheDir                string  `yaml:"cache_dir"`
 	} `yaml:"tts"`
 
 	Telegram struct {
@@ -103,9 +110,16 @@ func fromConfig(c *domain.Config) fileConfig {
 	fc.Import.MaxOutputTokens = c.ImportMaxOutputTokens
 
 	fc.TTS.Enabled = c.TTS.Enabled
+	fc.TTS.Provider = string(c.TTS.Provider)
 	fc.TTS.Voice = string(c.TTS.Voice)
 	fc.TTS.Model = c.TTS.Model
 	fc.TTS.Speed = c.TTS.Speed
+	fc.TTS.MagnificMCPCommand = c.TTS.MagnificMCPCommand
+	fc.TTS.MagnificVoiceID = c.TTS.MagnificVoiceID
+	fc.TTS.MagnificStability = c.TTS.MagnificStability
+	fc.TTS.MagnificSimilarityBoost = c.TTS.MagnificSimilarityBoost
+	fc.TTS.MagnificUseSpeakerBoost = c.TTS.MagnificUseSpeakerBoost
+	fc.TTS.CacheDir = c.TTS.CacheDir
 
 	fc.Telegram.BotToken = c.TelegramToken
 	fc.Telegram.ChatID = c.TelegramChatID
@@ -145,9 +159,16 @@ func toConfig(fc *fileConfig, c *domain.Config) {
 	c.ImportMaxOutputTokens = fc.Import.MaxOutputTokens
 
 	c.TTS.Enabled = fc.TTS.Enabled
+	c.TTS.Provider = domain.TTSProvider(fc.TTS.Provider)
 	c.TTS.Voice = domain.TTSVoice(fc.TTS.Voice)
 	c.TTS.Model = fc.TTS.Model
 	c.TTS.Speed = fc.TTS.Speed
+	c.TTS.MagnificMCPCommand = fc.TTS.MagnificMCPCommand
+	c.TTS.MagnificVoiceID = fc.TTS.MagnificVoiceID
+	c.TTS.MagnificStability = fc.TTS.MagnificStability
+	c.TTS.MagnificSimilarityBoost = fc.TTS.MagnificSimilarityBoost
+	c.TTS.MagnificUseSpeakerBoost = fc.TTS.MagnificUseSpeakerBoost
+	c.TTS.CacheDir = fc.TTS.CacheDir
 
 	c.TelegramToken = fc.Telegram.BotToken
 	c.TelegramChatID = fc.Telegram.ChatID
