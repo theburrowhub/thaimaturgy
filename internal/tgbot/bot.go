@@ -190,9 +190,26 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.runDM(m)
 	case "roll":
 		b.reply(m, rollText(arg))
+	case "save":
+		b.saveAndReport(m)
 	default:
 		b.reply(m, "Unknown command. "+helpText)
 	}
+}
+
+// saveAndReport persists the current session on demand (the /save command) and
+// reports the outcome to the chat, unlike the internal best-effort save().
+func (b *Bot) saveAndReport(m *tgbotapi.Message) {
+	b.saveMu.Lock()
+	err := b.store.SaveSession(b.session.State)
+	b.saveMu.Unlock()
+	if err != nil {
+		log.Printf("save: %v", err)
+		b.reply(m, "⚠ Couldn't save the session: "+err.Error())
+		return
+	}
+	b.event(fmt.Sprintf("%s saved the session", displayName(m.From)))
+	b.reply(m, "💾 Session saved as “"+b.session.State.Name+"”.")
 }
 
 // assign lets a host give a character to a player who hasn't picked. Two forms:
@@ -499,5 +516,6 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /do <action> — declare your character's action this round (after /begin)
 /dm — let the AI Dungeon Master resolve the round and narrate (after /begin)
 /roll <dice> — roll dice (e.g. 2d6+3)
+/save — save the current session
 /chatid — show this chat's id
 /help — this help`
