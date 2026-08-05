@@ -24,7 +24,7 @@ tts:
   model: eleven_v3
   speed: 0.95
   magnific_mcp_command: "python3 /path/to/thaimaturgy/scripts/magnific_tts_from_hermes.py"
-  magnific_voice_id: 467
+  magnific_voice_id: 554  # 554 = Álvaro Serrano
   magnific_stability: 0.15
   magnific_similarity_boost: 0.35
   magnific_use_speaker_boost: true
@@ -36,7 +36,7 @@ Environment overrides are also supported:
 export THAIM_TTS_ENABLED=true
 export THAIM_TTS_PROVIDER=magnific-mcp
 export THAIM_MAGNIFIC_MCP_COMMAND="python3 /path/to/thaimaturgy/scripts/magnific_tts_from_hermes.py"
-export THAIM_MAGNIFIC_VOICE_ID=467
+export THAIM_MAGNIFIC_VOICE_ID=554
 export THAIM_MAGNIFIC_STABILITY=0.15
 ```
 

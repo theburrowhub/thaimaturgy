@@ -147,6 +147,7 @@ func DefaultConfig() *Config {
 			Voice:                   TTSVoiceOnyx, // Deep, dramatic voice for DM
 			Model:                   "tts-1",
 			Speed:                   1.0,
+			MagnificVoiceID:         554, // Álvaro Serrano
 			MagnificStability:       0.15,
 			MagnificSimilarityBoost: 0.35,
 			MagnificUseSpeakerBoost: true,
