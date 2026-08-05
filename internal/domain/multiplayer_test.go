@@ -11,6 +11,46 @@ func partyState() *SessionState {
 	return st
 }
 
+func TestAssignByUsernameAndResolve(t *testing.T) {
+	st := partyState() // Alden, Naivara
+
+	// Reserve Naivara for @luis (who hasn't picked yet).
+	if _, err := st.AssignByUsername("@Luis", "Naivara"); err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	if got := st.PendingByCharacter()["Naivara"]; got != "luis" {
+		t.Errorf("pending for Naivara = %q, want luis", got)
+	}
+	// Can't reserve the same character for someone else.
+	if _, err := st.AssignByUsername("@ana", "naivara"); err == nil {
+		t.Error("reserving an already-reserved character should fail")
+	}
+	// Unknown character rejected.
+	if _, err := st.AssignByUsername("@ana", "Gandalf"); err == nil {
+		t.Error("unknown character should fail")
+	}
+
+	// A message from a different user does not bind Luis's reservation.
+	if _, bound := st.ResolvePending("999", "someoneelse", "Someone"); bound {
+		t.Error("unrelated user should not bind the reservation")
+	}
+	// Luis appears → bound to Naivara, pending cleared.
+	name, bound := st.ResolvePending("42", "luis", "Luis")
+	if !bound || name != "Naivara" {
+		t.Fatalf("resolve for luis = (%q,%v), want (Naivara,true)", name, bound)
+	}
+	if st.PlayerCharacterName("42") != "Naivara" {
+		t.Error("Luis should control Naivara after binding")
+	}
+	if len(st.PendingByCharacter()) != 0 {
+		t.Error("pending assignment should be cleared after binding")
+	}
+	// Second appearance is a no-op (already controls one).
+	if _, bound := st.ResolvePending("42", "luis", "Luis"); bound {
+		t.Error("resolve should be a no-op once the player controls a character")
+	}
+}
+
 func TestGameLifecycle(t *testing.T) {
 	st := partyState()
 	if st.GameStarted() {

@@ -182,6 +182,86 @@ func (s *SessionState) PendingPlayers() []string {
 	return pending
 }
 
+// AssignByUsername reserves a party character for a Telegram @username that hasn't
+// picked yet; the binding takes effect when that user next sends a message (see
+// ResolvePending). Fails if the character is unknown, already controlled, or
+// already reserved for a different username. Returns the canonical name.
+func (s *SessionState) AssignByUsername(username, charName string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	username = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(username), "@"))
+	if username == "" {
+		return "", fmt.Errorf("give a @username")
+	}
+	c := s.resolveCharacter(charName)
+	if c == nil {
+		return "", fmt.Errorf("no character %q in the party", charName)
+	}
+	for _, slot := range s.Players {
+		if strings.EqualFold(slot.CharacterName, c.Name) {
+			return "", fmt.Errorf("%s is already controlled by %s", c.Name, slot.DisplayName)
+		}
+	}
+	for u, pc := range s.PendingAssignments {
+		if u != username && strings.EqualFold(pc, c.Name) {
+			return "", fmt.Errorf("%s is already reserved for @%s", c.Name, u)
+		}
+	}
+	if s.PendingAssignments == nil {
+		s.PendingAssignments = make(map[string]string)
+	}
+	s.PendingAssignments[username] = c.Name
+	s.record(LogEntry{Type: LogParty, Message: fmt.Sprintf("Assigned %s to @%s", c.Name, username)})
+	s.touch()
+	return c.Name, nil
+}
+
+// ResolvePending binds a pending @username assignment to a real player the first
+// time they appear. Returns the character name and whether a binding happened.
+func (s *SessionState) ResolvePending(playerID, username, display string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.Players[playerID]; ok {
+		return "", false // already controls a character
+	}
+	username = strings.ToLower(strings.TrimSpace(username))
+	if username == "" || len(s.PendingAssignments) == 0 {
+		return "", false
+	}
+	pc, ok := s.PendingAssignments[username]
+	if !ok {
+		return "", false
+	}
+	delete(s.PendingAssignments, username)
+	c := s.resolveCharacter(pc)
+	if c == nil {
+		return "", false
+	}
+	for _, slot := range s.Players {
+		if strings.EqualFold(slot.CharacterName, c.Name) {
+			return "", false // taken in the meantime
+		}
+	}
+	if s.Players == nil {
+		s.Players = make(map[string]*PlayerSlot)
+	}
+	s.Players[playerID] = &PlayerSlot{DisplayName: display, CharacterName: c.Name}
+	s.record(LogEntry{Type: LogParty, Message: fmt.Sprintf("%s now plays %s (assigned)", display, c.Name)})
+	s.touch()
+	return c.Name, true
+}
+
+// PendingByCharacter returns character name → reserved @username, for display.
+func (s *SessionState) PendingByCharacter() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]string, len(s.PendingAssignments))
+	for u, pc := range s.PendingAssignments {
+		out[pc] = u
+	}
+	return out
+}
+
 // Controllers returns a map of character name → controlling player's display
 // name, for showing who plays whom.
 func (s *SessionState) Controllers() map[string]string {

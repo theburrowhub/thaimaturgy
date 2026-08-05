@@ -147,6 +147,9 @@ type SessionState struct {
 	// Started marks that the game has begun (the DM gave the opening scene). Before
 	// it is set, a multiplayer front-end accepts only setup/start commands.
 	Started bool `json:"started,omitempty"`
+	// PendingAssignments reserves a character for a Telegram @username (lower-cased)
+	// that hasn't picked yet; it binds to the real player when they next message.
+	PendingAssignments map[string]string `json:"pending_assignments,omitempty"`
 
 	// Free-form timeline and running summary.
 	Log     *SessionLog `json:"log"`
