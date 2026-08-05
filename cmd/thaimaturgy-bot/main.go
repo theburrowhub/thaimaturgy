@@ -18,6 +18,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 	"github.com/theburrowhub/thaimaturgy/internal/tgbot"
+	"github.com/theburrowhub/thaimaturgy/internal/tts"
 )
 
 func main() {
@@ -103,7 +104,11 @@ func run(advID, sessionName, token string, chatID int64) error {
 		return err
 	}
 
-	bot, err := tgbot.New(store, session, oracle, tgbot.Options{Token: token, ChatID: chatID})
+	bot, err := tgbot.New(store, session, oracle, tgbot.Options{
+		Token:  token,
+		ChatID: chatID,
+		Speech: tts.NewTelegramSpeechGenerator(config, store.BasePath()),
+	})
 	if err != nil {
 		return err
 	}

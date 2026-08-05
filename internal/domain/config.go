@@ -31,11 +31,30 @@ const (
 	TTSVoiceShimmer TTSVoice = "shimmer"
 )
 
+type TTSProvider string
+
+const (
+	TTSProviderOpenAI      TTSProvider = "openai"
+	TTSProviderMagnificMCP TTSProvider = "magnific-mcp"
+)
+
 type TTSConfig struct {
-	Enabled bool     `json:"enabled"`
-	Voice   TTSVoice `json:"voice"`
-	Model   string   `json:"model"`
-	Speed   float64  `json:"speed"`
+	Enabled  bool        `json:"enabled"`
+	Provider TTSProvider `json:"provider"`
+	Voice    TTSVoice    `json:"voice"`
+	Model    string      `json:"model"`
+	Speed    float64     `json:"speed"`
+
+	// Magnific MCP settings for Telegram narration audio. The command should read
+	// JSON from stdin, call Magnific's audio_tts MCP tool, download an MP3 to
+	// outputPath, and print {"audioPath":"..."}. Keep credentials in the MCP
+	// client's own auth store or environment, not in this config.
+	MagnificMCPCommand      string  `json:"magnific_mcp_command,omitempty"`
+	MagnificVoiceID         int     `json:"magnific_voice_id,omitempty"`
+	MagnificStability       float64 `json:"magnific_stability,omitempty"`
+	MagnificSimilarityBoost float64 `json:"magnific_similarity_boost,omitempty"`
+	MagnificUseSpeakerBoost bool    `json:"magnific_use_speaker_boost,omitempty"`
+	CacheDir                string  `json:"cache_dir,omitempty"`
 }
 
 type Config struct {
@@ -123,10 +142,14 @@ func DefaultConfig() *Config {
 		ImportMaxOutputTokens:  64000,
 
 		TTS: TTSConfig{
-			Enabled: false,
-			Voice:   TTSVoiceOnyx, // Deep, dramatic voice for DM
-			Model:   "tts-1",
-			Speed:   1.0,
+			Enabled:                 false,
+			Provider:                TTSProviderOpenAI,
+			Voice:                   TTSVoiceOnyx, // Deep, dramatic voice for DM
+			Model:                   "tts-1",
+			Speed:                   1.0,
+			MagnificStability:       0.15,
+			MagnificSimilarityBoost: 0.35,
+			MagnificUseSpeakerBoost: true,
 		},
 	}
 }
