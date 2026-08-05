@@ -71,6 +71,7 @@ type gui struct {
 	// Mode toggle (Oracle ↔ Virtual DM) and the player-character panel shown in
 	// virtual-DM mode in place of the adventure browser.
 	modeBtn     *widget.Button
+	beginBtn    *widget.Button // "Begin" — starts the game in virtual-DM mode (hidden once started)
 	sendBtn     *widget.Button
 	diceBtn     *widget.Button
 	saveBtn     *widget.Button
@@ -468,6 +469,9 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 
 	g.locLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	g.modeBtn = widget.NewButtonWithIcon("", theme.MediaPlayIcon(), g.toggleMode)
+	g.beginBtn = widget.NewButtonWithIcon("Begin", theme.MediaSkipNextIcon(), g.beginGame)
+	g.beginBtn.Importance = widget.HighImportance
+	g.beginBtn.Hide() // shown only in virtual-DM mode before the game has begun (applyMode)
 	g.diceBtn = widget.NewButton("Dice", g.showDiceRoller)
 	g.telegramBtn = widget.NewButton("Telegram", g.toggleTelegram)
 	g.telegramBtn.Hide() // shown only in virtual-DM mode (applyMode)
@@ -481,6 +485,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 		g.exportBtn,
 		g.diceBtn,
 		g.modeBtn,
+		g.beginBtn,
 		g.telegramBtn,
 	)
 
@@ -1116,6 +1121,14 @@ func (g *gui) applyMode() {
 			g.telegramBtn.Hide()
 		}
 	}
+	// The Begin button appears only in virtual-DM mode while the game hasn't begun.
+	if g.beginBtn != nil {
+		if dm && !g.session.State.GameStarted() {
+			g.beginBtn.Show()
+		} else {
+			g.beginBtn.Hide()
+		}
+	}
 	g.refreshPCPanel()
 }
 
@@ -1168,21 +1181,46 @@ func (g *gui) onModeChanged() {
 		return
 	}
 	dm := g.modeIsDM()
-	firstTime := false
 	if dm {
-		firstTime = g.session.State.EnsureParty()
+		g.session.State.EnsureParty()
 	}
 	g.applyMode()
 	g.refreshLog()
 	if dm {
-		g.appendTranscript("_🎲 **Virtual DM mode** — the AI now runs the game for your party. Type what you do; toggle back to Oracle any time._")
-		if firstTime {
-			g.session.State.StartGame() // the opening scene counts as starting the game (so a Telegram host won't re-intro)
-			g.ask(domain.DMKickoffPrompt(g.config.Language))
+		g.appendTranscript("_🎲 **Virtual DM mode** — the AI runs the game for your party._")
+		if !g.session.State.GameStarted() {
+			// The game does NOT start automatically: the DM presses **Begin** (or a
+			// player runs /begin over Telegram) to have the AI narrate the opening
+			// scene. This keeps a session un-started so a Telegram host can begin it.
+			g.appendTranscript("_Press **Begin** to start the game and have the DM set the opening scene — or host on Telegram and let a player run /begin._")
 		}
 	} else {
 		g.appendTranscript("_📖 **Oracle mode** — the AI assists you as the human DM again._")
 	}
+	g.autosave()
+}
+
+// beginGame starts a virtual-DM game on demand (the Begin toolbar button): the AI
+// narrates the opening scene, exactly once. Mirrors Telegram's /begin. Before this
+// the game stays un-started so a Telegram host can be the one to begin it.
+func (g *gui) beginGame() {
+	if g.session == nil || !g.modeIsDM() {
+		return
+	}
+	if g.busy {
+		g.showErr(fmt.Errorf("wait for the current oracle turn to finish"))
+		return
+	}
+	if g.session.State.GameStarted() {
+		return
+	}
+	if g.oracle == nil {
+		g.showErr(fmt.Errorf("no AI provider configured; set an API key in Settings"))
+		return
+	}
+	g.session.State.StartGame()
+	g.applyMode() // hides the Begin button now that the game has started
+	g.ask(domain.DMKickoffPrompt(g.config.Language))
 	g.autosave()
 }
 
