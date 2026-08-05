@@ -36,7 +36,7 @@ YELLOW := \033[33m
 RED := \033[31m
 RESET := \033[0m
 
-.PHONY: all build build-bot build-wails run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall example-module modules
+.PHONY: all build build-bot run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall example-module modules
 
 # Adventure modules
 EXAMPLES_DIR := examples/adventures
@@ -68,11 +68,6 @@ build-bot: ## Build the Telegram bot binary
 	@mkdir -p $(BINARY_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_DIR)/$(BOT_BINARY_NAME) $(BOT_CMD_DIR)
 	@echo "$(GREEN)Built: $(BINARY_DIR)/$(BOT_BINARY_NAME)$(RESET)"
-
-build-wails: ## Build the Wails desktop/web app
-	@echo "$(CYAN)Building Wails DM Oracle app...$(RESET)"
-	go run github.com/wailsapp/wails/v2/cmd/wails@v2.13.0 build -tags webkit2_41 -o thaimaturgy-wails
-	@echo "$(GREEN)Built: build/bin/thaimaturgy-wails$(RESET)"
 
 dev: ## Run with go run (faster iteration)
 	@echo "$(CYAN)Running in dev mode...$(RESET)"
