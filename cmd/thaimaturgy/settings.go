@@ -145,8 +145,6 @@ func (g *gui) showSettings() {
 		cfg.TTS.MagnificMCPCommand = strings.TrimSpace(magnificCommand.Text)
 		cfg.TTS.MagnificVoiceID = parseInt(magnificVoice.Text, cfg.TTS.MagnificVoiceID)
 		cfg.TTS.MagnificStability = parseFloat(magnificStability.Text, cfg.TTS.MagnificStability)
-		cfg.TTS.MagnificSimilarityBoost = 0.35
-		cfg.TTS.MagnificUseSpeakerBoost = true
 		if k := strings.TrimSpace(openaiKey.Text); k != "" {
 			cfg.OpenAIAPIKey = k
 		}

@@ -41,3 +41,5 @@ export THAIM_MAGNIFIC_STABILITY=0.15
 ```
 
 Secrets stay in Hermes/Magnific OAuth storage or the environment. The app passes only text, voice/model parameters, and an output path to the command.
+
+Security note: `magnific_mcp_command` is executed as an operator-supplied shell command. Treat write access to `config.yaml` as equivalent to local code execution, and point it only at scripts you trust.

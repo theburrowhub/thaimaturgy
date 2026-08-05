@@ -31,6 +31,10 @@ type MagnificMCPConfig struct {
 	DebugLogPath    string // test/debug only; never contains credentials
 }
 
+type SpeechGenerator interface {
+	Generate(ctx context.Context, text string) (string, error)
+}
+
 type MagnificMCPGenerator struct {
 	config MagnificMCPConfig
 }
@@ -52,7 +56,7 @@ func NewMagnificMCPGenerator(config MagnificMCPConfig) *MagnificMCPGenerator {
 // generator, or nil when Telegram audio should be disabled. Currently the
 // production Telegram path supports Magnific MCP because it returns MP3 files
 // that Telegram can upload after text fallback has already been sent.
-func NewTelegramSpeechGenerator(config *domain.Config, cacheBase string) *MagnificMCPGenerator {
+func NewTelegramSpeechGenerator(config *domain.Config, cacheBase string) SpeechGenerator {
 	if config == nil || !config.TTS.Enabled || config.TTS.Provider != domain.TTSProviderMagnificMCP {
 		return nil
 	}
@@ -73,6 +77,9 @@ func NewTelegramSpeechGenerator(config *domain.Config, cacheBase string) *Magnif
 }
 
 func (g *MagnificMCPGenerator) Generate(ctx context.Context, text string) (string, error) {
+	if g == nil {
+		return "", fmt.Errorf("Magnific MCP TTS generator is not configured")
+	}
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return "", nil

@@ -19,8 +19,11 @@ type SpeechGenerator interface {
 // sendNarration always posts the DM text first, then best-effort sends audio for
 // the same text. TTS/audio errors are logged but never break the Telegram game.
 func (b *Bot) sendNarration(chatID int64, text string) {
+	if b == nil {
+		return
+	}
 	b.send(chatID, text)
-	if b == nil || b.speech == nil {
+	if b.speech == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(b.turnBase(), b.safeTurnTimeout())
