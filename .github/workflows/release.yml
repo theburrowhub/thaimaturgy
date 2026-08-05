@@ -26,16 +26,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.0'
+          go-version: '1.22'
 
-      - name: Install build dependencies (audio + Fyne GUI + Wails)
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev libgtk-3-dev libwebkit2gtk-4.1-dev
-
-      - name: Build Wails frontend assets for embedded Go tests
-        run: npm --prefix cmd/thaimaturgy-wails/frontend ci && npm --prefix cmd/thaimaturgy-wails/frontend run build
+      - name: Install build dependencies (audio + Fyne GUI)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
 
       - name: Test
         run: go test ./... -race
 
-      - name: Build app + bot + Wails shell
-        run: make build build-bot build-wails
+      - name: Build app + bot
+        run: make build build-bot

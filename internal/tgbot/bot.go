@@ -29,21 +29,16 @@ type Options struct {
 	// OnEvent, if set, is called with short human-readable activity lines (player
 	// joins, actions, narration) so a host UI can mirror what happens in the chat.
 	OnEvent func(string)
-	// Speech, when set, generates an audio version of AI DM narration. The bot
-	// always sends text first, then attempts audio; failures fall back to text only.
-	Speech SpeechGenerator
 }
 
 // Bot hosts a multiplayer virtual-DM session over Telegram.
 type Bot struct {
-	api      *tgbotapi.BotAPI
-	store    *storage.Storage
-	session  *domain.Session
-	oracle   *engine.Oracle
-	chatID   int64
-	onEvent  func(string)
-	speech   SpeechGenerator
-	sendFunc func(tgbotapi.Chattable) (tgbotapi.Message, error)
+	api     *tgbotapi.BotAPI
+	store   *storage.Storage
+	session *domain.Session
+	oracle  *engine.Oracle
+	chatID  int64
+	onEvent func(string)
 
 	mu        sync.Mutex // guards resolving
 	resolving bool
@@ -65,20 +60,14 @@ func New(store *storage.Storage, session *domain.Session, oracle *engine.Oracle,
 	// A session already played (in the GUI or a prior run) shouldn't demand /begin
 	// or re-narrate an opening — treat it as started when there's evidence.
 	session.State.MarkStartedIfInProgress()
-	bot := &Bot{
-		api:      api,
-		store:    store,
-		session:  session,
-		oracle:   oracle,
-		chatID:   opts.ChatID,
-		onEvent:  opts.OnEvent,
-		speech:   opts.Speech,
-		sendFunc: api.Send,
-	}
-	if bot.speech == nil {
-		bot.speech = NewOpenAISpeechGenerator(session.Config, store)
-	}
-	return bot, nil
+	return &Bot{
+		api:     api,
+		store:   store,
+		session: session,
+		oracle:  oracle,
+		chatID:  opts.ChatID,
+		onEvent: opts.OnEvent,
+	}, nil
 }
 
 // Username returns the bot's @username (for display).
@@ -301,7 +290,7 @@ func (b *Bot) startGame(m *tgbotapi.Message) {
 		b.session.State.StartGame()
 		b.save()
 		b.event("DM: " + resp.Answer)
-		b.sendNarration(m.Chat.ID, resp.Answer)
+		b.send(m.Chat.ID, resp.Answer)
 	}()
 }
 
@@ -316,10 +305,8 @@ func (b *Bot) turnBase() context.Context {
 
 // turnTimeout is the per-turn timeout from config (90s default).
 func (b *Bot) turnTimeout() time.Duration {
-	if b != nil && b.session != nil && b.session.Config != nil {
-		if t := time.Duration(b.session.Config.RequestTimeoutSeconds) * time.Second; t > 0 {
-			return t
-		}
+	if t := time.Duration(b.session.Config.RequestTimeoutSeconds) * time.Second; t > 0 {
+		return t
 	}
 	return 90 * time.Second
 }
@@ -366,7 +353,7 @@ func (b *Bot) runDM(m *tgbotapi.Message) {
 		}
 		b.save()
 		b.event("DM: " + resp.Answer)
-		b.sendNarration(m.Chat.ID, resp.Answer)
+		b.send(m.Chat.ID, resp.Answer)
 	}()
 }
 
@@ -450,21 +437,11 @@ func (b *Bot) reply(m *tgbotapi.Message, text string) { b.send(m.Chat.ID, text) 
 func (b *Bot) send(chatID int64, text string) {
 	const limit = 4000
 	for _, chunk := range splitMessage(text, limit) {
-		if _, err := b.sendChattable(tgbotapi.NewMessage(chatID, chunk)); err != nil {
+		if _, err := b.api.Send(tgbotapi.NewMessage(chatID, chunk)); err != nil {
 			log.Printf("send: %v", err)
 			return
 		}
 	}
-}
-
-func (b *Bot) sendChattable(c tgbotapi.Chattable) (tgbotapi.Message, error) {
-	if b.sendFunc != nil {
-		return b.sendFunc(c)
-	}
-	if b.api != nil {
-		return b.api.Send(c)
-	}
-	return tgbotapi.Message{}, fmt.Errorf("telegram sender is not configured")
 }
 
 func splitMessage(text string, limit int) []string {
