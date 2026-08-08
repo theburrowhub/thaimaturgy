@@ -182,7 +182,35 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 	case "save":
 		b.saveAndReport(m)
 	default:
+		b.delegateToEngine(m)
+	}
+}
+
+// delegateToEngine routes information/state slash commands (status, look, zone,
+// npc, npcs, event, item, quests, note, flag, search, …) through the SAME
+// engine.CommandHandler the desktop app uses, so both frontends expose the same
+// command set (parity, issue #20). Multiplayer-only commands (begin/pick/do/dm/…)
+// are handled explicitly above and never reach here.
+func (b *Bot) delegateToEngine(m *tgbotapi.Message) {
+	raw := "/" + m.Command()
+	if arg := strings.TrimSpace(m.CommandArguments()); arg != "" {
+		raw += " " + arg
+	}
+	res := engine.NewCommandHandler(b.session).Execute(engine.ParseCommand(raw))
+	switch {
+	case res.Response != "":
+		b.save() // note/flag/goto mutate the session; harmless for pure reads
+		b.reply(m, res.Response)
+	case res.NeedsUI && res.UIAction == "image":
+		b.reply(m, "Maps and art aren't shown over Telegram yet.") // see #24
+	case res.NeedsUI:
+		b.reply(m, "That command is only available in the desktop app.")
+	case !res.Success:
 		b.reply(m, "Unknown command. "+helpText)
+	case res.Message != "":
+		b.reply(m, res.Message)
+	default:
+		b.reply(m, "Done.")
 	}
 }
 
@@ -494,5 +522,13 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /dm — let the AI Dungeon Master resolve the round and narrate (after /begin)
 /roll <dice> — roll dice (e.g. 2d6+3)
 /save — save the current session
+/status — session status
+/look — describe the current room
+/zone [id] — describe a zone
+/npc <id> — describe an NPC · /npcs — who is present
+/event <id> · /item <id> — describe an event/item
+/quests — list quests
+/search <query> — search the module
+/note <text> — add a note to the timeline
 /chatid — show this chat's id
 /help — this help`
