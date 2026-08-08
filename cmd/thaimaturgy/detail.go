@@ -257,12 +257,27 @@ func zoneGroups(adv *domain.Adventure, z *domain.Zone) []navGroup {
 		rooms = append(rooms, navRef{labelOrID(r.Name, r.ID), "room:" + z.ID + "::" + r.ID})
 	}
 	var conns []navRef
-	for _, cid := range z.Connections {
-		if zz := adv.Zone(cid); zz != nil {
-			conns = append(conns, navRef{labelOrID(zz.Name, zz.ID), "zone:" + zz.ID})
+	if len(z.Exits) > 0 {
+		for _, e := range z.Exits {
+			if zz := adv.Zone(e.To); zz != nil {
+				label := labelOrID(zz.Name, zz.ID)
+				if e.Direction != "" {
+					label = string(e.Direction) + " → " + label
+				}
+				if e.Locked {
+					label += " (locked)"
+				}
+				conns = append(conns, navRef{label, "zone:" + zz.ID})
+			}
+		}
+	} else {
+		for _, cid := range z.Connections {
+			if zz := adv.Zone(cid); zz != nil {
+				conns = append(conns, navRef{labelOrID(zz.Name, zz.ID), "zone:" + zz.ID})
+			}
 		}
 	}
-	return []navGroup{{"Rooms", rooms}, {"Connects to", conns}}
+	return []navGroup{{"Rooms", rooms}, {"Adjacent zones", conns}}
 }
 
 func roomGroups(adv *domain.Adventure, r *domain.Room) []navGroup {

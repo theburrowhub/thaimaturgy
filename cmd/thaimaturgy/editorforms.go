@@ -57,6 +57,7 @@ func (e *editor) metaForm() fyne.CanvasObject {
 		field("Author", e.sEntry(&a.Author)),
 		field("System", e.sEntry(&a.System)),
 		field("Language (en/es)", e.sEntry(&a.Language)),
+		field("Start room ID (party entry point)", e.sEntry(&a.StartRoom)),
 		field("Summary", e.mEntry(&a.Summary)),
 		field("Context / positioning (setting, level, campaign fit)", e.mEntry(&a.Context)),
 		field("Background (DM-only)", e.mEntry(&a.Background)),
@@ -75,10 +76,29 @@ func (e *editor) zoneForm(z *domain.Zone) fyne.CanvasObject {
 		field("Description", e.mEntry(&z.Description)),
 		field("Map image (direct path)", e.imageField("maps", &z.MapImage)),
 		field("Image IDs — catalog (one per line)", e.listEntry(&z.ImageIDs)),
-		field("Connections — zone IDs (one per line)", e.listEntry(&z.Connections)),
+		field("Connections — legacy zone IDs (one per line)", e.listEntry(&z.Connections)),
+		e.zoneExitsEditor(z),
 		widget.NewLabel("Rooms are listed under this zone in the tree. Use +Room to add."),
 	)
 	return e.withPreview(box, e.adv.ZoneImages(z))
+}
+
+// zoneExitsEditor edits the directional zone-adjacency graph (which zone lies in
+// each direction). This is what lets the DM keep the party's marching order.
+func (e *editor) zoneExitsEditor(z *domain.Zone) fyne.CanvasObject {
+	return e.rows("Exits (adjacent zones, directional)", len(z.Exits),
+		func(i int) fyne.CanvasObject {
+			ze := &z.Exits[i]
+			return container.NewVBox(
+				field("to (zone ID)", e.sEntry(&ze.To)),
+				field("direction (north/south/east/west/ne/nw/se/sw/up/down/in/out)", e.sEntry((*string)(&ze.Direction))),
+				field("description", e.sEntry(&ze.Description)),
+				e.bCheck(&ze.Locked, "locked"),
+			)
+		},
+		func() { z.Exits = append(z.Exits, domain.ZoneExit{}) },
+		func(i int) { z.Exits = append(z.Exits[:i], z.Exits[i+1:]...) },
+	)
 }
 
 func (e *editor) roomForm(r *domain.Room) fyne.CanvasObject {

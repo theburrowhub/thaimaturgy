@@ -263,11 +263,14 @@ func NewSessionState(name string, adv *Adventure) *SessionState {
 	if adv != nil {
 		s.AdventureID = adv.ID
 		s.AdventureTitle = adv.Title
-		if len(adv.Zones) > 0 {
-			s.CurrentZone = adv.Zones[0].ID
-			if len(adv.Zones[0].Rooms) > 0 {
-				s.CurrentRoom = adv.Zones[0].Rooms[0].ID
-				s.VisitedRooms[s.CurrentRoom] = true
+		// Start at the authored entry room (falls back to the first room) rather
+		// than blindly at Zones[0].Rooms[0], so the starting position doesn't
+		// depend on the order zones/rooms happen to be written.
+		if rid := adv.StartRoomID(); rid != "" {
+			if room, zone := adv.Room(rid); room != nil && zone != nil {
+				s.CurrentZone = zone.ID
+				s.CurrentRoom = room.ID
+				s.VisitedRooms[room.ID] = true
 			}
 		}
 	}

@@ -47,7 +47,28 @@ func Markdown(adv *domain.Adventure) string {
 		w("## %s\n\n", nz(z.Name, z.ID))
 		writeField(&b, "Overview", z.Overview)
 		writeField(&b, "Description", z.Description)
-		if len(z.Connections) > 0 {
+		if len(z.Exits) > 0 {
+			w("**Exits (adjacent zones):**\n\n")
+			for _, e := range z.Exits {
+				dir := string(e.Direction)
+				if dir == "" {
+					dir = "→"
+				}
+				name := e.To
+				if tz := adv.Zone(e.To); tz != nil {
+					name = tz.Name
+				}
+				line := fmt.Sprintf("- %s to %s", dir, name)
+				if e.Locked {
+					line += " (locked)"
+				}
+				if e.Description != "" {
+					line += ": " + e.Description
+				}
+				w("%s\n", line)
+			}
+			w("\n")
+		} else if len(z.Connections) > 0 {
 			w("**Connects to:** %s\n\n", strings.Join(z.Connections, ", "))
 		}
 		if m := adv.ZoneMap(z); m != "" {

@@ -7,7 +7,10 @@ import (
 
 // SchemaVersion is the current adventure module schema version. Modules declare
 // their own schema_version; the loader warns on mismatch but tries to parse.
-const SchemaVersion = "1.0"
+//
+// 1.1 adds the directional zone graph (Zone.Exits) and Adventure.StartRoom.
+// Older 1.0 modules are migrated on load (see Adventure.Migrate).
+const SchemaVersion = "1.1"
 
 // Adventure is the complete, authored, immutable content of a D&D-style
 // adventure module. It is loaded from the adventure.json inside a .tar.gz
@@ -38,6 +41,11 @@ type Adventure struct {
 	Conclusion   string   `json:"conclusion,omitempty"`
 	Hooks        []string `json:"hooks,omitempty"`
 
+	// StartRoom is the id of the room where the party begins. When empty the
+	// loader/session falls back to the first authored room, but authoring an
+	// explicit entry point avoids depending on the order zones/rooms are written.
+	StartRoom string `json:"start_room,omitempty"`
+
 	Zones    []Zone      `json:"zones,omitempty"`
 	NPCs     []NPC       `json:"npcs,omitempty"`
 	Events   []Event     `json:"events,omitempty"`
@@ -60,7 +68,12 @@ type Zone struct {
 	MapImage    string   `json:"map_image,omitempty"` // relative asset path (legacy/direct)
 	ImageIDs    []string `json:"image_ids,omitempty"` // references into Adventure.Images
 	Rooms       []Room   `json:"rooms,omitempty"`
-	Connections []string `json:"connections,omitempty"` // other zone IDs reachable
+	Connections []string `json:"connections,omitempty"` // DEPRECATED: legacy undirected zone IDs; migrated into Exits on load
+
+	// Exits is the directional zone-adjacency graph: which zone lies in each
+	// direction from this one. This is what lets the DM keep the party's marching
+	// order (a zone written earlier is not automatically "before" a later one).
+	Exits []ZoneExit `json:"exits,omitempty"`
 }
 
 // Room is a discrete location the party can occupy within a zone.
@@ -89,6 +102,102 @@ type Exit struct {
 	Direction   string `json:"direction,omitempty"`
 	Description string `json:"description,omitempty"`
 	Locked      bool   `json:"locked,omitempty"`
+}
+
+// Direction is a canonical compass/relative direction for a zone or room exit.
+type Direction string
+
+const (
+	DirNorth     Direction = "north"
+	DirSouth     Direction = "south"
+	DirEast      Direction = "east"
+	DirWest      Direction = "west"
+	DirNortheast Direction = "northeast"
+	DirNorthwest Direction = "northwest"
+	DirSoutheast Direction = "southeast"
+	DirSouthwest Direction = "southwest"
+	DirUp        Direction = "up"
+	DirDown      Direction = "down"
+	DirIn        Direction = "in"
+	DirOut       Direction = "out"
+)
+
+// dirAliases maps common English/Spanish spellings and abbreviations to the
+// canonical Direction vocabulary.
+var dirAliases = map[string]Direction{
+	"n": DirNorth, "north": DirNorth, "norte": DirNorth,
+	"s": DirSouth, "south": DirSouth, "sur": DirSouth,
+	"e": DirEast, "east": DirEast, "este": DirEast,
+	"w": DirWest, "west": DirWest, "oeste": DirWest, "o": DirWest,
+	"ne": DirNortheast, "northeast": DirNortheast, "noreste": DirNortheast,
+	"nw": DirNorthwest, "no": DirNorthwest, "northwest": DirNorthwest, "noroeste": DirNorthwest,
+	"se": DirSoutheast, "southeast": DirSoutheast, "sureste": DirSoutheast, "sudeste": DirSoutheast,
+	"sw": DirSouthwest, "so": DirSouthwest, "southwest": DirSouthwest, "suroeste": DirSouthwest, "sudoeste": DirSouthwest,
+	"u": DirUp, "up": DirUp, "arriba": DirUp,
+	"d": DirDown, "down": DirDown, "abajo": DirDown,
+	"in": DirIn, "inside": DirIn, "dentro": DirIn, "adentro": DirIn,
+	"out": DirOut, "outside": DirOut, "fuera": DirOut, "afuera": DirOut,
+}
+
+// NormalizeDirection maps a free-text direction to the canonical vocabulary.
+// Returns ("", false) when it cannot be recognized.
+func NormalizeDirection(s string) (Direction, bool) {
+	key := strings.ToLower(strings.TrimSpace(s))
+	if key == "" {
+		return "", false
+	}
+	if d, ok := dirAliases[key]; ok {
+		return d, true
+	}
+	return "", false
+}
+
+// Valid reports whether d is a recognized canonical direction.
+func (d Direction) Valid() bool {
+	_, ok := dirAliases[strings.ToLower(string(d))]
+	return ok
+}
+
+// Opposite returns the reverse direction (used to check/derive reciprocal
+// zone exits). Returns "" when there is no defined opposite.
+func (d Direction) Opposite() Direction {
+	switch d {
+	case DirNorth:
+		return DirSouth
+	case DirSouth:
+		return DirNorth
+	case DirEast:
+		return DirWest
+	case DirWest:
+		return DirEast
+	case DirNortheast:
+		return DirSouthwest
+	case DirSouthwest:
+		return DirNortheast
+	case DirNorthwest:
+		return DirSoutheast
+	case DirSoutheast:
+		return DirNorthwest
+	case DirUp:
+		return DirDown
+	case DirDown:
+		return DirUp
+	case DirIn:
+		return DirOut
+	case DirOut:
+		return DirIn
+	}
+	return ""
+}
+
+// ZoneExit is a directional edge in the adventure's zone-adjacency graph: from
+// the zone that holds it, going Direction, you reach zone To.
+type ZoneExit struct {
+	Direction   Direction `json:"direction,omitempty"`
+	To          string    `json:"to"` // destination zone ID
+	Locked      bool      `json:"locked,omitempty"`
+	Condition   string    `json:"condition,omitempty"` // when/how the passage opens (DM-facing)
+	Description string    `json:"description,omitempty"`
 }
 
 // Feature is an interactive element in a room: a trap, puzzle, or ability check.
@@ -228,6 +337,60 @@ type ImageRef struct {
 }
 
 // --- Lookups -------------------------------------------------------------
+
+// Migrate upgrades a freshly-loaded adventure in place so older modules keep
+// working: it normalizes exit directions to the canonical vocabulary and
+// backfills the directional zone graph (Zone.Exits) from the legacy undirected
+// Connections list. Idempotent — safe to call more than once.
+func (a *Adventure) Migrate() {
+	if a == nil {
+		return
+	}
+	for zi := range a.Zones {
+		z := &a.Zones[zi]
+		// Normalize room-exit direction strings.
+		for ri := range z.Rooms {
+			for ei := range z.Rooms[ri].Exits {
+				if d, ok := NormalizeDirection(z.Rooms[ri].Exits[ei].Direction); ok {
+					z.Rooms[ri].Exits[ei].Direction = string(d)
+				}
+			}
+		}
+		// Backfill directional zone exits from legacy Connections when none are
+		// authored. Direction is left empty (unknown) for migrated edges.
+		if len(z.Exits) == 0 && len(z.Connections) > 0 {
+			for _, c := range z.Connections {
+				if c = strings.TrimSpace(c); c != "" {
+					z.Exits = append(z.Exits, ZoneExit{To: c})
+				}
+			}
+		}
+		// Normalize explicit zone-exit directions.
+		for ei := range z.Exits {
+			if d, ok := NormalizeDirection(string(z.Exits[ei].Direction)); ok {
+				z.Exits[ei].Direction = d
+			}
+		}
+	}
+}
+
+// StartRoomID returns the party's entry room: the authored StartRoom when set
+// and valid, otherwise the first authored room (fallback). Empty only when the
+// adventure has no rooms at all.
+func (a *Adventure) StartRoomID() string {
+	if a == nil {
+		return ""
+	}
+	if s := strings.TrimSpace(a.StartRoom); s != "" {
+		if r, _ := a.Room(s); r != nil {
+			return s
+		}
+	}
+	if len(a.Zones) > 0 && len(a.Zones[0].Rooms) > 0 {
+		return a.Zones[0].Rooms[0].ID
+	}
+	return ""
+}
 
 // Zone returns the zone with the given ID, or nil.
 func (a *Adventure) Zone(id string) *Zone {
@@ -498,6 +661,16 @@ func ValidateAdventure(a *Adventure, imageExists func(relPath string) bool) []er
 				add("zone %q: connection references unknown zone %q", z.ID, c)
 			}
 		}
+		for _, ze := range z.Exits {
+			if strings.TrimSpace(ze.To) == "" {
+				add("zone %q: exit is missing a destination zone", z.ID)
+			} else if !zoneIDs[ze.To] {
+				add("zone %q: exit references unknown zone %q", z.ID, ze.To)
+			}
+			if ze.Direction != "" && !ze.Direction.Valid() {
+				add("zone %q: exit to %q has invalid direction %q", z.ID, ze.To, ze.Direction)
+			}
+		}
 		checkImageIDs("zone "+z.ID, z.ImageIDs)
 		for _, r := range z.Rooms {
 			for _, nid := range r.NPCIDs {
@@ -517,6 +690,9 @@ func ValidateAdventure(a *Adventure, imageExists func(relPath string) bool) []er
 				}
 			}
 		}
+	}
+	if s := strings.TrimSpace(a.StartRoom); s != "" && !roomIDs[s] {
+		add("adventure: start_room references unknown room %q", s)
 	}
 	for _, n := range a.NPCs {
 		if n.DefaultLocation != "" && !roomIDs[n.DefaultLocation] {
