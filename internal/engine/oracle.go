@@ -434,12 +434,14 @@ func (o *Oracle) buildSystemPrompt() string {
 		fmt.Fprintf(&sb, "PC %s: HP %d/%d AC %d %s\n", p.Name, p.CurrentHP, p.MaxHP, p.AC, p.Notes)
 	}
 
-	if st.EffectiveMode() == domain.ModeVirtualDM {
-		if party := st.PartySnapshot(); len(party) > 0 {
-			sb.WriteString("\n=== PLAYER PARTY (you are the DM; never act for them; target tools by character name) ===\n")
-			sb.WriteString(FormatParty(party))
-			sb.WriteString("\n")
-		}
+	// The party's CURRENT sheets are authoritative and must reach the DM every
+	// turn (in any mode where a party exists), so narration never contradicts a
+	// character's real HP/conditions. Tool results within the turn already reflect
+	// mutations (e.g. update_hp), so this stays consistent mid-turn.
+	if party := st.PartySnapshot(); len(party) > 0 {
+		sb.WriteString("\n=== PLAYER PARTY — CURRENT SHEETS (authoritative: never narrate a state that contradicts these — HP, conditions, etc.; you are the DM, never act for them; target tools by character name) ===\n")
+		sb.WriteString(FormatParty(party))
+		sb.WriteString("\n")
 	}
 
 	if st.Summary != "" {
