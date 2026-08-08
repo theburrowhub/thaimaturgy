@@ -389,6 +389,17 @@ func (o *Oracle) buildSystemPrompt() string {
 				}
 			}
 		}
+		// Adjacency / marching order: tell the model where the party can actually
+		// go from here, so it doesn't infer spatial order from the order zones are
+		// written in the module (a zone written earlier is NOT automatically
+		// "before" a later one).
+		if zone != nil {
+			if adj := FormatAdjacency(adv, zone.ID); adj != "" {
+				sb.WriteString("\n--- WHERE THE PARTY CAN GO (marching order) ---\n")
+				sb.WriteString(adj)
+				sb.WriteString("\nOnly move the party through the room exits or adjacent zones listed above. Do NOT place them in a zone that is not reachable from here, and do not assume the module's authored order is the travel order. To reach a distant zone, use find_path to get the route.\n")
+			}
+		}
 	} else {
 		sb.WriteString("No current room set. Use set_location or ask the DM where the party is.\n")
 	}

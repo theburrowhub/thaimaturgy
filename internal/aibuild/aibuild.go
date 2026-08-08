@@ -222,6 +222,7 @@ func build(ctx context.Context, prov providers.Provider, cfg *domain.Config, tit
 	}
 
 	sanitize(adv, title, workingDir)
+	adv.Migrate() // normalize exit directions + backfill the directional zone graph
 	if code := importLanguageCode(cfg); code != "" {
 		adv.Language = code // keep the module's language tag consistent with the import target
 	}
@@ -375,10 +376,11 @@ const systemPrompt = `You are an expert tabletop RPG (D&D 5e) module designer. Y
 
 Output ONLY a JSON object (no prose, no markdown fences) with this shape:
 {
-  "schema_version":"1.0","id":"kebab-case-id","title":"...","author":"","system":"D&D 5e","language":"en",
+  "schema_version":"1.1","id":"kebab-case-id","title":"...","author":"","system":"D&D 5e","language":"en","start_room":"id of the room where the party begins",
   "summary":"...","context":"how to position/run it: setting, tone, recommended level & party, campaign fit, prerequisites","background":"the FULL in-world history/backstory for the DM (keep every paragraph)","introduction":"how it starts","conclusion":"possible endings","hooks":["..."],
   "images":[{"id":"<image_id>","kind":"map|art","description":"..."}],
-  "zones":[{"id":"...","name":"...","overview":"DM summary","description":"...","image_ids":["<image_id>"],"connections":["zoneId"],
+  "zones":[{"id":"...","name":"...","overview":"DM summary","description":"...","image_ids":["<image_id>"],
+    "exits":[{"direction":"north|south|east|west|ne|nw|se|sw|up|down|in|out","to":"adjacent zoneId","locked":false,"description":"the passage"}],
     "rooms":[{"id":"...","name":"...","read_aloud":"boxed text for players","dm_notes":"secrets/what happens","image_ids":["<image_id>"],
       "npc_ids":["..."],"event_ids":["..."],"treasure":["..."],
       "exits":[{"to":"roomOrZoneId","direction":"north","description":"...","locked":false}],
@@ -589,6 +591,7 @@ func sanitize(adv *domain.Adventure, title, workingDir string) {
 			z.MapImage = ""
 		}
 		z.Connections = keepStrings(z.Connections, func(s string) bool { return zoneIDs[s] })
+		z.Exits = keepZoneExits(z.Exits, func(to string) bool { return zoneIDs[to] })
 		for ri := range z.Rooms {
 			r := &z.Rooms[ri]
 			if !imgOK(r.Image) {
@@ -614,6 +617,10 @@ func sanitize(adv *domain.Adventure, title, workingDir string) {
 	}
 	// Keep only catalog entries that exist on disk.
 	adv.Images = keepImageRefs(adv.Images, imgOK)
+	// Drop an entry point that doesn't resolve to a real room.
+	if adv.StartRoom != "" && !roomIDs[adv.StartRoom] {
+		adv.StartRoom = ""
+	}
 }
 
 // --- helpers -------------------------------------------------------------
@@ -632,6 +639,16 @@ func keepExits(in []domain.Exit, keep func(string) bool) []domain.Exit {
 	var out []domain.Exit
 	for _, e := range in {
 		if e.To == "" || keep(e.To) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func keepZoneExits(in []domain.ZoneExit, keep func(string) bool) []domain.ZoneExit {
+	var out []domain.ZoneExit
+	for _, e := range in {
+		if e.To != "" && keep(e.To) {
 			out = append(out, e)
 		}
 	}

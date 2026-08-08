@@ -79,7 +79,7 @@ func FormatRoom(adv *domain.Adventure, r *domain.Room) string {
 			if label == "" {
 				label = "→"
 			}
-			line := fmt.Sprintf("  - %s to %s", label, ex.To)
+			line := fmt.Sprintf("  - %s to %s [%s]", label, exitTargetName(adv, ex.To), ex.To)
 			if ex.Locked {
 				line += " (locked)"
 			}
@@ -200,8 +200,67 @@ func FormatZone(adv *domain.Adventure, z *domain.Zone) string {
 			sb.WriteString(fmt.Sprintf("  - %s [%s]\n", r.Name, r.ID))
 		}
 	}
+	if len(z.Exits) > 0 {
+		sb.WriteString("Adjacent zones:\n")
+		for _, e := range z.Exits {
+			dir := string(e.Direction)
+			if dir == "" {
+				dir = "→"
+			}
+			line := fmt.Sprintf("  - %s to %s [%s]", dir, exitTargetName(adv, e.To), e.To)
+			if e.Locked {
+				line += " (locked)"
+			}
+			if e.Description != "" {
+				line += ": " + e.Description
+			}
+			sb.WriteString(line + "\n")
+		}
+	}
 	if m := adv.ZoneMap(z); m != "" {
 		sb.WriteString("[map: " + m + "]\n")
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// exitTargetName resolves an exit target id (which may be a room or a zone) to
+// its human name, falling back to the raw id.
+func exitTargetName(adv *domain.Adventure, to string) string {
+	if to == "" {
+		return "?"
+	}
+	if r, _ := adv.Room(to); r != nil {
+		return r.Name
+	}
+	if z := adv.Zone(to); z != nil {
+		return z.Name
+	}
+	return to
+}
+
+// FormatAdjacency renders the directional zone exits from a zone as a compact
+// "where can we go from here" block for grounding the DM. Empty when the zone is
+// unknown or has no authored exits.
+func FormatAdjacency(adv *domain.Adventure, zoneID string) string {
+	z := adv.Zone(zoneID)
+	if z == nil || len(z.Exits) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("From this zone the party can travel to:\n")
+	for _, e := range z.Exits {
+		dir := string(e.Direction)
+		if dir == "" {
+			dir = "(unspecified direction)"
+		}
+		line := fmt.Sprintf("  - %s → %s [%s]", dir, exitTargetName(adv, e.To), e.To)
+		if e.Locked {
+			line += " (locked/blocked)"
+		}
+		if e.Description != "" {
+			line += ": " + e.Description
+		}
+		sb.WriteString(line + "\n")
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }

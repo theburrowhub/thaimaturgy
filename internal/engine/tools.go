@@ -92,6 +92,29 @@ var AvailableTools = []types.Tool{
 		Description: "List the NPCs currently in the party's room.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 	},
+	{
+		Name:        "list_exits",
+		Description: "List the current room's exits and the zones directly adjacent to the current zone, with directions. Use it to know where the party may move next.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+	},
+	{
+		Name:        "find_path",
+		Description: "Find a route (sequence of zones with directions) from the party's current zone to a destination zone. Use it when players want to travel to a zone that is not directly adjacent.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"to_zone":{"type":"string","description":"Destination zone ID"}},
+			"required":["to_zone"]
+		}`),
+	},
+	{
+		Name:        "go_direction",
+		Description: "Move the party one step in a direction (north, south, east, west, ne, nw, se, sw, up, down, in, out) following an exit of the current room or an adjacent zone. Fails if there is no exit that way.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"direction":{"type":"string"}},
+			"required":["direction"]
+		}`),
+	},
 	// --- Session mutation ----------------------------------------------
 	{
 		Name:        "set_location",
@@ -348,6 +371,12 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 		return tr.searchModule(call.ID, args)
 	case "list_present_npcs":
 		return tr.listPresentNPCs(call.ID)
+	case "list_exits":
+		return tr.listExits(call.ID)
+	case "find_path":
+		return tr.findPath(call.ID, args)
+	case "go_direction":
+		return tr.goDirection(call.ID, args)
 	case "set_location":
 		return tr.setLocation(call.ID, args)
 	case "mark_npc_met":
@@ -546,9 +575,148 @@ func (tr *ToolRouter) setLocation(id string, args map[string]any) types.ToolResu
 	if zid == "" && z != nil {
 		zid = z.ID
 	}
+	prevZone := tr.state().CurrentZone
 	tr.state().SetLocation(zid, rid, r.Name)
 	tr.session.MarkModified()
-	return okResult(id, "party is now in "+r.Name)
+	msg := "party is now in " + r.Name
+	if warn := tr.adjacencyWarning(prevZone, zid); warn != "" {
+		msg += " " + warn
+	}
+	return okResult(id, msg)
+}
+
+// adjacencyWarning returns a soft note when the party moves to a zone that is
+// not directly adjacent to the previous one. It never blocks the move (older
+// modules may have an incomplete zone graph); it only nudges the DM to respect
+// marching order and consider find_path.
+func (tr *ToolRouter) adjacencyWarning(prevZone, newZone string) string {
+	if prevZone == "" || newZone == "" || prevZone == newZone {
+		return ""
+	}
+	adv := tr.adv()
+	if len(adv.ZoneNeighbors(prevZone)) == 0 {
+		return "" // no graph to reason about — don't cry wolf
+	}
+	for _, adj := range adv.AdjacentZones(prevZone, true) {
+		if adj == newZone {
+			return ""
+		}
+	}
+	return "(note: that zone is not directly adjacent to the previous one — confirm the party can reach it there, or use find_path to plan the route)"
+}
+
+// --- Navigation -----------------------------------------------------------
+
+func (tr *ToolRouter) listExits(id string) types.ToolResult {
+	adv, st := tr.adv(), tr.state()
+	var sb strings.Builder
+	if room, _ := adv.Room(st.CurrentRoom); room != nil && len(room.Exits) > 0 {
+		sb.WriteString("Room exits:\n")
+		for _, ex := range room.Exits {
+			dir := ex.Direction
+			if dir == "" {
+				dir = "→"
+			}
+			line := fmt.Sprintf("  - %s to %s [%s]", dir, exitTargetName(adv, ex.To), ex.To)
+			if ex.Locked {
+				line += " (locked)"
+			}
+			sb.WriteString(line + "\n")
+		}
+	}
+	if adj := FormatAdjacency(adv, st.CurrentZone); adj != "" {
+		sb.WriteString(adj + "\n")
+	}
+	if sb.Len() == 0 {
+		return okResult(id, "No exits or adjacent zones are recorded from the current location.")
+	}
+	return okResult(id, strings.TrimRight(sb.String(), "\n"))
+}
+
+func (tr *ToolRouter) findPath(id string, args map[string]any) types.ToolResult {
+	to, _ := args["to_zone"].(string)
+	if to = strings.TrimSpace(to); to == "" {
+		return errResult(id, "to_zone is required")
+	}
+	adv := tr.adv()
+	from := tr.state().CurrentZone
+	steps, ok := adv.PathZones(from, to, true)
+	if !ok {
+		return okResult(id, "No known route from the current zone to "+exitTargetName(adv, to)+".")
+	}
+	if len(steps) == 0 {
+		return okResult(id, "The party is already in that zone.")
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Route from %s to %s (%d step(s)):\n", exitTargetName(adv, from), exitTargetName(adv, to), len(steps))
+	for i, s := range steps {
+		dir := string(s.Direction)
+		if dir == "" {
+			dir = "→"
+		}
+		line := fmt.Sprintf("  %d. go %s to %s [%s]", i+1, dir, exitTargetName(adv, s.To), s.To)
+		if s.Locked {
+			line += " (locked/blocked — may need opening)"
+		}
+		sb.WriteString(line + "\n")
+	}
+	return okResult(id, strings.TrimRight(sb.String(), "\n"))
+}
+
+func (tr *ToolRouter) goDirection(id string, args map[string]any) types.ToolResult {
+	dirRaw, _ := args["direction"].(string)
+	nd, ok := domain.NormalizeDirection(dirRaw)
+	if !ok {
+		return errResult(id, "unrecognized direction: "+dirRaw)
+	}
+	adv, st := tr.adv(), tr.state()
+	// Prefer a matching room exit, then a matching adjacent zone.
+	if room, _ := adv.Room(st.CurrentRoom); room != nil {
+		for _, ex := range room.Exits {
+			if d, ok := domain.NormalizeDirection(ex.Direction); ok && d == nd {
+				return tr.moveToTarget(id, ex.To)
+			}
+		}
+	}
+	for _, e := range adv.ZoneNeighbors(st.CurrentZone) {
+		if e.Direction == nd {
+			return tr.moveToZone(id, e.To)
+		}
+	}
+	return errResult(id, "there is no exit to the "+string(nd)+" from here")
+}
+
+// moveToTarget moves the party to an exit target, which may be a room or a zone.
+func (tr *ToolRouter) moveToTarget(id, to string) types.ToolResult {
+	adv := tr.adv()
+	if r, z := adv.Room(to); r != nil {
+		zid := ""
+		if z != nil {
+			zid = z.ID
+		}
+		tr.state().SetLocation(zid, r.ID, r.Name)
+		tr.session.MarkModified()
+		return okResult(id, "party is now in "+r.Name)
+	}
+	if z := adv.Zone(to); z != nil {
+		return tr.moveToZone(id, z.ID)
+	}
+	return errResult(id, "exit target not found: "+to)
+}
+
+// moveToZone moves the party into a zone, at its first (entry) room.
+func (tr *ToolRouter) moveToZone(id, zoneID string) types.ToolResult {
+	z := tr.adv().Zone(zoneID)
+	if z == nil {
+		return errResult(id, "no zone with id "+zoneID)
+	}
+	if len(z.Rooms) == 0 {
+		return errResult(id, "zone "+z.Name+" has no rooms to enter")
+	}
+	r := z.Rooms[0]
+	tr.state().SetLocation(z.ID, r.ID, r.Name)
+	tr.session.MarkModified()
+	return okResult(id, "party has moved to "+z.Name+" ("+r.Name+")")
 }
 
 func (tr *ToolRouter) markNPCMet(id string, args map[string]any) types.ToolResult {

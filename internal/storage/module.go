@@ -131,6 +131,7 @@ func (s *Storage) LoadAdventure(id string) (*domain.Adventure, error) {
 	if err := json.Unmarshal(data, &adv); err != nil {
 		return nil, fmt.Errorf("failed to parse adventure %q: %w", id, err)
 	}
+	adv.Migrate() // normalize directions + backfill the zone graph for older modules
 	return &adv, nil
 }
 

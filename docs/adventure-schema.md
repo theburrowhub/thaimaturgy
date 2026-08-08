@@ -24,8 +24,9 @@ my-adventure.tar.gz
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `schema_version` | string | recommended | Currently `"1.0"`. |
+| `schema_version` | string | recommended | Currently `"1.1"`. `1.0` modules still load (migrated on read). |
 | `id` | string | **yes** | Unique, filesystem-safe (used as the folder name). |
+| `start_room` | string | no | ID of the room where the party begins. If omitted, the first authored room is used — set it explicitly so the entry point doesn't depend on the order zones/rooms are written. |
 | `title` | string | **yes** | Display name. |
 | `author` | string | no | |
 | `system` | string | no | e.g. `"D&D 5e"`. |
@@ -77,7 +78,11 @@ extracted image with an id and linking it to the zone/room/NPC/item it belongs t
 | `map_image` | string | Direct relative path to a zone map (legacy; prefer `image_ids`). |
 | `image_ids` | string[] | Catalog image IDs; `/map` prefers a `kind:"map"` one. |
 | `rooms` | Room[] | |
-| `connections` | string[] | Other **zone** IDs reachable from here. |
+| `exits` | ZoneExit[] | **Directional** adjacency graph: which zone lies in each direction. This is how the DM keeps the party's marching order — a zone written earlier is *not* automatically "before" a later one. Prefer this over `connections`. |
+| `connections` | string[] | DEPRECATED (undirected). Legacy zone IDs reachable from here; migrated into `exits` (with unknown direction) on load. |
+
+**`ZoneExit`**: `{ "direction": "north", "to": "<zone-id>", "locked": false, "condition": "...", "description": "..." }`
+Directions (canonical): `north, south, east, west, ne, nw, se, sw, up, down, in, out` (English/Spanish spellings and single-letter abbreviations are normalized on load). Author reciprocal exits (if A has a `north` exit to B, give B a `south` exit back to A).
 
 ### `Room`
 
