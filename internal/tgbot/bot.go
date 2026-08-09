@@ -277,6 +277,20 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.runDM(m)
 	case "roll":
 		b.reply(m, rollText(arg))
+	case "hp":
+		b.editHP(m, arg)
+	case "condition", "cond":
+		b.editCondition(m, arg, true)
+	case "uncondition", "uncond":
+		b.editCondition(m, arg, false)
+	case "gold":
+		b.editGold(m, arg)
+	case "xp":
+		b.editXP(m, arg)
+	case "item", "inv":
+		b.editItem(m, arg)
+	case "setnote":
+		b.editNote(m, arg)
 	case "save":
 		b.saveAndReport(m)
 	case "log":
@@ -805,6 +819,13 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /portrait <npc> — show a met NPC's portrait
 /log [n] — show the last n timeline entries (default 15)
 /rest short|long [character] — take a short or long rest
+/hp -5 | +3 | =10 — damage, heal, or set your HP
+/condition <name> — apply a condition to your character
+/uncondition <name> — remove a condition
+/gold +50 | -10 | =100 — adjust or set your gold
+/xp <n> — award your character experience
+/item add|remove <name> [xN] — edit your inventory
+/setnote <text> — set your character's notes
 /quests — list tracked quests
 /note <text> — add a note to the timeline
 /chatid — show this chat's id
