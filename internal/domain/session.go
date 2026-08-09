@@ -331,6 +331,15 @@ func (s *SessionState) MeetNPC(id, name string) *NPCStatus {
 	return st
 }
 
+// NPCKnown reports whether the party has met the NPC, under the lock (safe to
+// call from goroutines running concurrently with the oracle turn).
+func (s *SessionState) NPCKnown(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.KnownNPCs[id]
+	return st != nil && st.Met
+}
+
 // npcState is the lock-free core of NPCState, for callers already holding s.mu.
 func (s *SessionState) npcState(id string) *NPCStatus {
 	st := s.KnownNPCs[id]
