@@ -233,8 +233,17 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	cctx, cancel := cliContext(ctx)
 	defer cancel()
 
+	// Deliver untrusted world state (issue #21) as part of the user input, not the
+	// system prompt: for the CLI path the input is the user-role message, so this
+	// keeps it at lower priority than the system prompt. Ephemeral — the raw input
+	// was already persisted above; this augmented copy is only sent to the model.
+	cliInput := input
+	if ws := o.worldStateContext(); ws != "" {
+		cliInput = ws + "\n\n" + input
+	}
+
 	start := time.Now()
-	answer, err := cli.RunWithMCP(cctx, o.session.Config.Model, o.buildSystemPrompt(), input, cfgPath, allowed)
+	answer, err := cli.RunWithMCP(cctx, o.session.Config.Model, o.buildSystemPrompt(), cliInput, cfgPath, allowed)
 	if err != nil {
 		resp.Error = fmt.Errorf("AI request failed: %w", err)
 		return resp
@@ -328,11 +337,46 @@ func mergeSessionState(dst, src *domain.SessionState, oldLogLen int) {
 	}
 }
 
+// worldStateContext renders the DM-recorded world changes (issue #21) for the
+// party's current room and the NPCs present, or "" when there are none. This text
+// is model-generated in response to player actions and is therefore UNTRUSTED, so
+// it is delivered as a lower-priority data message (never in the system prompt):
+// FormatWorldChanges wraps it in a fenced block with a fixed instruction to treat
+// the content strictly as factual world state and never as instructions.
+func (o *Oracle) worldStateContext() string {
+	adv, st := o.session.Adventure, o.session.State
+	room, _ := adv.Room(st.CurrentRoom)
+	if room == nil {
+		return ""
+	}
+	var blocks []string
+	if wc := FormatWorldChanges(st.WorldChangesFor(worldTarget("room", room.ID))); wc != "" {
+		blocks = append(blocks, "Room "+room.Name+":\n"+wc)
+	}
+	for _, nid := range room.NPCIDs {
+		n := adv.NPC(nid)
+		if n == nil {
+			continue
+		}
+		if wc := FormatWorldChanges(st.WorldChangesFor(worldTarget("npc", n.ID))); wc != "" {
+			blocks = append(blocks, "NPC "+n.Name+":\n"+wc)
+		}
+	}
+	return strings.Join(blocks, "\n\n")
+}
+
 func (o *Oracle) buildMessages() []providers.Message {
 	msgs := []providers.Message{{
 		Role:    providers.RoleSystem,
 		Content: o.buildSystemPrompt(),
 	}}
+	// Deliver untrusted, player-influenced world state as a lower-priority data
+	// message (user role), not in the system prompt (see worldStateContext). It is
+	// ephemeral — recomputed each turn from current state, never persisted into the
+	// conversation — so it can't grow the history or go stale.
+	if ws := o.worldStateContext(); ws != "" {
+		msgs = append(msgs, providers.Message{Role: providers.RoleUser, Content: ws})
+	}
 	// Send only a recent window of the conversation to the model — the full
 	// history is persisted for resuming, but the prompt stays bounded. Older
 	// context is preserved via the running Summary in the system prompt.
@@ -390,6 +434,10 @@ func (o *Oracle) buildSystemPrompt() string {
 		}
 		sb.WriteString(FormatRoom(adv, room))
 		sb.WriteString("\n")
+		// NB: DM-recorded world changes (issue #21) are NOT injected here. They are
+		// model-generated in response to player actions, so they are untrusted and
+		// must not sit at system priority; buildMessages/askViaCLI deliver them in a
+		// separate, lower-priority data message instead (see worldStateContext).
 		if len(room.NPCIDs) > 0 {
 			sb.WriteString("\n--- Present NPCs ---\n")
 			for _, nid := range room.NPCIDs {
@@ -470,10 +518,25 @@ func (o *Oracle) buildSystemPrompt() string {
 	if recentN <= 0 {
 		recentN = 15
 	}
-	recent := st.RecentLog(recentN)
-	if len(recent) > 0 {
+	// Over-fetch so filtering LogWorld out still leaves a full window.
+	recent := st.RecentLog(recentN * 2)
+	var timeline []domain.LogEntry
+	for _, e := range recent {
+		// LogWorld entries quote the raw (untrusted) world-change text; keep them
+		// out of the system-priority prompt — current world state is delivered
+		// separately as a lower-priority data message (see worldStateContext). The
+		// full entries still live in the human-facing log/journal.
+		if e.Type == domain.LogWorld {
+			continue
+		}
+		timeline = append(timeline, e)
+	}
+	if len(timeline) > recentN {
+		timeline = timeline[len(timeline)-recentN:]
+	}
+	if len(timeline) > 0 {
 		sb.WriteString("\n=== RECENT TIMELINE ===\n")
-		for _, e := range recent {
+		for _, e := range timeline {
 			fmt.Fprintf(&sb, "- [%s] %s\n", e.Type, e.Message)
 		}
 	}

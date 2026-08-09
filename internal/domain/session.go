@@ -6,7 +6,49 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
+
+const (
+	// maxWorldChangeLen bounds a single DM-recorded change so one call can't blow
+	// up the prompt; maxWorldChangesPerTarget caps how many are retained (and thus
+	// rendered) per entity, keeping the always-on grounding bounded (issue #21,
+	// Heimdallm review).
+	maxWorldChangeLen        = 400
+	maxWorldChangesPerTarget = 12
+)
+
+// sanitizeWorldChange normalizes a DM-recorded change for safe, bounded storage.
+// The text is model-generated in response to player actions, so it is treated as
+// UNTRUSTED: all whitespace (including newlines) is collapsed to single spaces and
+// control characters are stripped, so a persisted change is a single line that
+// cannot inject extra lines, headings, or role/fence markers into the prompt; the
+// result is then length-capped. Returns "" when nothing printable remains.
+func sanitizeWorldChange(s string) string {
+	var b strings.Builder
+	lastSpace := false
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			if !lastSpace {
+				b.WriteRune(' ')
+				lastSpace = true
+			}
+			continue
+		}
+		if unicode.IsControl(r) {
+			continue
+		}
+		b.WriteRune(r)
+		lastSpace = false
+	}
+	out := strings.TrimSpace(b.String())
+	// Cap by RUNES (not bytes) so truncation never splits a multi-byte character
+	// and stores invalid UTF-8 (which JSON would then corrupt).
+	if r := []rune(out); len(r) > maxWorldChangeLen {
+		out = strings.TrimSpace(string(r[:maxWorldChangeLen])) + "…"
+	}
+	return out
+}
 
 // LogEntryType classifies an entry in the session timeline.
 type LogEntryType string
@@ -22,6 +64,7 @@ const (
 	LogParty    LogEntryType = "party"    // party member update
 	LogSystem   LogEntryType = "system"   // system message
 	LogChat     LogEntryType = "chat"     // in-character player dialogue (context, not an action)
+	LogWorld    LogEntryType = "world"    // DM-recorded consequence changing the authored world
 )
 
 // LogEntry is a single event in the running session timeline — either a
@@ -104,6 +147,16 @@ type PartyMember struct {
 	Notes     string `json:"notes,omitempty"`
 }
 
+// WorldChange is a single DM-recorded consequence layered on top of an authored
+// entity (a room, zone, NPC, item…). The authored module stays immutable; the
+// session accumulates these so later narration reflects what the party did (e.g.
+// "the armor has been moved out of this room") instead of repeating a description
+// the party already invalidated.
+type WorldChange struct {
+	Change    string    `json:"change"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // QuestProgress tracks a quest/objective's state at the table.
 type QuestProgress struct {
 	ID     string `json:"id"`
@@ -130,6 +183,13 @@ type SessionState struct {
 	Variables       map[string]string     `json:"variables,omitempty"`
 	Party           []*PartyMember        `json:"party,omitempty"`
 	Quests          []QuestProgress       `json:"quests,omitempty"`
+
+	// WorldEdits overlays DM-recorded consequences onto the immutable authored
+	// module, keyed by an opaque target string the engine composes as
+	// "<kind>:<id>" (kind ∈ room|zone|npc|item|event). Reads and narrations layer
+	// these on top of the authored text so the world reflects the party's actions.
+	// Empty for sessions that never edited the world (backward compatible).
+	WorldEdits map[string][]WorldChange `json:"world_edits,omitempty"`
 
 	// Mode selects oracle behaviour: assistant (default) or virtual DM. It can be
 	// toggled at any point during a session.
@@ -219,6 +279,9 @@ func (s *SessionState) ensureInitialized() {
 	if s.Variables == nil {
 		s.Variables = make(map[string]string)
 	}
+	if s.WorldEdits == nil {
+		s.WorldEdits = make(map[string][]WorldChange)
+	}
 	if s.Log == nil {
 		s.Log = &SessionLog{Entries: []LogEntry{}, MaxSize: 0}
 	}
@@ -254,6 +317,7 @@ func NewSessionState(name string, adv *Adventure) *SessionState {
 		TriggeredEvents: make(map[string]bool),
 		Flags:           make(map[string]bool),
 		Variables:       make(map[string]string),
+		WorldEdits:      make(map[string][]WorldChange),
 		// Unbounded (MaxSize 0): persist the complete timeline and conversation so a
 		// session can be reopened with full context. The oracle only sends a recent
 		// window to the model, so unbounded storage doesn't grow the prompt.
@@ -470,6 +534,7 @@ func (s *SessionState) ImportStructured(src *SessionState) {
 	s.TriggeredEvents = src.TriggeredEvents
 	s.Flags = src.Flags
 	s.Variables = src.Variables
+	s.WorldEdits = src.WorldEdits
 	s.Party = src.Party
 	s.Quests = src.Quests
 	s.Characters = src.Characters
@@ -511,6 +576,56 @@ func (s *SessionState) SetVariable(key, value string) {
 	s.record(LogEntry{Type: LogFlag, Message: "Variable " + key + " = " + value,
 		Data: map[string]any{"key": key, "value": value}})
 	s.touch()
+}
+
+// RecordWorldChange appends a DM-recorded consequence to an authored entity,
+// keyed by the opaque target (composed by the engine as "<kind>:<id>"). label is
+// a human-readable name for the timeline entry (falls back to the target). The
+// change text is sanitized (single line, control chars stripped, length-capped)
+// and the per-target history is bounded, so a persisted change can neither
+// inject prompt structure nor grow the always-on grounding without limit. It
+// records a LogWorld entry for traceability and reports whether anything was
+// stored (false when the change is empty after sanitizing). The authored module
+// is never mutated — the change lives only in the session overlay.
+func (s *SessionState) RecordWorldChange(target, label, change string) bool {
+	change = sanitizeWorldChange(change)
+	if change == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.WorldEdits == nil {
+		s.WorldEdits = make(map[string][]WorldChange)
+	}
+	list := append(s.WorldEdits[target], WorldChange{Change: change, Timestamp: time.Now()})
+	// Keep only the most recent entries: the latest changes reflect the current
+	// state, and this caps how much is rendered into the prompt each turn.
+	if len(list) > maxWorldChangesPerTarget {
+		list = list[len(list)-maxWorldChangesPerTarget:]
+	}
+	s.WorldEdits[target] = list
+	name := label
+	if name == "" {
+		name = target
+	}
+	s.record(LogEntry{Type: LogWorld, Message: "World change (" + name + "): " + change,
+		Data: map[string]any{"target": target}})
+	s.touch()
+	return true
+}
+
+// WorldChangesFor returns a copy of the changes recorded for a target under the
+// lock (nil when none), so callers never iterate the slice while a writer appends.
+func (s *SessionState) WorldChangesFor(target string) []WorldChange {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	src := s.WorldEdits[target]
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]WorldChange, len(src))
+	copy(out, src)
+	return out
 }
 
 // AppendLog appends a pre-formed timeline entry — used to replay into the live
