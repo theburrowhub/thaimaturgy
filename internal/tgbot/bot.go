@@ -212,6 +212,8 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.sendNPCArt(m, arg)
 	case "party":
 		b.reply(m, b.partyText())
+	case "roster":
+		b.reply(m, b.rosterText())
 	case "pick", "play":
 		name, err := b.session.State.ClaimCharacter(playerID, display, arg)
 		if err != nil {
@@ -592,6 +594,25 @@ func (b *Bot) runDM(m *tgbotapi.Message) {
 	}()
 }
 
+// rosterText lists the persistent campaign roster (issue #33) for players to
+// consult from the chat. Creating/choosing characters is done host-side in the
+// app; this is the read-only Telegram view.
+func (b *Bot) rosterText() string {
+	chars, err := b.store.ListCharacters()
+	if err != nil {
+		return "⚠ Couldn't read the roster: " + err.Error()
+	}
+	if len(chars) == 0 {
+		return "The campaign roster is empty. Save characters from the app (Edit party → Roster…)."
+	}
+	var sb strings.Builder
+	sb.WriteString("🧑‍🤝‍🧑 Campaign roster:\n")
+	for _, c := range chars {
+		sb.WriteString(fmt.Sprintf("• %s — Lvl %d %s %s\n", c.Name, c.Level, c.Race, c.Class))
+	}
+	return sb.String()
+}
+
 func (b *Bot) partyText() string {
 	party := b.session.State.PartySnapshot()
 	if len(party) == 0 {
@@ -790,6 +811,7 @@ const notStartedMsg = "The game hasn't started yet. Pick characters with /pick, 
 
 const helpText = `thAImaturgy — multiplayer DM bot
 /party — list characters and who plays them
+/roster — list the persistent campaign roster
 /pick <name> — claim a character to play
 /assign @user <name> — assign a character to a player (or reply to them with /assign <name>)
 /me — show your character sheet

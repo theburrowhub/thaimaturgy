@@ -57,6 +57,7 @@ func (s *Storage) ensureDirectories() error {
 	dirs := []string{
 		s.basePath,
 		filepath.Join(s.basePath, SessionsDir),
+		filepath.Join(s.basePath, CharactersDir),
 		filepath.Dir(s.configPath),
 	}
 

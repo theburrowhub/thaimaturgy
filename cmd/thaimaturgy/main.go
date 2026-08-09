@@ -833,8 +833,29 @@ func (g *gui) rollTable(id string) {
 
 func (g *gui) autosave() {
 	if g.config.AutoSave && g.session != nil {
-		go func() { _ = g.store.SaveSession(g.session.State) }()
+		state := g.session.State
+		go func() {
+			_ = g.store.SaveSession(state)
+			// Write progression back to any roster-linked party members (#33).
+			// PartySnapshot is race-safe; SyncPartyToRoster only touches members
+			// whose ID still exists in the roster.
+			_, _ = g.store.SyncPartyToRoster(rosterLinkedParty(state))
+		}()
 	}
+}
+
+// rosterLinkedParty returns pointer copies of the party members that are linked
+// to a roster entry (non-empty ID), taken from a race-safe snapshot.
+func rosterLinkedParty(st *domain.SessionState) []*domain.Character {
+	snap := st.PartySnapshot()
+	out := make([]*domain.Character, 0, len(snap))
+	for i := range snap {
+		if snap[i].ID != "" {
+			c := snap[i]
+			out = append(out, &c)
+		}
+	}
+	return out
 }
 
 func splitRoomUID(uid string) (zoneID, roomID string) {
