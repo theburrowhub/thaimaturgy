@@ -63,7 +63,8 @@ func TestParseItemArg(t *testing.T) {
 		{"give Sword", "", "", 0, false},                             // unknown action
 		{"add Torch x0", "", "", 0, false},                           // non-positive quantity rejected
 		{"add Torch x-2", "", "", 0, false},
-		{"add Torch x99999", "", "", 0, false}, // above maxItemQty
+		{"add Torch x99999", "", "", 0, false},                       // above maxItemQty
+		{"add Torch x999999999999999999999999999", "", "", 0, false}, // numeric but overflows Atoi
 		{"", "", "", 0, false},
 	}
 	for _, c := range cases {

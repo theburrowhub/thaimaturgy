@@ -233,12 +233,14 @@ func parseItemArg(arg string) (action, itemName string, qty int, ok bool) {
 	qty = 1
 	if i := strings.LastIndex(rest, " x"); i >= 0 {
 		suffix := strings.TrimSpace(rest[i+2:])
-		if v, err := strconv.Atoi(suffix); err == nil {
-			// A numeric "xN" suffix is a quantity: it must be positive and bounded,
-			// else the whole command is rejected (e.g. "x0" must not fall through and
-			// be kept as part of the item name). A non-numeric suffix (e.g.
-			// "x of holding") is left as part of the name.
-			if v < 1 || v > maxItemQty {
+		// Only a syntactically NUMERIC suffix is treated as a quantity; when it is,
+		// it must parse to a bounded positive int or the whole command is rejected.
+		// This rejects "x0", "x-2", and overflowing "x99999999999999999999" (which
+		// Atoi can't parse) rather than silently folding them into the item name.
+		// A non-numeric suffix (e.g. "x of holding") stays part of the name.
+		if looksNumeric(suffix) {
+			v, err := strconv.Atoi(suffix)
+			if err != nil || v < 1 || v > maxItemQty {
 				return "", "", 0, false
 			}
 			qty = v
@@ -252,6 +254,27 @@ func parseItemArg(arg string) (action, itemName string, qty int, ok bool) {
 	return action, itemName, qty, true
 }
 
+// looksNumeric reports whether s is a (possibly signed) run of decimal digits,
+// i.e. a quantity the user clearly intended — even if it overflows int.
+func looksNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	i := 0
+	if s[0] == '+' || s[0] == '-' {
+		i = 1
+	}
+	if i == len(s) {
+		return false
+	}
+	for ; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // editItem handles "/item add <name> [xN]" and "/item remove <name> [xN]".
 func (b *Bot) editItem(m *tgbotapi.Message, arg string) {
 	action, itemName, qty, ok := parseItemArg(arg)
@@ -261,8 +284,22 @@ func (b *Bot) editItem(m *tgbotapi.Message, arg string) {
 	}
 	var desc string
 	var applied bool
+	var stackFull bool
 	name, done := b.withOwnCharacter(m, func(c *domain.Character) {
 		if action == "add" {
+			// Bound the RESULTING stack (not just the incoming qty) so repeated
+			// valid adds can never overflow AddItem's accumulation.
+			have := 0
+			for _, it := range c.Inventory {
+				if it.Name == itemName {
+					have = it.Quantity
+					break
+				}
+			}
+			if have+qty > maxItemQty || have+qty < have {
+				stackFull = true
+				return
+			}
 			c.AddItem(domain.InventoryItem{Name: itemName, Quantity: qty})
 			desc = fmt.Sprintf("picked up %s x%d", itemName, qty)
 			applied = true
@@ -290,6 +327,10 @@ func (b *Bot) editItem(m *tgbotapi.Message, arg string) {
 		applied = true
 	})
 	if !done {
+		return
+	}
+	if stackFull {
+		b.reply(m, fmt.Sprintf("%s can't carry that many %q (max %d in a stack).", name, itemName, maxItemQty))
 		return
 	}
 	if !applied {
