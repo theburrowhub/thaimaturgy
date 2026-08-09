@@ -181,9 +181,42 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.reply(m, rollText(arg))
 	case "save":
 		b.saveAndReport(m)
+	case "log":
+		b.reply(m, b.logText(arg))
 	default:
 		b.delegateToEngine(m)
 	}
+}
+
+// logText renders the recent session timeline for players (issue #25). It hides
+// free-form DM notes (LogNote), which are DM-only, to avoid leaking them.
+func (b *Bot) logText(arg string) string {
+	n := 15
+	if v, err := strconv.Atoi(strings.TrimSpace(arg)); err == nil && v > 0 {
+		if v > 50 {
+			v = 50
+		}
+		n = v
+	}
+	entries := b.session.State.RecentLog(n * 3) // over-fetch: DM notes are filtered out below
+	lines := make([]string, 0, n)
+	for _, e := range entries {
+		if e.Type == domain.LogNote {
+			continue
+		}
+		ts := ""
+		if !e.Timestamp.IsZero() {
+			ts = e.Timestamp.Format("15:04") + " "
+		}
+		lines = append(lines, fmt.Sprintf("%s[%s] %s", ts, e.Type, e.Message))
+	}
+	if len(lines) == 0 {
+		return "The session log is empty."
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return fmt.Sprintf("📜 Session log (last %d):\n%s", len(lines), strings.Join(lines, "\n"))
 }
 
 // playerSafeCommands is the subset of engine slash commands the Telegram bot may
@@ -551,6 +584,7 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /roll <dice> — roll dice (e.g. 2d6+3)
 /save — save the current session
 /status — where the party is and session progress
+/log [n] — show the last n timeline entries (default 15)
 /quests — list tracked quests
 /note <text> — add a note to the timeline
 /chatid — show this chat's id
