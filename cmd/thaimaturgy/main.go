@@ -64,6 +64,7 @@ type gui struct {
 	detailText    *widget.RichText
 	detailLinks   *fyne.Container
 	detailImage   *fyne.Container
+	lastZone      string // last zone shown, to auto-display zone art on entering a new zone (#24)
 	detailActions *fyne.Container
 	locLabel      *widget.Label
 	currentUID    string
@@ -1395,6 +1396,37 @@ func (g *gui) refreshState() {
 	if g.currentUID != "" {
 		g.showDetail(g.currentUID)
 	}
+	// Auto-show the zone's map/art when the party enters a new zone (#24).
+	if z := g.session.State.CurrentZone; z != g.lastZone {
+		g.lastZone = z
+		g.autoShowZoneArt()
+	}
+}
+
+// autoShowZoneArt displays the current zone's map (or art) inline when the party
+// enters a new zone, so players see where they are without asking (#24). Quiet:
+// it does nothing if there is no zone art or it can't be resolved.
+func (g *gui) autoShowZoneArt() {
+	if g.session == nil {
+		return
+	}
+	zone := g.session.Adventure.Zone(g.session.State.CurrentZone)
+	if zone == nil {
+		return
+	}
+	rel := g.session.Adventure.ZoneMap(zone)
+	if rel == "" {
+		return
+	}
+	abs, err := g.store.ResolveImagePath(g.session.Adventure.ID, rel)
+	if err != nil {
+		return
+	}
+	img := canvas.NewImageFromFile(abs)
+	img.FillMode = canvas.ImageFillContain
+	img.SetMinSize(fyne.NewSize(280, 280))
+	g.detailImage.Objects = []fyne.CanvasObject{img}
+	g.detailImage.Refresh()
 }
 
 func (g *gui) refreshCurrentLabel() {

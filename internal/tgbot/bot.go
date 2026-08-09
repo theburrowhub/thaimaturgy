@@ -206,6 +206,8 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.reply(m, helpText)
 	case "chatid":
 		b.reply(m, fmt.Sprintf("Chat id: %d\nYour user id: %d\nUse the chat id to restrict the bot to this chat, and your user id in the allowed-users list to talk to it privately.", m.Chat.ID, m.From.ID))
+	case "map":
+		b.sendZoneMap(m)
 	case "party":
 		b.reply(m, b.partyText())
 	case "pick", "play":
@@ -665,6 +667,32 @@ func (b *Bot) event(text string) {
 func (b *Bot) reply(m *tgbotapi.Message, text string) { b.send(m.Chat.ID, text) }
 
 // send posts text to a chat, splitting messages that exceed Telegram's limit.
+// sendZoneMap sends the current zone's map image to the chat (issue #24). Only
+// the party's current zone is exposed, to avoid revealing unexplored areas.
+func (b *Bot) sendZoneMap(m *tgbotapi.Message) {
+	zone := b.session.Adventure.Zone(b.session.State.CurrentZone)
+	if zone == nil {
+		b.reply(m, "The party isn't in a known zone yet.")
+		return
+	}
+	rel := b.session.Adventure.ZoneMap(zone)
+	if rel == "" {
+		b.reply(m, "There's no map for "+zone.Name+".")
+		return
+	}
+	abs, err := b.store.ResolveImagePath(b.session.Adventure.ID, rel)
+	if err != nil {
+		b.reply(m, "The map for "+zone.Name+" is unavailable.")
+		return
+	}
+	photo := tgbotapi.NewPhoto(m.Chat.ID, tgbotapi.FilePath(abs))
+	photo.Caption = "🗺 " + zone.Name
+	if _, err := b.api.Send(photo); err != nil {
+		log.Printf("send map: %v", err)
+		b.reply(m, "Couldn't send the map image.")
+	}
+}
+
 func (b *Bot) send(chatID int64, text string) {
 	const limit = 4000
 	for _, chunk := range splitMessage(text, limit) {
@@ -728,6 +756,7 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /roll <dice> — roll dice (e.g. 2d6+3)
 /save — save the current session
 /status — where the party is and session progress
+/map — show the map of the current zone
 /log [n] — show the last n timeline entries (default 15)
 /rest short|long [character] — take a short or long rest
 /quests — list tracked quests
