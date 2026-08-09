@@ -894,6 +894,16 @@ func (g *gui) submit(raw string) {
 		}
 	}
 
+	// Persist local state mutations (the oracle path autosaves after ask(); moves
+	// and detail-actions autosave in their own handlers). Without this a typed
+	// /rest, /note or /flag would be lost on autosave/restart.
+	switch cmd.Type {
+	case engine.CmdRest, engine.CmdNote, engine.CmdFlag:
+		if result.Success {
+			g.autosave()
+		}
+	}
+
 	g.refreshState()
 	g.refreshLog()
 }
@@ -920,6 +930,8 @@ func (g *gui) setBusy(busy bool) {
 	toggle(g.sendBtn)
 	toggle(g.diceBtn)
 	toggle(g.modeBtn)
+	toggle(g.beginBtn)
+	toggle(g.restBtn)
 	toggle(g.saveBtn)
 	toggle(g.exportBtn)
 	toggle(g.libraryBtn)
@@ -1242,6 +1254,10 @@ func (g *gui) restParty() {
 	if g.session == nil || !g.modeIsDM() {
 		return
 	}
+	if g.busy || g.hosting {
+		g.showErr(fmt.Errorf("finish the current oracle turn or stop Telegram hosting before resting"))
+		return
+	}
 	go func() {
 		choice := nativeui.Choice("Rest", "Take a short or long rest for the party?", "Short rest", "Long rest")
 		if choice == 0 {
@@ -1335,7 +1351,7 @@ func (g *gui) stopTelegram(note string) {
 // tree and detail actions are gated via the hosting flag (see their guards).
 func (g *gui) setHosting(on bool) {
 	g.hosting = on
-	for _, b := range []*widget.Button{g.sendBtn, g.diceBtn, g.modeBtn, g.saveBtn, g.exportBtn} {
+	for _, b := range []*widget.Button{g.sendBtn, g.diceBtn, g.modeBtn, g.beginBtn, g.restBtn, g.saveBtn, g.exportBtn} {
 		if b == nil {
 			continue
 		}

@@ -244,6 +244,12 @@ func (b *Bot) delegateToEngine(m *tgbotapi.Message) {
 		b.reply(m, "Unknown or DM-only command. "+helpText)
 		return
 	}
+	// Resting changes HP/hit dice, so it only makes sense once the game has begun
+	// (mirrors the desktop app, where Rest is hidden until then).
+	if cmd == "rest" && !b.session.State.GameStarted() {
+		b.reply(m, notStartedMsg)
+		return
+	}
 	mutating := cmd == "note" || cmd == "rest"
 	// Serialize against an in-flight /dm resolution: a mutation applied while the
 	// turn snapshot is open could be lost when that snapshot is merged back.
