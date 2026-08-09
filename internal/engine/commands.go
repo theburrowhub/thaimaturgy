@@ -34,6 +34,7 @@ const (
 	CmdRoll
 	CmdSearch
 	CmdStatus
+	CmdChat   // in-character dialogue added as context (no round action)
 	CmdRest   // short/long rest for the party
 	CmdMode   // switch between oracle (assistant) and virtual-DM mode
 	CmdOracle // free-form query to the oracle (no slash prefix)
@@ -112,6 +113,8 @@ func ParseCommand(input string) *Command {
 		cmd.Type = CmdSearch
 	case "rest":
 		cmd.Type = CmdRest
+	case "chat", "say":
+		cmd.Type = CmdChat
 	case "status", "st":
 		cmd.Type = CmdStatus
 	case "mode", "dm", "dj", "gm":
@@ -211,6 +214,8 @@ func (h *CommandHandler) Execute(cmd *Command) *CommandResult {
 		h.handleSearch(cmd, r)
 	case CmdRest:
 		h.handleRest(cmd, r)
+	case CmdChat:
+		h.handleChat(cmd, r)
 	case CmdMode:
 		h.handleMode(cmd, r)
 	case CmdUnknown:
@@ -425,6 +430,19 @@ func (h *CommandHandler) handleSearch(cmd *Command, r *CommandResult) {
 		return
 	}
 	r.Response = res.Content
+}
+
+// handleChat records an in-character line as context for the DM, without opening
+// or resolving a round (unlike /do). Shared by the app; the Telegram bot records
+// the same via the speaker's character name.
+func (h *CommandHandler) handleChat(cmd *Command, r *CommandResult) {
+	text := strings.TrimSpace(strings.Join(cmd.Args, " "))
+	if text == "" {
+		r.Success, r.Message = false, "Usage: /chat <in-character line>"
+		return
+	}
+	h.state().AddChat("", text)
+	r.Message = "In-character line added to the scene."
 }
 
 // handleRest applies a short or long rest to the party (or a named character):

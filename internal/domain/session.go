@@ -21,6 +21,7 @@ const (
 	LogQuest    LogEntryType = "quest"    // quest progress
 	LogParty    LogEntryType = "party"    // party member update
 	LogSystem   LogEntryType = "system"   // system message
+	LogChat     LogEntryType = "chat"     // in-character player dialogue (context, not an action)
 )
 
 // LogEntry is a single event in the running session timeline — either a
@@ -509,6 +510,20 @@ func (s *SessionState) AddNote(text string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.record(LogEntry{Type: LogNote, Message: text})
+	s.touch()
+}
+
+// AddChat records an in-character line (roleplay) into the timeline as context
+// for the DM, WITHOUT creating a round action or requiring a /dm resolution.
+// speaker is the character's name (empty for an unattributed line).
+func (s *SessionState) AddChat(speaker, text string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	msg := strings.TrimSpace(text)
+	if sp := strings.TrimSpace(speaker); sp != "" {
+		msg = sp + ": " + msg
+	}
+	s.record(LogEntry{Type: LogChat, Message: msg})
 	s.touch()
 }
 
