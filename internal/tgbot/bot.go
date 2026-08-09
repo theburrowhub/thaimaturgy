@@ -208,6 +208,8 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.reply(m, fmt.Sprintf("Chat id: %d\nYour user id: %d\nUse the chat id to restrict the bot to this chat, and your user id in the allowed-users list to talk to it privately.", m.Chat.ID, m.From.ID))
 	case "map":
 		b.sendZoneMap(m)
+	case "portrait", "npcart":
+		b.sendNPCArt(m, arg)
 	case "party":
 		b.reply(m, b.partyText())
 	case "pick", "play":
@@ -696,6 +698,46 @@ func (b *Bot) sendZoneMap(m *tgbotapi.Message) {
 	}
 }
 
+// sendNPCArt sends an NPC's portrait to the chat (issue #27). Only NPCs the
+// party has already MET are shown, so unmet NPCs aren't revealed (spoilers).
+func (b *Bot) sendNPCArt(m *tgbotapi.Message, arg string) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		b.reply(m, "Usage: /portrait <npc name or id>")
+		return
+	}
+	adv := b.session.Adventure
+	npc := adv.NPC(arg)
+	if npc == nil {
+		for i := range adv.NPCs {
+			if strings.EqualFold(adv.NPCs[i].Name, arg) {
+				npc = &adv.NPCs[i]
+				break
+			}
+		}
+	}
+	if npc == nil || !b.session.State.NPCKnown(npc.ID) {
+		b.reply(m, "You haven't met anyone by that name yet.")
+		return
+	}
+	imgs := adv.NPCImages(npc)
+	if len(imgs) == 0 {
+		b.reply(m, "There's no portrait for "+npc.Name+".")
+		return
+	}
+	abs, err := b.store.ResolveImagePath(adv.ID, imgs[0])
+	if err != nil {
+		b.reply(m, "The portrait for "+npc.Name+" is unavailable.")
+		return
+	}
+	photo := tgbotapi.NewPhoto(m.Chat.ID, tgbotapi.FilePath(abs))
+	photo.Caption = npc.Name
+	if _, err := b.api.Send(photo); err != nil {
+		log.Printf("send portrait: %v", err)
+		b.reply(m, "Couldn't send the portrait image.")
+	}
+}
+
 func (b *Bot) send(chatID int64, text string) {
 	const limit = 4000
 	for _, chunk := range splitMessage(text, limit) {
@@ -760,6 +802,7 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /save — save the current session
 /status — where the party is and session progress
 /map — show the map of the current zone
+/portrait <npc> — show a met NPC's portrait
 /log [n] — show the last n timeline entries (default 15)
 /rest short|long [character] — take a short or long rest
 /quests — list tracked quests
