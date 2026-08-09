@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/providers"
 )
 
 // worldSession builds a one-room adventure whose room describes a suit of armor,
@@ -81,7 +82,7 @@ func TestRecordWorldChangeRejectsUnknownEntity(t *testing.T) {
 	}
 }
 
-func TestBuildSystemPromptIncludesWorldChanges(t *testing.T) {
+func TestWorldChangesDeliveredAsUntrustedDataNotSystemPrompt(t *testing.T) {
 	s := worldSession()
 	tr := NewToolRouter(s)
 
@@ -89,12 +90,36 @@ func TestBuildSystemPromptIncludesWorldChanges(t *testing.T) {
 	call(tr, "record_world_change", map[string]any{"kind": "room", "id": "altar", "change": "The armor is gone."})
 	call(tr, "record_world_change", map[string]any{"kind": "npc", "id": "warden", "change": "The Warden now lies dead on the floor."})
 
-	prompt := NewOracle(s, nil).buildSystemPrompt()
-	if !strings.Contains(prompt, "The armor is gone.") {
-		t.Errorf("system prompt missing current-room world change:\n%s", prompt)
+	o := NewOracle(s, nil)
+
+	// The untrusted world state must NOT be interpolated into the system prompt
+	// (Heimdallm review): it belongs in a lower-priority data message.
+	if prompt := o.buildSystemPrompt(); strings.Contains(prompt, "The armor is gone.") || strings.Contains(prompt, "The Warden now lies dead") {
+		t.Errorf("world changes must not appear in the system prompt:\n%s", prompt)
 	}
-	if !strings.Contains(prompt, "The Warden now lies dead") {
-		t.Errorf("system prompt missing present-NPC world change:\n%s", prompt)
+
+	// It must be delivered via worldStateContext, fenced as untrusted data.
+	ws := o.worldStateContext()
+	if !strings.Contains(ws, "The armor is gone.") || !strings.Contains(ws, "The Warden now lies dead") {
+		t.Errorf("world state context missing the recorded changes:\n%s", ws)
+	}
+	if !strings.Contains(ws, "untrusted data") || !strings.Contains(ws, "NOT instructions") {
+		t.Errorf("world state context missing the trusted-boundary marker:\n%s", ws)
+	}
+
+	// And it must be a user-role (lower-priority) message, never a system message.
+	msgs := o.buildMessages()
+	var foundUser bool
+	for _, m := range msgs {
+		if m.Content != "" && strings.Contains(m.Content, "The armor is gone.") {
+			if m.Role != providers.RoleUser {
+				t.Errorf("world state delivered with role %q; want user", m.Role)
+			}
+			foundUser = true
+		}
+	}
+	if !foundUser {
+		t.Error("world state was not delivered in any message")
 	}
 }
 

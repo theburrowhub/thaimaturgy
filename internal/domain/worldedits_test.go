@@ -3,6 +3,7 @@ package domain
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestSanitizeWorldChange(t *testing.T) {
@@ -27,6 +28,14 @@ func TestSanitizeWorldChange(t *testing.T) {
 		if s := sanitizeWorldChange(in); s != "" {
 			t.Errorf("sanitizeWorldChange(%q) = %q; want empty", in, s)
 		}
+	}
+
+	// Truncation happens on a rune boundary: N ASCII bytes followed by a
+	// multi-byte rune that crosses the cap must not produce invalid UTF-8.
+	multibyte := strings.Repeat("a", maxWorldChangeLen-1) + "é日本"
+	out := sanitizeWorldChange(multibyte)
+	if !utf8.ValidString(out) {
+		t.Errorf("sanitized text is not valid UTF-8: %q", out)
 	}
 }
 

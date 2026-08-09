@@ -42,8 +42,10 @@ func sanitizeWorldChange(s string) string {
 		lastSpace = false
 	}
 	out := strings.TrimSpace(b.String())
-	if len(out) > maxWorldChangeLen {
-		out = strings.TrimSpace(out[:maxWorldChangeLen]) + "…"
+	// Cap by RUNES (not bytes) so truncation never splits a multi-byte character
+	// and stores invalid UTF-8 (which JSON would then corrupt).
+	if r := []rune(out); len(r) > maxWorldChangeLen {
+		out = strings.TrimSpace(string(r[:maxWorldChangeLen])) + "…"
 	}
 	return out
 }
