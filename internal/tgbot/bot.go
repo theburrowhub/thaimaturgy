@@ -39,13 +39,14 @@ type Options struct {
 
 // Bot hosts a multiplayer virtual-DM session over Telegram.
 type Bot struct {
-	api        *tgbotapi.BotAPI
-	store      *storage.Storage
-	session    *domain.Session
-	oracle     *engine.Oracle
-	chatID     int64
-	allowedIDs map[string]bool // immutable numeric user ids allowed to talk to the bot (nil = no user filter)
-	onEvent    func(string)
+	api           *tgbotapi.BotAPI
+	store         *storage.Storage
+	session       *domain.Session
+	oracle        *engine.Oracle
+	chatID        int64
+	allowedIDs    map[string]bool // immutable numeric user ids allowed to talk to the bot
+	userFilterSet bool            // an AllowedUsers list was configured (even if it yielded no valid ids)
+	onEvent       func(string)
 
 	mu        sync.Mutex // guards resolving
 	resolving bool
@@ -68,17 +69,22 @@ func New(store *storage.Storage, session *domain.Session, oracle *engine.Oracle,
 	// or re-narrate an opening — treat it as started when there's evidence.
 	session.State.MarkStartedIfInProgress()
 	allowedIDs, ignoredUsers := normalizeAllowedUsers(opts.AllowedUsers)
+	userFilterSet := len(allowedIDs) > 0 || len(ignoredUsers) > 0
 	if len(ignoredUsers) > 0 {
 		log.Printf("WARNING: Telegram allowed users %v are @usernames and are IGNORED for access control (usernames are reassignable); list immutable numeric user ids instead.", ignoredUsers)
 	}
+	if userFilterSet && len(allowedIDs) == 0 && opts.ChatID == 0 {
+		log.Printf("WARNING: the Telegram allowed-users list has no valid numeric ids and no chat id is set — NO ONE can talk to the bot (fail-closed). Add a numeric user id and/or a chat id.")
+	}
 	return &Bot{
-		api:        api,
-		store:      store,
-		session:    session,
-		oracle:     oracle,
-		chatID:     opts.ChatID,
-		allowedIDs: allowedIDs,
-		onEvent:    opts.OnEvent,
+		api:           api,
+		store:         store,
+		session:       session,
+		oracle:        oracle,
+		chatID:        opts.ChatID,
+		allowedIDs:    allowedIDs,
+		userFilterSet: userFilterSet,
+		onEvent:       opts.OnEvent,
 	}, nil
 }
 
@@ -107,12 +113,15 @@ func normalizeAllowedUsers(list []string) (ids map[string]bool, ignored []string
 	return ids, ignored
 }
 
-// allowMessage decides whether a message is accepted: accepted if there is no
-// restriction at all, if it comes from the allowed chat, or if it comes from an
-// allowed (immutable) numeric user id in any chat, including a private DM.
-func allowMessage(chatID int64, allowedIDs map[string]bool, msgChatID, fromID int64) bool {
-	if chatID == 0 && len(allowedIDs) == 0 {
-		return true
+// allowMessage decides whether a message is accepted. It is UNRESTRICTED (accept
+// everyone) only when no chat id is set AND no user filter was configured at all.
+// Once the operator configures either restriction it fails CLOSED: accept only
+// messages from the allowed chat or from an allowed immutable numeric user id.
+// A configured-but-empty user filter (e.g. only @usernames, which are ignored)
+// therefore does NOT re-open access.
+func allowMessage(chatID int64, allowedIDs map[string]bool, userFilterSet bool, msgChatID, fromID int64) bool {
+	if chatID == 0 && !userFilterSet {
+		return true // no restriction configured at all
 	}
 	if chatID != 0 && msgChatID == chatID {
 		return true
@@ -129,7 +138,7 @@ func (b *Bot) Username() string { return b.api.Self.UserName }
 func (b *Bot) Run(ctx context.Context) {
 	b.runCtx = ctx
 	log.Printf("thaimaturgy-bot online as @%s — adventure %q, session %q", b.api.Self.UserName, b.session.Adventure.ID, b.session.State.Name)
-	if b.chatID == 0 && len(b.allowedIDs) == 0 {
+	if b.chatID == 0 && !b.userFilterSet {
 		log.Printf("WARNING: no chat id or allowed users set — any chat that finds this bot can play and trigger LLM turns; set a chat id and/or allowed users to restrict.")
 	}
 	u := tgbotapi.NewUpdate(0)
@@ -161,7 +170,7 @@ func (b *Bot) onUpdate(update tgbotapi.Update) {
 	if m == nil || m.From == nil {
 		return
 	}
-	if !allowMessage(b.chatID, b.allowedIDs, m.Chat.ID, m.From.ID) {
+	if !allowMessage(b.chatID, b.allowedIDs, b.userFilterSet, m.Chat.ID, m.From.ID) {
 		return // not an allowed chat or user
 	}
 	// Bind any character reserved for this sender's @username (via /assign) the
