@@ -6,7 +6,47 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
+
+const (
+	// maxWorldChangeLen bounds a single DM-recorded change so one call can't blow
+	// up the prompt; maxWorldChangesPerTarget caps how many are retained (and thus
+	// rendered) per entity, keeping the always-on grounding bounded (issue #21,
+	// Heimdallm review).
+	maxWorldChangeLen        = 400
+	maxWorldChangesPerTarget = 12
+)
+
+// sanitizeWorldChange normalizes a DM-recorded change for safe, bounded storage.
+// The text is model-generated in response to player actions, so it is treated as
+// UNTRUSTED: all whitespace (including newlines) is collapsed to single spaces and
+// control characters are stripped, so a persisted change is a single line that
+// cannot inject extra lines, headings, or role/fence markers into the prompt; the
+// result is then length-capped. Returns "" when nothing printable remains.
+func sanitizeWorldChange(s string) string {
+	var b strings.Builder
+	lastSpace := false
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			if !lastSpace {
+				b.WriteRune(' ')
+				lastSpace = true
+			}
+			continue
+		}
+		if unicode.IsControl(r) {
+			continue
+		}
+		b.WriteRune(r)
+		lastSpace = false
+	}
+	out := strings.TrimSpace(b.String())
+	if len(out) > maxWorldChangeLen {
+		out = strings.TrimSpace(out[:maxWorldChangeLen]) + "…"
+	}
+	return out
+}
 
 // LogEntryType classifies an entry in the session timeline.
 type LogEntryType string
@@ -538,16 +578,30 @@ func (s *SessionState) SetVariable(key, value string) {
 
 // RecordWorldChange appends a DM-recorded consequence to an authored entity,
 // keyed by the opaque target (composed by the engine as "<kind>:<id>"). label is
-// a human-readable name for the timeline entry (falls back to the target). It
-// records a LogWorld entry for traceability. The authored module is never
-// mutated — the change lives only in the session overlay.
-func (s *SessionState) RecordWorldChange(target, label, change string) {
+// a human-readable name for the timeline entry (falls back to the target). The
+// change text is sanitized (single line, control chars stripped, length-capped)
+// and the per-target history is bounded, so a persisted change can neither
+// inject prompt structure nor grow the always-on grounding without limit. It
+// records a LogWorld entry for traceability and reports whether anything was
+// stored (false when the change is empty after sanitizing). The authored module
+// is never mutated — the change lives only in the session overlay.
+func (s *SessionState) RecordWorldChange(target, label, change string) bool {
+	change = sanitizeWorldChange(change)
+	if change == "" {
+		return false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.WorldEdits == nil {
 		s.WorldEdits = make(map[string][]WorldChange)
 	}
-	s.WorldEdits[target] = append(s.WorldEdits[target], WorldChange{Change: change, Timestamp: time.Now()})
+	list := append(s.WorldEdits[target], WorldChange{Change: change, Timestamp: time.Now()})
+	// Keep only the most recent entries: the latest changes reflect the current
+	// state, and this caps how much is rendered into the prompt each turn.
+	if len(list) > maxWorldChangesPerTarget {
+		list = list[len(list)-maxWorldChangesPerTarget:]
+	}
+	s.WorldEdits[target] = list
 	name := label
 	if name == "" {
 		name = target
@@ -555,6 +609,7 @@ func (s *SessionState) RecordWorldChange(target, label, change string) {
 	s.record(LogEntry{Type: LogWorld, Message: "World change (" + name + "): " + change,
 		Data: map[string]any{"target": target}})
 	s.touch()
+	return true
 }
 
 // WorldChangesFor returns a copy of the changes recorded for a target under the

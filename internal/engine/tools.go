@@ -564,9 +564,11 @@ func (tr *ToolRouter) recordWorldChange(id string, args map[string]any) types.To
 	if !ok {
 		return errResult(id, fmt.Sprintf("no %s with id %q (kind must be one of room|zone|npc|item|event)", kind, eid))
 	}
-	tr.state().RecordWorldChange(worldTarget(kind, eid), kind+" "+name, change)
+	if !tr.state().RecordWorldChange(worldTarget(kind, eid), kind+" "+name, change) {
+		return errResult(id, "change text is empty after removing control characters")
+	}
 	tr.session.MarkModified()
-	return okResult(id, fmt.Sprintf("Recorded change to %s %q. Future reads of it will reflect: %s", kind, name, change))
+	return okResult(id, fmt.Sprintf("Recorded change to %s %q. Future reads of it will reflect this state.", kind, name))
 }
 
 func (tr *ToolRouter) listWorldChanges(id string, args map[string]any) types.ToolResult {

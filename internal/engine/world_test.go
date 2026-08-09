@@ -49,7 +49,7 @@ func TestRecordWorldChangeAndRetrieval(t *testing.T) {
 	if res.Error != "" {
 		t.Fatalf("get_room error: %s", res.Error)
 	}
-	if !strings.Contains(res.Content, "CURRENT STATE") || !strings.Contains(res.Content, "dragged into the hallway") {
+	if !strings.Contains(res.Content, "CURRENT WORLD STATE") || !strings.Contains(res.Content, "dragged into the hallway") {
 		t.Errorf("get_room did not layer the recorded change:\n%s", res.Content)
 	}
 
