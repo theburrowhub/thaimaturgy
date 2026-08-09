@@ -439,7 +439,13 @@ func (o *Oracle) buildSystemPrompt() string {
 	// character's real HP/conditions. Tool results within the turn already reflect
 	// mutations (e.g. update_hp), so this stays consistent mid-turn.
 	if party := st.PartySnapshot(); len(party) > 0 {
-		sb.WriteString("\n=== PLAYER PARTY — CURRENT SHEETS (authoritative: never narrate a state that contradicts these — HP, conditions, etc.; you are the DM, never act for them; target tools by character name) ===\n")
+		header := "\n=== PLAYER PARTY — CURRENT SHEETS (authoritative: never narrate a state that contradicts these — HP, conditions, etc.) ===\n"
+		if st.EffectiveMode() == domain.ModeVirtualDM {
+			// The DM-role instruction only applies when the AI is actually the DM;
+			// in assistant mode the human is the DM, so don't tell the model it is.
+			header = "\n=== PLAYER PARTY — CURRENT SHEETS (authoritative: never narrate a state that contradicts these — HP, conditions, etc.; you are the DM, never act for them; target tools by character name) ===\n"
+		}
+		sb.WriteString(header)
 		sb.WriteString(FormatParty(party))
 		sb.WriteString("\n")
 	}

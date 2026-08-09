@@ -182,8 +182,64 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 	case "save":
 		b.saveAndReport(m)
 	default:
-		b.reply(m, "Unknown command. "+helpText)
+		b.delegateToEngine(m)
 	}
+}
+
+// playerSafeCommands is the subset of engine slash commands the Telegram bot may
+// run on behalf of *any* player. It deliberately excludes:
+//   - DM-facing reads that would leak secrets/DM notes/hidden content to players
+//     (room/look, zone, npc, npcs, event, item, search) — see #28;
+//   - authoritative mutations players must not trigger (goto, flag);
+//   - desktop-only UI actions (load, import, mode, map, art).
+// These stay available in the desktop DM console; multiplayer commands
+// (begin/pick/assign/me/do/dm) are handled explicitly above.
+var playerSafeCommands = map[string]bool{
+	"status": true, // where the party is + progress counters (no DM notes)
+	"quests": true, "quest": true, // player-facing quest log
+	"note": true, // benign: append a note to the timeline
+}
+
+// delegateToEngine routes a small, player-safe subset of slash commands through
+// the SAME engine.CommandHandler the desktop app uses, so shared commands behave
+// identically across both frontends (parity, #20) without exposing DM-only
+// content or authoritative mutations to players.
+func (b *Bot) delegateToEngine(m *tgbotapi.Message) {
+	cmd := m.Command()
+	if !playerSafeCommands[cmd] {
+		b.reply(m, "Unknown or DM-only command. "+helpText)
+		return
+	}
+	mutating := cmd == "note"
+	// Serialize against an in-flight /dm resolution: a mutation applied while the
+	// turn snapshot is open could be lost when that snapshot is merged back.
+	if mutating && b.isResolving() {
+		b.reply(m, "The DM is resolving the round — try again in a moment.")
+		return
+	}
+	raw := "/" + cmd
+	if arg := strings.TrimSpace(m.CommandArguments()); arg != "" {
+		raw += " " + arg
+	}
+	res := engine.NewCommandHandler(b.session).Execute(engine.ParseCommand(raw))
+	if mutating && res.Success {
+		b.save() // persist the mutation even when it only sets Message
+	}
+	switch {
+	case res.Response != "":
+		b.reply(m, res.Response)
+	case res.Message != "":
+		b.reply(m, res.Message) // keep the command's specific message (e.g. usage errors)
+	default:
+		b.reply(m, "Done.")
+	}
+}
+
+// isResolving reports whether a /dm turn is currently being resolved.
+func (b *Bot) isResolving() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.resolving
 }
 
 // saveAndReport persists the current session on demand (the /save command) and
@@ -494,5 +550,8 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /dm — let the AI Dungeon Master resolve the round and narrate (after /begin)
 /roll <dice> — roll dice (e.g. 2d6+3)
 /save — save the current session
+/status — where the party is and session progress
+/quests — list tracked quests
+/note <text> — add a note to the timeline
 /chatid — show this chat's id
 /help — this help`
