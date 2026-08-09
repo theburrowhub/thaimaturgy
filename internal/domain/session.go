@@ -22,6 +22,7 @@ const (
 	LogParty    LogEntryType = "party"    // party member update
 	LogSystem   LogEntryType = "system"   // system message
 	LogChat     LogEntryType = "chat"     // in-character player dialogue (context, not an action)
+	LogWorld    LogEntryType = "world"    // DM-recorded consequence changing the authored world
 )
 
 // LogEntry is a single event in the running session timeline — either a
@@ -104,6 +105,16 @@ type PartyMember struct {
 	Notes     string `json:"notes,omitempty"`
 }
 
+// WorldChange is a single DM-recorded consequence layered on top of an authored
+// entity (a room, zone, NPC, item…). The authored module stays immutable; the
+// session accumulates these so later narration reflects what the party did (e.g.
+// "the armor has been moved out of this room") instead of repeating a description
+// the party already invalidated.
+type WorldChange struct {
+	Change    string    `json:"change"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // QuestProgress tracks a quest/objective's state at the table.
 type QuestProgress struct {
 	ID     string `json:"id"`
@@ -130,6 +141,13 @@ type SessionState struct {
 	Variables       map[string]string     `json:"variables,omitempty"`
 	Party           []*PartyMember        `json:"party,omitempty"`
 	Quests          []QuestProgress       `json:"quests,omitempty"`
+
+	// WorldEdits overlays DM-recorded consequences onto the immutable authored
+	// module, keyed by an opaque target string the engine composes as
+	// "<kind>:<id>" (kind ∈ room|zone|npc|item|event). Reads and narrations layer
+	// these on top of the authored text so the world reflects the party's actions.
+	// Empty for sessions that never edited the world (backward compatible).
+	WorldEdits map[string][]WorldChange `json:"world_edits,omitempty"`
 
 	// Mode selects oracle behaviour: assistant (default) or virtual DM. It can be
 	// toggled at any point during a session.
@@ -219,6 +237,9 @@ func (s *SessionState) ensureInitialized() {
 	if s.Variables == nil {
 		s.Variables = make(map[string]string)
 	}
+	if s.WorldEdits == nil {
+		s.WorldEdits = make(map[string][]WorldChange)
+	}
 	if s.Log == nil {
 		s.Log = &SessionLog{Entries: []LogEntry{}, MaxSize: 0}
 	}
@@ -254,6 +275,7 @@ func NewSessionState(name string, adv *Adventure) *SessionState {
 		TriggeredEvents: make(map[string]bool),
 		Flags:           make(map[string]bool),
 		Variables:       make(map[string]string),
+		WorldEdits:      make(map[string][]WorldChange),
 		// Unbounded (MaxSize 0): persist the complete timeline and conversation so a
 		// session can be reopened with full context. The oracle only sends a recent
 		// window to the model, so unbounded storage doesn't grow the prompt.
@@ -470,6 +492,7 @@ func (s *SessionState) ImportStructured(src *SessionState) {
 	s.TriggeredEvents = src.TriggeredEvents
 	s.Flags = src.Flags
 	s.Variables = src.Variables
+	s.WorldEdits = src.WorldEdits
 	s.Party = src.Party
 	s.Quests = src.Quests
 	s.Characters = src.Characters
@@ -511,6 +534,41 @@ func (s *SessionState) SetVariable(key, value string) {
 	s.record(LogEntry{Type: LogFlag, Message: "Variable " + key + " = " + value,
 		Data: map[string]any{"key": key, "value": value}})
 	s.touch()
+}
+
+// RecordWorldChange appends a DM-recorded consequence to an authored entity,
+// keyed by the opaque target (composed by the engine as "<kind>:<id>"). label is
+// a human-readable name for the timeline entry (falls back to the target). It
+// records a LogWorld entry for traceability. The authored module is never
+// mutated — the change lives only in the session overlay.
+func (s *SessionState) RecordWorldChange(target, label, change string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.WorldEdits == nil {
+		s.WorldEdits = make(map[string][]WorldChange)
+	}
+	s.WorldEdits[target] = append(s.WorldEdits[target], WorldChange{Change: change, Timestamp: time.Now()})
+	name := label
+	if name == "" {
+		name = target
+	}
+	s.record(LogEntry{Type: LogWorld, Message: "World change (" + name + "): " + change,
+		Data: map[string]any{"target": target}})
+	s.touch()
+}
+
+// WorldChangesFor returns a copy of the changes recorded for a target under the
+// lock (nil when none), so callers never iterate the slice while a writer appends.
+func (s *SessionState) WorldChangesFor(target string) []WorldChange {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	src := s.WorldEdits[target]
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]WorldChange, len(src))
+	copy(out, src)
+	return out
 }
 
 // AppendLog appends a pre-formed timeline entry — used to replay into the live

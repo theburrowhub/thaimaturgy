@@ -390,11 +390,21 @@ func (o *Oracle) buildSystemPrompt() string {
 		}
 		sb.WriteString(FormatRoom(adv, room))
 		sb.WriteString("\n")
+		// Layer any DM-recorded consequences on top of the authored room text so
+		// narration reflects the world as the party left it (issue #21).
+		if wc := FormatWorldChanges(st.WorldChangesFor(worldTarget("room", room.ID))); wc != "" {
+			sb.WriteString(wc)
+			sb.WriteString("\n")
+		}
 		if len(room.NPCIDs) > 0 {
 			sb.WriteString("\n--- Present NPCs ---\n")
 			for _, nid := range room.NPCIDs {
 				if n := adv.NPC(nid); n != nil {
 					sb.WriteString(FormatNPC(adv, n))
+					if wc := FormatWorldChanges(st.WorldChangesFor(worldTarget("npc", n.ID))); wc != "" {
+						sb.WriteString("\n")
+						sb.WriteString(wc)
+					}
 					sb.WriteString("\n\n")
 				}
 			}

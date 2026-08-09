@@ -265,6 +265,22 @@ func FormatAdjacency(adv *domain.Adventure, zoneID string) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+// FormatWorldChanges renders the DM-recorded consequences layered on an authored
+// entity (see domain.WorldChange). It returns "" when there are none, so callers
+// can append it unconditionally. The block is explicitly marked so the model
+// treats it as the CURRENT state that supersedes the authored text.
+func FormatWorldChanges(changes []domain.WorldChange) string {
+	if len(changes) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("*** CURRENT STATE — changes since authored (these SUPERSEDE the description above; narrate the world as it is NOW, do not repeat what the party already changed) ***\n")
+	for _, c := range changes {
+		sb.WriteString("  - " + c.Change + "\n")
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
 // FormatEvent renders a scripted event.
 func FormatEvent(e *domain.Event) string {
 	if e == nil {

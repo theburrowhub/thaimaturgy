@@ -192,6 +192,31 @@ var AvailableTools = []types.Tool{
 		}`),
 	},
 	{
+		Name:        "record_world_change",
+		Description: "Record a lasting change the party's actions made to the authored world (e.g. a moved object, a smashed door, a burned tapestry, a dead shopkeeper). The authored module is never edited; this consequence is layered on top so that later, when you narrate or read this room/zone/NPC/item/event again, you describe it AS IT IS NOW and never repeat something the party already changed. Use it whenever an action would invalidate the authored description.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"kind":{"type":"string","enum":["room","zone","npc","item","event"],"description":"What kind of entity changed"},
+				"id":{"type":"string","description":"The entity's ID (e.g. the room ID)"},
+				"change":{"type":"string","description":"The new state / consequence, phrased as the current reality (e.g. 'The suit of armor has been dragged into the hallway and no longer stands by the altar.')"}
+			},
+			"required":["kind","id","change"]
+		}`),
+	},
+	{
+		Name:        "list_world_changes",
+		Description: "List the changes already recorded for an authored entity, so you can review the current state before narrating and avoid contradicting or duplicating an earlier consequence.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"kind":{"type":"string","enum":["room","zone","npc","item","event"]},
+				"id":{"type":"string"}
+			},
+			"required":["kind","id"]
+		}`),
+	},
+	{
 		Name:        "advance_quest",
 		Description: "Create or update a quest/objective's status (active, completed, failed).",
 		Parameters: json.RawMessage(`{
@@ -393,6 +418,10 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 		return tr.setVariable(call.ID, args)
 	case "log_note":
 		return tr.logNote(call.ID, args)
+	case "record_world_change":
+		return tr.recordWorldChange(call.ID, args)
+	case "list_world_changes":
+		return tr.listWorldChanges(call.ID, args)
 	case "advance_quest":
 		return tr.advanceQuest(call.ID, args)
 	case "update_party_member":
@@ -428,7 +457,7 @@ func (tr *ToolRouter) getRoom(id string, args map[string]any) types.ToolResult {
 	if r == nil {
 		return errResult(id, "no room with id "+rid)
 	}
-	return okResult(id, FormatRoom(tr.adv(), r))
+	return okResult(id, FormatRoom(tr.adv(), r)+tr.worldChangesAppendix("room", r.ID))
 }
 
 func (tr *ToolRouter) getZone(id string, args map[string]any) types.ToolResult {
@@ -437,7 +466,7 @@ func (tr *ToolRouter) getZone(id string, args map[string]any) types.ToolResult {
 	if z == nil {
 		return errResult(id, "no zone with id "+zid)
 	}
-	return okResult(id, FormatZone(tr.adv(), z))
+	return okResult(id, FormatZone(tr.adv(), z)+tr.worldChangesAppendix("zone", z.ID))
 }
 
 func (tr *ToolRouter) getNPC(id string, args map[string]any) types.ToolResult {
@@ -450,7 +479,7 @@ func (tr *ToolRouter) getNPC(id string, args map[string]any) types.ToolResult {
 	if st := tr.state().KnownNPCs[nid]; st != nil {
 		out += fmt.Sprintf("\n[session: met=%v alive=%v disposition=%q]", st.Met, st.Alive, st.Disposition)
 	}
-	return okResult(id, out)
+	return okResult(id, out+tr.worldChangesAppendix("npc", n.ID))
 }
 
 func (tr *ToolRouter) getEvent(id string, args map[string]any) types.ToolResult {
@@ -463,7 +492,7 @@ func (tr *ToolRouter) getEvent(id string, args map[string]any) types.ToolResult 
 	if tr.state().TriggeredEvents[eid] {
 		out += "\n[session: already triggered]"
 	}
-	return okResult(id, out)
+	return okResult(id, out+tr.worldChangesAppendix("event", e.ID))
 }
 
 func (tr *ToolRouter) getItem(id string, args map[string]any) types.ToolResult {
@@ -472,7 +501,86 @@ func (tr *ToolRouter) getItem(id string, args map[string]any) types.ToolResult {
 	if it == nil {
 		return errResult(id, "no item with id "+iid)
 	}
-	return okResult(id, FormatItem(tr.adv(), it))
+	return okResult(id, FormatItem(tr.adv(), it)+tr.worldChangesAppendix("item", it.ID))
+}
+
+// --- World overlay (issue #21) -------------------------------------------
+
+// worldTarget composes the overlay key for an authored entity.
+func worldTarget(kind, id string) string { return kind + ":" + id }
+
+// entityName validates that (kind, id) names an existing authored entity and
+// returns its display name. ok is false when the kind is unknown or no entity
+// has that id, so a typo can't silently create a dangling overlay entry that
+// would never surface in any read.
+func (tr *ToolRouter) entityName(kind, id string) (name string, ok bool) {
+	adv := tr.adv()
+	switch kind {
+	case "room":
+		if r, _ := adv.Room(id); r != nil {
+			return nameOrID(r.Name, id), true
+		}
+	case "zone":
+		if z := adv.Zone(id); z != nil {
+			return nameOrID(z.Name, id), true
+		}
+	case "npc":
+		if n := adv.NPC(id); n != nil {
+			return nameOrID(n.Name, id), true
+		}
+	case "item":
+		if it := adv.Item(id); it != nil {
+			return nameOrID(it.Name, id), true
+		}
+	case "event":
+		if e := adv.Event(id); e != nil {
+			return nameOrID(e.Name, id), true
+		}
+	}
+	return "", false
+}
+
+// worldChangesAppendix returns the current-state block for an entity (prefixed
+// with blank lines so it reads as a distinct section), or "" when nothing has
+// changed. Retrieval tools append it so the DM always sees an authored read AND
+// the consequences layered on top.
+func (tr *ToolRouter) worldChangesAppendix(kind, id string) string {
+	block := FormatWorldChanges(tr.state().WorldChangesFor(worldTarget(kind, id)))
+	if block == "" {
+		return ""
+	}
+	return "\n\n" + block
+}
+
+func (tr *ToolRouter) recordWorldChange(id string, args map[string]any) types.ToolResult {
+	kind, _ := args["kind"].(string)
+	eid, _ := args["id"].(string)
+	change, _ := args["change"].(string)
+	change = strings.TrimSpace(change)
+	if change == "" {
+		return errResult(id, "change text is required")
+	}
+	name, ok := tr.entityName(kind, eid)
+	if !ok {
+		return errResult(id, fmt.Sprintf("no %s with id %q (kind must be one of room|zone|npc|item|event)", kind, eid))
+	}
+	tr.state().RecordWorldChange(worldTarget(kind, eid), kind+" "+name, change)
+	tr.session.MarkModified()
+	return okResult(id, fmt.Sprintf("Recorded change to %s %q. Future reads of it will reflect: %s", kind, name, change))
+}
+
+func (tr *ToolRouter) listWorldChanges(id string, args map[string]any) types.ToolResult {
+	kind, _ := args["kind"].(string)
+	eid, _ := args["id"].(string)
+	name, ok := tr.entityName(kind, eid)
+	if !ok {
+		return errResult(id, fmt.Sprintf("no %s with id %q", kind, eid))
+	}
+	changes := tr.state().WorldChangesFor(worldTarget(kind, eid))
+	if len(changes) == 0 {
+		return okResult(id, fmt.Sprintf("No recorded changes for %s %q; it is as authored.", kind, name))
+	}
+	return okResult(id, fmt.Sprintf("Changes recorded for %s %q:\n%s", kind, name, FormatWorldChanges(changes)))
 }
 
 func (tr *ToolRouter) getTable(id string, args map[string]any) types.ToolResult {
