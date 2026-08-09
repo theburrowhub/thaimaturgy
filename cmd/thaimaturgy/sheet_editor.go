@@ -24,44 +24,98 @@ var allConditions = []domain.Condition{
 	domain.ConditionRestrained, domain.ConditionStunned, domain.ConditionUnconscious,
 }
 
-// parseFeatureLines reads one trait per line as "Name | Source | Description"
-// (only the name is required).
+// Feature lines use one trait per physical line as "Name | Source | Description".
+// Because a Description may itself contain '|' or newlines, each field is escaped
+// (\\, \|, \n) so the format round-trips losslessly — a multi-line description
+// survives an open/save cycle instead of being split into bogus extra traits.
+
+func escapeField(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "|", `\|`)
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\n`)
+	return s
+}
+
+func unescapeField(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			switch s[i+1] {
+			case 'n':
+				b.WriteByte('\n')
+			case '\\':
+				b.WriteByte('\\')
+			case '|':
+				b.WriteByte('|')
+			default:
+				b.WriteByte(s[i+1])
+			}
+			i++
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// splitEscapedPipe splits on unescaped '|' into at most n parts.
+func splitEscapedPipe(s string, n int) []string {
+	var parts []string
+	var cur strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			cur.WriteByte(s[i])
+			cur.WriteByte(s[i+1])
+			i++
+			continue
+		}
+		if s[i] == '|' && (n <= 0 || len(parts) < n-1) {
+			parts = append(parts, cur.String())
+			cur.Reset()
+			continue
+		}
+		cur.WriteByte(s[i])
+	}
+	parts = append(parts, cur.String())
+	return parts
+}
+
+// parseFeatureLines reads one trait per physical line as
+// "Name | Source | Description", unescaping each field (only the name is
+// required). Embedded newlines/pipes are preserved via the escaping scheme.
 func parseFeatureLines(text string) []domain.Trait {
 	var out []domain.Trait
 	for _, ln := range strings.Split(text, "\n") {
-		ln = strings.TrimSpace(ln)
-		if ln == "" {
+		if strings.TrimSpace(ln) == "" {
 			continue
 		}
-		parts := strings.SplitN(ln, "|", 3)
-		name := strings.TrimSpace(parts[0])
+		parts := splitEscapedPipe(ln, 3)
+		name := strings.TrimSpace(unescapeField(parts[0]))
 		if name == "" {
 			continue
 		}
 		t := domain.Trait{Name: name}
 		if len(parts) > 1 {
-			t.Source = strings.TrimSpace(parts[1])
+			t.Source = strings.TrimSpace(unescapeField(parts[1]))
 		}
 		if len(parts) > 2 {
-			t.Description = strings.TrimSpace(parts[2])
+			t.Description = strings.TrimSpace(unescapeField(parts[2]))
 		}
 		out = append(out, t)
 	}
 	return out
 }
 
-// formatFeatureLines renders traits for the editor (inverse of parse).
+// formatFeatureLines renders traits for the editor (inverse of parse), escaping
+// each field so embedded pipes/newlines survive the round-trip.
 func formatFeatureLines(traits []domain.Trait) string {
 	lines := make([]string, 0, len(traits))
 	for _, t := range traits {
-		row := t.Name
-		if t.Source != "" || t.Description != "" {
-			row += " | " + t.Source
-		}
-		if t.Description != "" {
-			row += " | " + t.Description
-		}
-		lines = append(lines, row)
+		lines = append(lines, strings.Join([]string{
+			escapeField(t.Name), escapeField(t.Source), escapeField(t.Description),
+		}, " | "))
 	}
 	return strings.Join(lines, "\n")
 }

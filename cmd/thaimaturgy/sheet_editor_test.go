@@ -143,16 +143,18 @@ func TestFeatureRoundTrip(t *testing.T) {
 		{Name: "Darkvision", Source: "Race", Description: "60 ft"},
 		{Name: "Second Wind", Source: "Class"},
 		{Name: "Lucky"},
+		// A multi-line description containing a pipe must survive the round-trip
+		// and not be split into extra traits (Heimdallm review).
+		{Name: "Spellcasting", Source: "Class", Description: "Line one.\nLine two | with a pipe.\nLine three."},
 	}
 	parsed := parseFeatureLines(formatFeatureLines(traits))
-	if len(parsed) != 3 {
-		t.Fatalf("expected 3 traits, got %d: %+v", len(parsed), parsed)
+	if len(parsed) != len(traits) {
+		t.Fatalf("expected %d traits, got %d: %+v", len(traits), len(parsed), parsed)
 	}
-	if parsed[0].Name != "Darkvision" || parsed[0].Source != "Race" || parsed[0].Description != "60 ft" {
-		t.Errorf("trait 0 wrong: %+v", parsed[0])
-	}
-	if parsed[2].Name != "Lucky" || parsed[2].Source != "" {
-		t.Errorf("bare trait wrong: %+v", parsed[2])
+	for i := range traits {
+		if parsed[i] != traits[i] {
+			t.Errorf("trait %d not preserved:\n got %+v\nwant %+v", i, parsed[i], traits[i])
+		}
 	}
 }
 
