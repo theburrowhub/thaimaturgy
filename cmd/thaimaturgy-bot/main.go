@@ -103,7 +103,7 @@ func run(advID, sessionName, token string, chatID int64) error {
 		return err
 	}
 
-	bot, err := tgbot.New(store, session, oracle, tgbot.Options{Token: token, ChatID: chatID})
+	bot, err := tgbot.New(store, session, oracle, tgbot.Options{Token: token, ChatID: chatID, AllowedUsers: config.TelegramAllowedUsers})
 	if err != nil {
 		return err
 	}

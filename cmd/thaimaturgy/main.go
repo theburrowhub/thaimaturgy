@@ -1300,9 +1300,10 @@ func (g *gui) toggleTelegram() {
 	}
 	g.session.State.EnsureParty()
 	bot, err := tgbot.New(g.store, g.session, g.oracle, tgbot.Options{
-		Token:   token,
-		ChatID:  g.config.TelegramChatID,
-		OnEvent: func(line string) { fyne.Do(func() { g.onTelegramEvent(line) }) },
+		Token:        token,
+		ChatID:       g.config.TelegramChatID,
+		AllowedUsers: g.config.TelegramAllowedUsers,
+		OnEvent:      func(line string) { fyne.Do(func() { g.onTelegramEvent(line) }) },
 	})
 	if err != nil {
 		g.showErr(err)

@@ -26,6 +26,10 @@ import (
 type Options struct {
 	Token  string // Telegram bot token (required)
 	ChatID int64  // restrict to this chat id (0 = any chat)
+	// AllowedUsers optionally restricts who may talk to the bot (numeric user ids
+	// and/or @usernames). A message is accepted if it is from ChatID OR from an
+	// allowed user (any chat, including a private DM). Empty = no user filter.
+	AllowedUsers []string
 	// OnEvent, if set, is called with short human-readable activity lines (player
 	// joins, actions, narration) so a host UI can mirror what happens in the chat.
 	OnEvent func(string)
@@ -37,8 +41,9 @@ type Bot struct {
 	store   *storage.Storage
 	session *domain.Session
 	oracle  *engine.Oracle
-	chatID  int64
-	onEvent func(string)
+	chatID       int64
+	allowedUsers map[string]bool // normalized ids/usernames allowed to talk to the bot (nil = no user filter)
+	onEvent      func(string)
 
 	mu        sync.Mutex // guards resolving
 	resolving bool
@@ -61,13 +66,51 @@ func New(store *storage.Storage, session *domain.Session, oracle *engine.Oracle,
 	// or re-narrate an opening — treat it as started when there's evidence.
 	session.State.MarkStartedIfInProgress()
 	return &Bot{
-		api:     api,
-		store:   store,
-		session: session,
-		oracle:  oracle,
-		chatID:  opts.ChatID,
-		onEvent: opts.OnEvent,
+		api:          api,
+		store:        store,
+		session:      session,
+		oracle:       oracle,
+		chatID:       opts.ChatID,
+		allowedUsers: normalizeAllowedUsers(opts.AllowedUsers),
+		onEvent:      opts.OnEvent,
 	}, nil
+}
+
+// normalizeAllowedUsers turns configured ids/@usernames into a lookup set:
+// usernames lowercased and stripped of a leading '@'; numeric ids kept as-is.
+func normalizeAllowedUsers(list []string) map[string]bool {
+	if len(list) == 0 {
+		return nil
+	}
+	m := make(map[string]bool, len(list))
+	for _, s := range list {
+		s = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(s), "@"))
+		if s != "" {
+			m[s] = true
+		}
+	}
+	return m
+}
+
+// allowMessage decides whether a message is accepted given the chat/user filters:
+// accepted if there is no restriction at all, or it comes from the allowed chat,
+// or from an allowed user (by id or @username) in any chat.
+func allowMessage(chatID int64, allowed map[string]bool, msgChatID, fromID int64, username string) bool {
+	if chatID == 0 && len(allowed) == 0 {
+		return true
+	}
+	if chatID != 0 && msgChatID == chatID {
+		return true
+	}
+	if len(allowed) > 0 {
+		if allowed[strconv.FormatInt(fromID, 10)] {
+			return true
+		}
+		if u := strings.ToLower(strings.TrimPrefix(username, "@")); u != "" && allowed[u] {
+			return true
+		}
+	}
+	return false
 }
 
 // Username returns the bot's @username (for display).
@@ -79,8 +122,8 @@ func (b *Bot) Username() string { return b.api.Self.UserName }
 func (b *Bot) Run(ctx context.Context) {
 	b.runCtx = ctx
 	log.Printf("thaimaturgy-bot online as @%s — adventure %q, session %q", b.api.Self.UserName, b.session.Adventure.ID, b.session.State.Name)
-	if b.chatID == 0 {
-		log.Printf("WARNING: chat id not set — any chat that finds this bot can play and trigger LLM turns; set a chat id to restrict.")
+	if b.chatID == 0 && len(b.allowedUsers) == 0 {
+		log.Printf("WARNING: no chat id or allowed users set — any chat that finds this bot can play and trigger LLM turns; set a chat id and/or allowed users to restrict.")
 	}
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
@@ -111,8 +154,8 @@ func (b *Bot) onUpdate(update tgbotapi.Update) {
 	if m == nil || m.From == nil {
 		return
 	}
-	if b.chatID != 0 && m.Chat.ID != b.chatID {
-		return // ignore other chats
+	if !allowMessage(b.chatID, b.allowedUsers, m.Chat.ID, m.From.ID, m.From.UserName) {
+		return // not an allowed chat or user
 	}
 	// Bind any character reserved for this sender's @username (via /assign) the
 	// first time they appear.
