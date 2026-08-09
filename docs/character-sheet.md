@@ -41,9 +41,18 @@ and warlock Pact Magic. The default party and the AI party planner inherit this.
 
 - **App** — the party panel shows every section and an **“Edit sheet…”** button
   per character opens a full editor (identity, abilities, combat & resources,
-  saving-throw / skill proficiencies, languages, inventory, spellcasting and
-  spellbook, notes). Saving normalizes the sheet, applies it under the session
-  lock, logs the edit to the timeline for the DM, and autosaves.
+  saving-throw / skill proficiencies, conditions, languages, inventory, features
+  & traits, spellcasting and spellbook, notes). Saving normalizes the sheet,
+  applies it under the session lock, logs the edit to the timeline for the DM,
+  and autosaves. Concurrency- and data-safe:
+  - the save is rejected if the live sheet changed since the dialog opened (a DM
+    action, a rest, or a Telegram edit), so a stale form can't clobber a newer
+    update — the user is asked to reopen;
+  - spent spell slots and per-spell metadata (school/description) the form
+    doesn't expose are preserved across an edit, so opening and saving an
+    unchanged caster is a no-op;
+  - a rename that collides with another member is rejected, and a malformed slot
+    spec blocks the save instead of silently zeroing slots.
 - **DM** — reads the party's current sheets every turn (authoritative for
   HP/conditions/etc.) and adjusts them with the existing tools (`update_hp`,
   `set_condition`, `add_item`, …).

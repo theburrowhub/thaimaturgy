@@ -82,20 +82,78 @@ func TestSlotSpecRoundTrip(t *testing.T) {
 	var slots domain.SpellSlots
 	slots.Max[0] = 4 // L1
 	slots.Max[2] = 2 // L3
-	parsed := parseSlotSpec(formatSlotSpec(slots))
+	parsed, err := parseSlotSpec(formatSlotSpec(slots))
+	if err != nil {
+		t.Fatalf("round-trip errored: %v", err)
+	}
 	if parsed.MaxAt(1) != 4 || parsed.MaxAt(3) != 2 || parsed.MaxAt(2) != 0 {
 		t.Errorf("slot spec round-trip wrong: %+v", parsed)
 	}
-	// Out-of-range levels are ignored.
-	if got := parseSlotSpec("0:9, 12:3, 2:1"); got.MaxAt(2) != 1 || got != mustOnlyLevel2(1) {
-		t.Errorf("out-of-range levels not ignored: %+v", got)
+}
+
+func TestParseSlotSpecRejectsMalformed(t *testing.T) {
+	// A malformed count must be rejected (not silently zeroed), and out-of-range
+	// or non-numeric levels must error too.
+	for _, in := range []string{"1:4, 2:x", "0:9", "12:3", "abc", "1:-2"} {
+		if _, err := parseSlotSpec(in); err == nil {
+			t.Errorf("parseSlotSpec(%q) should have errored", in)
+		}
+	}
+	// Empty and whitespace-only are valid (no slots).
+	for _, in := range []string{"", "  ,  \n"} {
+		if _, err := parseSlotSpec(in); err != nil {
+			t.Errorf("parseSlotSpec(%q) should be valid, got %v", in, err)
+		}
 	}
 }
 
-func mustOnlyLevel2(n int) domain.SpellSlots {
-	var s domain.SpellSlots
-	s.Max[1] = n
-	return s
+func TestMergeSlotUsagePreservesSpent(t *testing.T) {
+	prev := &domain.Spellcasting{}
+	prev.Slots.Max[0] = 4
+	prev.Slots.Used[0] = 3
+	prev.Slots.Max[1] = 3
+	prev.Slots.Used[1] = 2
+
+	var newMax domain.SpellSlots
+	newMax.Max[0] = 4 // unchanged → keep 3 used
+	newMax.Max[1] = 1 // lowered below used → clamp used to 1
+	merged := mergeSlotUsage(newMax, prev)
+	if merged.Used[0] != 3 {
+		t.Errorf("L1 used = %d; want preserved 3", merged.Used[0])
+	}
+	if merged.Used[1] != 1 {
+		t.Errorf("L2 used = %d; want clamped to new max 1", merged.Used[1])
+	}
+}
+
+func TestMergeSpellMetadataPreserved(t *testing.T) {
+	prev := []domain.Spell{{Name: "Fireball", Level: 3, School: "Evocation", Description: "boom"}}
+	edited := []domain.Spell{{Name: "fireball", Level: 3, Prepared: true}} // form drops school/desc
+	merged := mergeSpellMetadata(edited, prev)
+	if merged[0].School != "Evocation" || merged[0].Description != "boom" {
+		t.Errorf("spell metadata not preserved: %+v", merged[0])
+	}
+	if !merged[0].Prepared {
+		t.Error("edited prepared flag should be kept")
+	}
+}
+
+func TestFeatureRoundTrip(t *testing.T) {
+	traits := []domain.Trait{
+		{Name: "Darkvision", Source: "Race", Description: "60 ft"},
+		{Name: "Second Wind", Source: "Class"},
+		{Name: "Lucky"},
+	}
+	parsed := parseFeatureLines(formatFeatureLines(traits))
+	if len(parsed) != 3 {
+		t.Fatalf("expected 3 traits, got %d: %+v", len(parsed), parsed)
+	}
+	if parsed[0].Name != "Darkvision" || parsed[0].Source != "Race" || parsed[0].Description != "60 ft" {
+		t.Errorf("trait 0 wrong: %+v", parsed[0])
+	}
+	if parsed[2].Name != "Lucky" || parsed[2].Source != "" {
+		t.Errorf("bare trait wrong: %+v", parsed[2])
+	}
 }
 
 func TestAbilityFromString(t *testing.T) {

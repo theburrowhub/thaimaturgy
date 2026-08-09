@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,6 +13,95 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
+
+// allConditions is the full set of 5e conditions, in canonical order, for the
+// editor's condition selector.
+var allConditions = []domain.Condition{
+	domain.ConditionBlinded, domain.ConditionCharmed, domain.ConditionDeafened,
+	domain.ConditionExhausted, domain.ConditionFrightened, domain.ConditionGrappled,
+	domain.ConditionIncapacitated, domain.ConditionInvisible, domain.ConditionParalyzed,
+	domain.ConditionPetrified, domain.ConditionPoisoned, domain.ConditionProne,
+	domain.ConditionRestrained, domain.ConditionStunned, domain.ConditionUnconscious,
+}
+
+// parseFeatureLines reads one trait per line as "Name | Source | Description"
+// (only the name is required).
+func parseFeatureLines(text string) []domain.Trait {
+	var out []domain.Trait
+	for _, ln := range strings.Split(text, "\n") {
+		ln = strings.TrimSpace(ln)
+		if ln == "" {
+			continue
+		}
+		parts := strings.SplitN(ln, "|", 3)
+		name := strings.TrimSpace(parts[0])
+		if name == "" {
+			continue
+		}
+		t := domain.Trait{Name: name}
+		if len(parts) > 1 {
+			t.Source = strings.TrimSpace(parts[1])
+		}
+		if len(parts) > 2 {
+			t.Description = strings.TrimSpace(parts[2])
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// formatFeatureLines renders traits for the editor (inverse of parse).
+func formatFeatureLines(traits []domain.Trait) string {
+	lines := make([]string, 0, len(traits))
+	for _, t := range traits {
+		row := t.Name
+		if t.Source != "" || t.Description != "" {
+			row += " | " + t.Source
+		}
+		if t.Description != "" {
+			row += " | " + t.Description
+		}
+		lines = append(lines, row)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// mergeSpellMetadata copies School/Description from the previous spellbook onto
+// the edited spells (matched by name, case-insensitive), since the editor only
+// exposes name/level/prepared. Without this, saving would erase that metadata.
+func mergeSpellMetadata(edited, prev []domain.Spell) []domain.Spell {
+	meta := make(map[string]domain.Spell, len(prev))
+	for _, sp := range prev {
+		meta[strings.ToLower(sp.Name)] = sp
+	}
+	for i := range edited {
+		if old, ok := meta[strings.ToLower(edited[i].Name)]; ok {
+			edited[i].School = old.School
+			edited[i].Description = old.Description
+		}
+	}
+	return edited
+}
+
+// mergeSlotUsage preserves spent-slot counts from the previous spellcasting block
+// onto a freshly parsed max table (clamped to the new maxima), so editing the
+// slot maxima doesn't silently refill all spent slots.
+func mergeSlotUsage(newSlots domain.SpellSlots, prev *domain.Spellcasting) domain.SpellSlots {
+	if prev == nil {
+		return newSlots
+	}
+	for i := range newSlots.Used {
+		u := prev.Slots.Used[i]
+		if u < 0 {
+			u = 0
+		}
+		if u > newSlots.Max[i] {
+			u = newSlots.Max[i]
+		}
+		newSlots.Used[i] = u
+	}
+	return newSlots
+}
 
 // --- Pure parsing helpers (unit-tested without a running GUI) --------------
 
@@ -130,21 +221,34 @@ func formatSpellLines(spells []domain.Spell) string {
 }
 
 // parseSlotSpec reads "1:4, 2:3, 3:2" (spellLevel:maxSlots) into a SpellSlots max
-// table. Invalid or out-of-range levels are ignored.
-func parseSlotSpec(s string) domain.SpellSlots {
+// table. It validates strictly: every non-empty entry must be "L:N" with L in
+// 1..9 and N a non-negative integer, returning an error otherwise so a malformed
+// entry (e.g. "2:x") is rejected instead of silently zeroing the slot.
+func parseSlotSpec(s string) (domain.SpellSlots, error) {
 	var slots domain.SpellSlots
 	for _, part := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == '\n' }) {
-		kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
-		if len(kv) != 2 {
+		part = strings.TrimSpace(part)
+		if part == "" {
 			continue
 		}
-		lvl := atoiDefault(kv[0], 0)
-		n := atoiDefault(kv[1], 0)
-		if lvl >= 1 && lvl <= 9 && n >= 0 {
-			slots.Max[lvl-1] = n
+		kv := strings.SplitN(part, ":", 2)
+		if len(kv) != 2 {
+			return slots, fmt.Errorf("bad slot entry %q (use level:count, e.g. 1:4)", part)
 		}
+		lvl, errL := strconv.Atoi(strings.TrimSpace(kv[0]))
+		n, errN := strconv.Atoi(strings.TrimSpace(kv[1]))
+		if errL != nil || errN != nil {
+			return slots, fmt.Errorf("bad slot entry %q (use level:count, e.g. 1:4)", part)
+		}
+		if lvl < 1 || lvl > 9 {
+			return slots, fmt.Errorf("slot level %d out of range (1-9)", lvl)
+		}
+		if n < 0 {
+			return slots, fmt.Errorf("slot count for level %d must be ≥ 0", lvl)
+		}
+		slots.Max[lvl-1] = n
 	}
-	return slots
+	return slots, nil
 }
 
 // formatSlotSpec renders a slots max table for the editor (inverse of parse).
@@ -184,6 +288,11 @@ func (g *gui) showSheetEditor(name string) {
 	if !found {
 		return
 	}
+	// Baseline snapshot of the character as it was when the dialog opened. On save
+	// we compare the live record against this and refuse to overwrite it if another
+	// writer (the DM, a rest, a Telegram edit) changed it meanwhile — otherwise we
+	// would clobber that newer change and autosave the loss.
+	baseJSON, _ := json.Marshal(base)
 
 	nameE := widget.NewEntry()
 	nameE.SetText(base.Name)
@@ -265,10 +374,26 @@ func (g *gui) showSheetEditor(name string) {
 	profGroup.SetSelected(selProf)
 	expGroup.SetSelected(selExp)
 
+	// Conditions.
+	condNames := make([]string, len(allConditions))
+	for i, c := range allConditions {
+		condNames[i] = string(c)
+	}
+	condGroup := widget.NewCheckGroup(condNames, nil)
+	var selConds []string
+	for _, c := range base.Conditions {
+		selConds = append(selConds, string(c))
+	}
+	condGroup.SetSelected(selConds)
+
 	langE := widget.NewEntry()
 	langE.SetText(strings.Join(base.Languages, ", "))
 	otherProfE := widget.NewEntry()
 	otherProfE.SetText(strings.Join(base.Proficiencies, ", "))
+
+	featuresE := widget.NewMultiLineEntry()
+	featuresE.SetMinRowsVisible(3)
+	featuresE.SetText(formatFeatureLines(base.Features))
 
 	invE := widget.NewMultiLineEntry()
 	invE.SetMinRowsVisible(3)
@@ -330,9 +455,11 @@ func (g *gui) showSheetEditor(name string) {
 		sectionLabel("Saving-throw proficiencies"), saveGroup,
 		sectionLabel("Skills — proficient"), profGroup,
 		sectionLabel("Skills — expertise"), expGroup,
+		sectionLabel("Conditions"), condGroup,
 		sectionLabel("Languages (comma-separated)"), langE,
 		sectionLabel("Other proficiencies (comma-separated)"), otherProfE,
 		sectionLabel("Inventory (one per line: Name xN [E])"), invE,
+		sectionLabel("Features & traits (one per line: Name | Source | Description)"), featuresE,
 		sectionLabel("Spellcasting"), spellForm,
 		widget.NewLabel("Spells (one per line: Name | level | prepared)"), spellsE,
 		sectionLabel("Notes"), notesE,
@@ -400,18 +527,42 @@ func (g *gui) showSheetEditor(name string) {
 		}
 		edited.Skills = skills
 
+		// Reject a rename that collides (case-insensitive) with another member, so
+		// characters stay addressable by name (the editor looks them up by name).
+		if !strings.EqualFold(edited.Name, name) {
+			for _, other := range g.session.State.PartyNames() {
+				if strings.EqualFold(other, edited.Name) {
+					status.SetText("Another character is already named " + edited.Name + ". Choose a different name.")
+					return
+				}
+			}
+		}
+
 		edited.Languages = parseCSVList(langE.Text)
 		edited.Proficiencies = parseCSVList(otherProfE.Text)
 		edited.Inventory = parseInventoryLines(invE.Text)
+		edited.Features = parseFeatureLines(featuresE.Text)
 		edited.Notes = strings.TrimSpace(notesE.Text)
 
-		// Spellcasting.
+		// Conditions.
+		edited.Conditions = nil
+		for _, sel := range condGroup.Selected {
+			edited.Conditions = append(edited.Conditions, domain.Condition(sel))
+		}
+
+		// Spellcasting. Preserve spent slots and per-spell metadata that the form
+		// doesn't expose, so opening and saving an unchanged caster is a no-op.
 		if castSel.Selected == "" || castSel.Selected == "(none)" {
 			edited.Spellcasting = nil
 		} else {
+			maxSlots, err := parseSlotSpec(slotsE.Text)
+			if err != nil {
+				status.SetText("Slots: " + err.Error())
+				return
+			}
 			sc := &domain.Spellcasting{Ability: abilityFromString(castSel.Selected)}
-			sc.Slots = parseSlotSpec(slotsE.Text)
-			sc.Spells = parseSpellLines(spellsE.Text)
+			sc.Slots = mergeSlotUsage(maxSlots, base.Spellcasting)
+			sc.Spells = mergeSpellMetadata(parseSpellLines(spellsE.Text), spellsOf(base.Spellcasting))
 			mod := domain.Modifier(edited.Abilities.Get(sc.Ability))
 			sc.SaveDC = 8 + edited.ProficiencyBonus + mod
 			sc.AttackBonus = edited.ProficiencyBonus + mod
@@ -420,8 +571,23 @@ func (g *gui) showSheetEditor(name string) {
 
 		edited.Normalize()
 
-		if _, ok := g.session.State.MutateCharacter(name, func(c *domain.Character) { *c = edited }); !ok {
+		// Apply under the lock, but only if the live record still matches the
+		// baseline captured when the dialog opened (otherwise a concurrent update
+		// would be clobbered — reject and ask the user to reopen).
+		conflict := false
+		_, ok := g.session.State.MutateCharacter(name, func(c *domain.Character) {
+			if cur, _ := json.Marshal(c); !bytes.Equal(cur, baseJSON) {
+				conflict = true
+				return
+			}
+			*c = edited
+		})
+		if !ok {
 			status.SetText("Could not find the character to update.")
+			return
+		}
+		if conflict {
+			status.SetText("This sheet changed since you opened it (the DM or another update). Reopen “Edit sheet…” and re-apply your changes.")
 			return
 		}
 		g.session.State.AddNote(fmt.Sprintf("Sheet edited: %s", edited.Name))
@@ -438,6 +604,14 @@ func (g *gui) showSheetEditor(name string) {
 	pop = widget.NewModalPopUp(container.NewPadded(box), g.win.Canvas())
 	pop.Resize(fyne.NewSize(560, 680))
 	pop.Show()
+}
+
+// spellsOf returns a spellcasting block's spells (nil-safe).
+func spellsOf(sc *domain.Spellcasting) []domain.Spell {
+	if sc == nil {
+		return nil
+	}
+	return sc.Spells
 }
 
 // abilityFromString maps an ability abbreviation to its domain.Ability.

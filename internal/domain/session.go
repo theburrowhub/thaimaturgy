@@ -711,6 +711,17 @@ func (s *SessionState) PartySnapshot() []Character {
 		cp.Skills = append([]Skill(nil), c.Skills...)
 		cp.Inventory = append([]InventoryItem(nil), c.Inventory...)
 		cp.Conditions = append([]Condition(nil), c.Conditions...)
+		cp.SavingThrows = append([]Ability(nil), c.SavingThrows...)
+		cp.Languages = append([]string(nil), c.Languages...)
+		cp.Proficiencies = append([]string(nil), c.Proficiencies...)
+		cp.Features = append([]Trait(nil), c.Features...)
+		// Deep-copy the spellcasting block (including its spellbook slice) so the
+		// snapshot never aliases the live pointer a writer might mutate.
+		if c.Spellcasting != nil {
+			scCopy := *c.Spellcasting
+			scCopy.Spells = append([]Spell(nil), c.Spellcasting.Spells...)
+			cp.Spellcasting = &scCopy
+		}
 		out = append(out, cp)
 	}
 	return out
