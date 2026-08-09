@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -509,6 +510,46 @@ func (s *SessionState) AddNote(text string) {
 	defer s.mu.Unlock()
 	s.record(LogEntry{Type: LogNote, Message: text})
 	s.touch()
+}
+
+// RestParty applies a rest to the whole party (or a single named character) and
+// records it in the timeline so it reaches the DM. long=true is a long rest;
+// otherwise a short rest where each character spends up to shortDice hit dice
+// (shortDice<=0 spends all remaining). Returns a human-readable summary.
+func (s *SessionState) RestParty(long bool, characterName string, shortDice int) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	target := strings.TrimSpace(characterName)
+	var lines []string
+	for _, c := range s.Characters {
+		if c == nil {
+			continue
+		}
+		if target != "" && !strings.EqualFold(c.Name, target) {
+			continue
+		}
+		if long {
+			c.LongRest()
+			lines = append(lines, fmt.Sprintf("%s: full HP (%d/%d)", c.Name, c.CurrentHP, c.MaxHP))
+		} else {
+			healed, spent := c.ShortRest(shortDice)
+			lines = append(lines, fmt.Sprintf("%s: +%d HP (%d/%d), %d hit dice spent", c.Name, healed, c.CurrentHP, c.MaxHP, spent))
+		}
+	}
+	kind := "short rest"
+	if long {
+		kind = "long rest"
+	}
+	summary := "No party members to rest."
+	if target != "" && len(lines) == 0 {
+		summary = "No party member named " + target + "."
+	}
+	if len(lines) > 0 {
+		summary = "The party takes a " + kind + ".\n" + strings.Join(lines, "\n")
+	}
+	s.record(LogEntry{Type: LogParty, Message: summary})
+	s.touch()
+	return summary
 }
 
 // AdvanceQuest creates or updates a quest's progress.

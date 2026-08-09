@@ -148,6 +148,10 @@ type Character struct {
 	CurrentHP int `json:"current_hp"`
 	TempHP    int `json:"temp_hp,omitempty"`
 
+	// HitDiceUsed counts hit dice already spent (out of one per level). Recovered
+	// on rests; used by ShortRest to bound healing.
+	HitDiceUsed int `json:"hit_dice_used,omitempty"`
+
 	AC         int `json:"ac"`
 	Initiative int `json:"initiative"`
 	Speed      int `json:"speed"`
@@ -282,6 +286,61 @@ func (c *Character) Heal(amount int) {
 	if c.CurrentHP > c.MaxHP {
 		c.CurrentHP = c.MaxHP
 	}
+}
+
+// HitDiceMax is the character's total hit dice (one per level, minimum 1).
+func (c *Character) HitDiceMax() int {
+	if c.Level < 1 {
+		return 1
+	}
+	return c.Level
+}
+
+// HitDiceRemaining is how many hit dice the character can still spend.
+func (c *Character) HitDiceRemaining() int {
+	if r := c.HitDiceMax() - c.HitDiceUsed; r > 0 {
+		return r
+	}
+	return 0
+}
+
+// LongRest restores the character after a long rest: HP to max, temp HP cleared,
+// and up to half the total hit dice recovered (D&D 5e). Spell slots and other
+// long-rest resources will be restored here once implemented (see #23).
+func (c *Character) LongRest() {
+	c.CurrentHP = c.MaxHP
+	c.TempHP = 0
+	recover := c.HitDiceMax() / 2
+	if recover < 1 {
+		recover = 1
+	}
+	if c.HitDiceUsed -= recover; c.HitDiceUsed < 0 {
+		c.HitDiceUsed = 0
+	}
+}
+
+// ShortRest spends up to `dice` hit dice (bounded by those remaining) to heal.
+// Each spent die restores an average hit die (5, i.e. a d8's average) plus the
+// CON modifier, at least 1. dice <= 0 spends all remaining. Returns the HP
+// actually restored and the number of dice spent.
+func (c *Character) ShortRest(dice int) (healed, spent int) {
+	avail := c.HitDiceRemaining()
+	if dice <= 0 || dice > avail {
+		dice = avail
+	}
+	con := Modifier(c.Abilities.CON)
+	for i := 0; i < dice && c.CurrentHP < c.MaxHP; i++ {
+		per := 5 + con
+		if per < 1 {
+			per = 1
+		}
+		before := c.CurrentHP
+		c.Heal(per)
+		healed += c.CurrentHP - before
+		c.HitDiceUsed++
+		spent++
+	}
+	return healed, spent
 }
 
 // SetHP sets current HP directly, clamping to the valid [0, MaxHP] range so an

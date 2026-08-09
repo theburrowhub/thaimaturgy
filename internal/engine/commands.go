@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -33,6 +34,7 @@ const (
 	CmdRoll
 	CmdSearch
 	CmdStatus
+	CmdRest   // short/long rest for the party
 	CmdMode   // switch between oracle (assistant) and virtual-DM mode
 	CmdOracle // free-form query to the oracle (no slash prefix)
 )
@@ -108,6 +110,8 @@ func ParseCommand(input string) *Command {
 		cmd.Type = CmdRoll
 	case "search", "find":
 		cmd.Type = CmdSearch
+	case "rest":
+		cmd.Type = CmdRest
 	case "status", "st":
 		cmd.Type = CmdStatus
 	case "mode", "dm", "dj", "gm":
@@ -205,6 +209,8 @@ func (h *CommandHandler) Execute(cmd *Command) *CommandResult {
 		h.handleRoll(cmd, r)
 	case CmdSearch:
 		h.handleSearch(cmd, r)
+	case CmdRest:
+		h.handleRest(cmd, r)
 	case CmdMode:
 		h.handleMode(cmd, r)
 	case CmdUnknown:
@@ -419,6 +425,37 @@ func (h *CommandHandler) handleSearch(cmd *Command, r *CommandResult) {
 		return
 	}
 	r.Response = res.Content
+}
+
+// handleRest applies a short or long rest to the party (or a named character):
+//
+//	/rest long [character]
+//	/rest short [character] [dice]
+//
+// It is shared by the desktop app and the Telegram bot so both rest identically.
+func (h *CommandHandler) handleRest(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /rest short|long [character]"
+		return
+	}
+	kind := strings.ToLower(cmd.Args[0])
+	long := kind == "long" || kind == "largo" || kind == "l"
+	if !long && kind != "short" && kind != "corto" && kind != "s" {
+		r.Success, r.Message = false, "Usage: /rest short|long [character]"
+		return
+	}
+	name, dice := "", 0
+	if rest := cmd.Args[1:]; len(rest) > 0 {
+		// For a short rest, a trailing integer is the number of hit dice to spend.
+		if !long {
+			if n, err := strconv.Atoi(rest[len(rest)-1]); err == nil {
+				dice = n
+				rest = rest[:len(rest)-1]
+			}
+		}
+		name = strings.Join(rest, " ")
+	}
+	r.Response = h.state().RestParty(long, name, dice)
 }
 
 // handleMode switches between oracle (assistant) and virtual-DM mode. With no
