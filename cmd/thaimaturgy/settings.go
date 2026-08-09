@@ -76,6 +76,9 @@ func (g *gui) showSettings() {
 		telegramChat.SetText(strconv.FormatInt(cfg.TelegramChatID, 10))
 	}
 	telegramChat.SetPlaceHolder("(optional: restrict the bot to one chat)")
+	telegramUsers := widget.NewMultiLineEntry()
+	telegramUsers.SetText(strings.Join(cfg.TelegramAllowedUsers, "\n"))
+	telegramUsers.SetPlaceHolder("(optional: one numeric user id per line; allowed in any chat incl. private. @usernames are ignored for access)")
 
 	form := widget.NewForm(
 		widget.NewFormItem("Provider", provider),
@@ -98,6 +101,7 @@ func (g *gui) showSettings() {
 		widget.NewFormItem("Gemini API key", geminiKey),
 		widget.NewFormItem("Telegram bot token", telegramToken),
 		widget.NewFormItem("Telegram chat id", telegramChat),
+		widget.NewFormItem("Telegram allowed users", telegramUsers),
 	)
 
 	save := func() {
@@ -133,6 +137,12 @@ func (g *gui) showSettings() {
 		} else {
 			g.showErr(fmt.Errorf("Telegram chat id must be a number (e.g. -1001234567890): %q", s))
 			return
+		}
+		cfg.TelegramAllowedUsers = nil
+		for _, line := range strings.Split(telegramUsers.Text, "\n") {
+			if u := strings.TrimSpace(line); u != "" {
+				cfg.TelegramAllowedUsers = append(cfg.TelegramAllowedUsers, u)
+			}
 		}
 		if err := g.applySettings(cfg); err != nil {
 			g.showErr(err)

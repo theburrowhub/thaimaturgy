@@ -26,6 +26,12 @@ import (
 type Options struct {
 	Token  string // Telegram bot token (required)
 	ChatID int64  // restrict to this chat id (0 = any chat)
+	// AllowedUsers optionally restricts who may talk to the bot by IMMUTABLE
+	// numeric user id. A message is accepted if it is from ChatID OR from an
+	// allowed user id (any chat, including a private DM). Empty = no user filter.
+	// @username entries are accepted as input but IGNORED for access control
+	// (usernames are reassignable → impersonation); a warning is logged.
+	AllowedUsers []string
 	// OnEvent, if set, is called with short human-readable activity lines (player
 	// joins, actions, narration) so a host UI can mirror what happens in the chat.
 	OnEvent func(string)
@@ -33,12 +39,14 @@ type Options struct {
 
 // Bot hosts a multiplayer virtual-DM session over Telegram.
 type Bot struct {
-	api     *tgbotapi.BotAPI
-	store   *storage.Storage
-	session *domain.Session
-	oracle  *engine.Oracle
-	chatID  int64
-	onEvent func(string)
+	api           *tgbotapi.BotAPI
+	store         *storage.Storage
+	session       *domain.Session
+	oracle        *engine.Oracle
+	chatID        int64
+	allowedIDs    map[string]bool // immutable numeric user ids allowed to talk to the bot
+	userFilterSet bool            // an AllowedUsers list was configured (even if it yielded no valid ids)
+	onEvent       func(string)
 
 	mu        sync.Mutex // guards resolving
 	resolving bool
@@ -60,14 +68,72 @@ func New(store *storage.Storage, session *domain.Session, oracle *engine.Oracle,
 	// A session already played (in the GUI or a prior run) shouldn't demand /begin
 	// or re-narrate an opening — treat it as started when there's evidence.
 	session.State.MarkStartedIfInProgress()
+	allowedIDs, ignoredUsers := normalizeAllowedUsers(opts.AllowedUsers)
+	userFilterSet := len(allowedIDs) > 0 || len(ignoredUsers) > 0
+	if len(ignoredUsers) > 0 {
+		log.Printf("WARNING: Telegram allowed users %v are @usernames and are IGNORED for access control (usernames are reassignable); list immutable numeric user ids instead.", ignoredUsers)
+	}
+	if userFilterSet && len(allowedIDs) == 0 && opts.ChatID == 0 {
+		log.Printf("WARNING: the Telegram allowed-users list has no valid numeric ids and no chat id is set — NO ONE can talk to the bot (fail-closed). Add a numeric user id and/or a chat id.")
+	}
 	return &Bot{
-		api:     api,
-		store:   store,
-		session: session,
-		oracle:  oracle,
-		chatID:  opts.ChatID,
-		onEvent: opts.OnEvent,
+		api:           api,
+		store:         store,
+		session:       session,
+		oracle:        oracle,
+		chatID:        opts.ChatID,
+		allowedIDs:    allowedIDs,
+		userFilterSet: userFilterSet,
+		onEvent:       opts.OnEvent,
 	}, nil
+}
+
+// normalizeAllowedUsers turns configured allow-list entries into a set of
+// IMMUTABLE numeric Telegram user ids used for access control. @usernames are
+// mutable and reassignable, so they must NOT authorize access (impersonation
+// risk); any non-numeric entries are returned separately so we can warn that
+// they are ignored for authorization. (A user allowed in the configured chat is
+// already covered by the chat-id rule; the user allow-list exists for private
+// DMs, which is exactly where a spoofable username would be dangerous.)
+func normalizeAllowedUsers(list []string) (ids map[string]bool, ignored []string) {
+	for _, raw := range list {
+		s := strings.TrimSpace(raw)
+		if s == "" {
+			continue
+		}
+		// An explicit @-prefixed entry is a username by intent — never a numeric id
+		// (e.g. "@12345" must NOT authorize the account whose id is 12345). Strip the
+		// '@' only for the ignored-warning list, and never parse it as an id.
+		if strings.HasPrefix(s, "@") {
+			ignored = append(ignored, strings.TrimPrefix(s, "@"))
+			continue
+		}
+		if _, err := strconv.ParseInt(s, 10, 64); err == nil {
+			if ids == nil {
+				ids = map[string]bool{}
+			}
+			ids[s] = true
+		} else {
+			ignored = append(ignored, s)
+		}
+	}
+	return ids, ignored
+}
+
+// allowMessage decides whether a message is accepted. It is UNRESTRICTED (accept
+// everyone) only when no chat id is set AND no user filter was configured at all.
+// Once the operator configures either restriction it fails CLOSED: accept only
+// messages from the allowed chat or from an allowed immutable numeric user id.
+// A configured-but-empty user filter (e.g. only @usernames, which are ignored)
+// therefore does NOT re-open access.
+func allowMessage(chatID int64, allowedIDs map[string]bool, userFilterSet bool, msgChatID, fromID int64) bool {
+	if chatID == 0 && !userFilterSet {
+		return true // no restriction configured at all
+	}
+	if chatID != 0 && msgChatID == chatID {
+		return true
+	}
+	return len(allowedIDs) > 0 && allowedIDs[strconv.FormatInt(fromID, 10)]
 }
 
 // Username returns the bot's @username (for display).
@@ -79,8 +145,8 @@ func (b *Bot) Username() string { return b.api.Self.UserName }
 func (b *Bot) Run(ctx context.Context) {
 	b.runCtx = ctx
 	log.Printf("thaimaturgy-bot online as @%s — adventure %q, session %q", b.api.Self.UserName, b.session.Adventure.ID, b.session.State.Name)
-	if b.chatID == 0 {
-		log.Printf("WARNING: chat id not set — any chat that finds this bot can play and trigger LLM turns; set a chat id to restrict.")
+	if b.chatID == 0 && !b.userFilterSet {
+		log.Printf("WARNING: no chat id or allowed users set — any chat that finds this bot can play and trigger LLM turns; set a chat id and/or allowed users to restrict.")
 	}
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
@@ -111,8 +177,8 @@ func (b *Bot) onUpdate(update tgbotapi.Update) {
 	if m == nil || m.From == nil {
 		return
 	}
-	if b.chatID != 0 && m.Chat.ID != b.chatID {
-		return // ignore other chats
+	if !allowMessage(b.chatID, b.allowedIDs, b.userFilterSet, m.Chat.ID, m.From.ID) {
+		return // not an allowed chat or user
 	}
 	// Bind any character reserved for this sender's @username (via /assign) the
 	// first time they appear.
@@ -139,7 +205,7 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		// stay harmless (help) — the game is begun explicitly with /begin.
 		b.reply(m, helpText)
 	case "chatid":
-		b.reply(m, fmt.Sprintf("This chat's id is: %d\nUse it as the chat id to restrict the bot to this chat.", m.Chat.ID))
+		b.reply(m, fmt.Sprintf("Chat id: %d\nYour user id: %d\nUse the chat id to restrict the bot to this chat, and your user id in the allowed-users list to talk to it privately.", m.Chat.ID, m.From.ID))
 	case "party":
 		b.reply(m, b.partyText())
 	case "pick", "play":
@@ -225,10 +291,11 @@ func (b *Bot) logText(arg string) string {
 //     (room/look, zone, npc, npcs, event, item, search) — see #28;
 //   - authoritative mutations players must not trigger (goto, flag);
 //   - desktop-only UI actions (load, import, mode, map, art).
+//
 // These stay available in the desktop DM console; multiplayer commands
 // (begin/pick/assign/me/do/dm) are handled explicitly above.
 var playerSafeCommands = map[string]bool{
-	"status": true, // where the party is + progress counters (no DM notes)
+	"status": true,                // where the party is + progress counters (no DM notes)
 	"quests": true, "quest": true, // player-facing quest log
 	"note": true, // benign: append a note to the timeline
 	"rest": true, // short/long rest for the party (or a named character)

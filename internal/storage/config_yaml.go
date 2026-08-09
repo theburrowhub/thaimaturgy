@@ -64,8 +64,9 @@ type fileConfig struct {
 	} `yaml:"tts"`
 
 	Telegram struct {
-		BotToken string `yaml:"bot_token"` // token to host the multiplayer bot
-		ChatID   int64  `yaml:"chat_id"`   // optional: restrict the bot to this chat
+		BotToken     string   `yaml:"bot_token"`               // token to host the multiplayer bot
+		ChatID       int64    `yaml:"chat_id"`                 // optional: restrict the bot to this chat
+		AllowedUsers []string `yaml:"allowed_users,omitempty"` // optional: user ids / @usernames allowed to talk to the bot
 	} `yaml:"telegram"`
 
 	SystemPrompt string `yaml:"system_prompt,omitempty"`
@@ -109,6 +110,7 @@ func fromConfig(c *domain.Config) fileConfig {
 
 	fc.Telegram.BotToken = c.TelegramToken
 	fc.Telegram.ChatID = c.TelegramChatID
+	fc.Telegram.AllowedUsers = c.TelegramAllowedUsers
 
 	fc.SystemPrompt = c.SystemPrompt
 	return fc
@@ -151,6 +153,7 @@ func toConfig(fc *fileConfig, c *domain.Config) {
 
 	c.TelegramToken = fc.Telegram.BotToken
 	c.TelegramChatID = fc.Telegram.ChatID
+	c.TelegramAllowedUsers = fc.Telegram.AllowedUsers
 
 	c.SystemPrompt = fc.SystemPrompt
 }
