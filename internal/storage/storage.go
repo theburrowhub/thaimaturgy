@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -140,6 +141,30 @@ func (s *Storage) mergeEnvConfig(config *domain.Config) {
 	}
 	if apiKey := os.Getenv("GOOGLE_API_KEY"); apiKey != "" && config.GeminiAPIKey == "" {
 		config.GeminiAPIKey = apiKey
+	}
+	if provider := strings.TrimSpace(os.Getenv("THAIM_TTS_PROVIDER")); provider != "" {
+		config.TTS.Provider = domain.TTSProvider(strings.ToLower(provider))
+	}
+	if enabled := strings.TrimSpace(os.Getenv("THAIM_TTS_ENABLED")); enabled != "" {
+		if v, err := strconv.ParseBool(enabled); err == nil {
+			config.TTS.Enabled = v
+		}
+	}
+	if cmd := strings.TrimSpace(os.Getenv("THAIM_MAGNIFIC_MCP_COMMAND")); cmd != "" {
+		config.TTS.MagnificMCPCommand = cmd
+	}
+	if voiceID := strings.TrimSpace(os.Getenv("THAIM_MAGNIFIC_VOICE_ID")); voiceID != "" {
+		if v, err := strconv.Atoi(voiceID); err == nil {
+			config.TTS.MagnificVoiceID = v
+		}
+	}
+	if stability := strings.TrimSpace(os.Getenv("THAIM_MAGNIFIC_STABILITY")); stability != "" {
+		if v, err := strconv.ParseFloat(stability, 64); err == nil {
+			config.TTS.MagnificStability = v
+		}
+	}
+	if cacheDir := strings.TrimSpace(os.Getenv("THAIM_TTS_CACHE_DIR")); cacheDir != "" {
+		config.TTS.CacheDir = cacheDir
 	}
 }
 
