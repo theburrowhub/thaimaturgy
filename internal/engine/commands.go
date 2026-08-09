@@ -35,6 +35,7 @@ const (
 	CmdSearch
 	CmdStatus
 	CmdChat   // in-character dialogue added as context (no round action)
+	CmdMeta   // out-of-character question/correction the DM answers immediately
 	CmdRest   // short/long rest for the party
 	CmdMode   // switch between oracle (assistant) and virtual-DM mode
 	CmdOracle // free-form query to the oracle (no slash prefix)
@@ -115,6 +116,8 @@ func ParseCommand(input string) *Command {
 		cmd.Type = CmdRest
 	case "chat", "say":
 		cmd.Type = CmdChat
+	case "meta", "ooc":
+		cmd.Type = CmdMeta
 	case "status", "st":
 		cmd.Type = CmdStatus
 	case "mode", "dm", "dj", "gm":
@@ -216,6 +219,8 @@ func (h *CommandHandler) Execute(cmd *Command) *CommandResult {
 		h.handleRest(cmd, r)
 	case CmdChat:
 		h.handleChat(cmd, r)
+	case CmdMeta:
+		h.handleMeta(cmd, r)
 	case CmdMode:
 		h.handleMode(cmd, r)
 	case CmdUnknown:
@@ -443,6 +448,19 @@ func (h *CommandHandler) handleChat(cmd *Command, r *CommandResult) {
 	}
 	h.state().AddChat("", text)
 	r.Message = "In-character line added to the scene."
+}
+
+// handleMeta routes an out-of-character question/correction to the DM to be
+// answered immediately (via the oracle), rather than treated as an in-fiction
+// action. It signals the frontend's oracle path with the OOC-framed input.
+func (h *CommandHandler) handleMeta(cmd *Command, r *CommandResult) {
+	text := strings.TrimSpace(strings.Join(cmd.Args, " "))
+	if text == "" {
+		r.Success, r.Message = false, "Usage: /meta <question or correction for the DM>"
+		return
+	}
+	r.NeedsUI, r.UIAction = true, "oracle"
+	r.UIArg = MetaInput(text, h.session.Config.Language)
 }
 
 // handleRest applies a short or long rest to the party (or a named character):

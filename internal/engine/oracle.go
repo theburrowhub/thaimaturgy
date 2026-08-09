@@ -137,6 +137,16 @@ func (o *Oracle) RunGroupTurn(ctx context.Context) *Response {
 	return resp
 }
 
+// MetaInput frames an out-of-character player message (a rules question, a
+// clarification, or a correction) so the DM answers it directly instead of
+// treating it as an in-fiction action. Shared by the app and the Telegram bot.
+func MetaInput(text string, lang domain.Language) string {
+	if lang == domain.LangSpanish {
+		return "[METAJUEGO / FUERA DE PERSONAJE — es el jugador hablándote a ti (el DM), no una acción dentro de la ficción. Responde su duda, aclara la regla o aplica su corrección de forma directa y breve, sin narrar una escena]: " + text
+	}
+	return "[META / OUT-OF-CHARACTER — this is the player talking to you (the DM), not an in-fiction action. Answer their question, clarify the rule, or apply their correction directly and briefly, without narrating a scene]: " + text
+}
+
 // composeRoundInput renders the round's declared actions into the DM prompt.
 func composeRoundInput(actions []domain.RoundAction, lang domain.Language) string {
 	var sb strings.Builder

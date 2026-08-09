@@ -239,6 +239,12 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.save()
 		b.event(fmt.Sprintf("%s (in character): %s", char, arg))
 		b.reply(m, fmt.Sprintf("💬 %s: %s", char, arg))
+	case "meta", "ooc":
+		if arg == "" {
+			b.reply(m, "Usage: /meta <question or correction for the DM>")
+			return
+		}
+		b.runMeta(m, arg)
 	case "assign":
 		b.assign(m)
 	case "me":
@@ -498,6 +504,46 @@ func (b *Bot) turnTimeout() time.Duration {
 
 // runDM resolves the current round with the AI DM and posts the narration. Only
 // one turn runs at a time; other commands stay responsive meanwhile.
+// runMeta answers an out-of-character player question/correction immediately via
+// the oracle (issue #19). It reuses the same turn guard as runDM so it can't run
+// concurrently with a /dm resolution and races the session state.
+func (b *Bot) runMeta(m *tgbotapi.Message, text string) {
+	b.mu.Lock()
+	if b.resolving {
+		b.mu.Unlock()
+		b.reply(m, "The DM is busy resolving the round — try again in a moment.")
+		return
+	}
+	b.resolving = true
+	b.mu.Unlock()
+
+	b.reply(m, "🗨 The DM is considering your note…")
+	b.turns.Add(1)
+	go func() {
+		defer b.turns.Done()
+		defer func() {
+			b.mu.Lock()
+			b.resolving = false
+			b.mu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(b.turnBase(), b.turnTimeout())
+		defer cancel()
+
+		resp := b.oracle.Ask(ctx, engine.MetaInput(text, b.session.Config.Language))
+		if b.turnBase().Err() != nil {
+			return
+		}
+		if resp.Error != nil {
+			log.Printf("meta: %v", resp.Error)
+			b.send(m.Chat.ID, "⚠ The DM couldn't answer right now. Try /meta again in a moment.")
+			return
+		}
+		b.save()
+		b.event("DM (meta): " + resp.Answer)
+		b.send(m.Chat.ID, resp.Answer)
+	}()
+}
+
 func (b *Bot) runDM(m *tgbotapi.Message) {
 	b.mu.Lock()
 	if b.resolving {
@@ -676,6 +722,7 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /me — show your character sheet
 /begin — start the game (the DM sets the opening scene)
 /chat <line> — say something in character (context for the DM, not an action)
+/meta <text> — ask the DM a question or note a correction (out of character)
 /do <action> — declare your character's action this round (after /begin)
 /dm — let the AI Dungeon Master resolve the round and narrate (after /begin)
 /roll <dice> — roll dice (e.g. 2d6+3)
