@@ -3,12 +3,13 @@ package tgbot
 import "testing"
 
 func TestNormalizeAllowedUsersSplitsIDsFromUsernames(t *testing.T) {
-	ids, ignored := normalizeAllowedUsers([]string{"12345", " 678 ", "@Alice", "bob", ""})
+	// "@12345" is a USERNAME form (leading @) and must NOT become numeric id 12345.
+	ids, ignored := normalizeAllowedUsers([]string{"12345", " 678 ", "@Alice", "bob", "@12345", ""})
 	if !ids["12345"] || !ids["678"] || len(ids) != 2 {
 		t.Fatalf("numeric ids = %v; want {12345,678}", ids)
 	}
-	if len(ignored) != 2 { // @Alice, bob are usernames, ignored for auth
-		t.Errorf("ignored usernames = %v; want 2", ignored)
+	if len(ignored) != 3 { // @Alice, bob, @12345 → all usernames, ignored for auth
+		t.Errorf("ignored usernames = %v; want 3", ignored)
 	}
 }
 

@@ -96,9 +96,16 @@ func New(store *storage.Storage, session *domain.Session, oracle *engine.Oracle,
 // already covered by the chat-id rule; the user allow-list exists for private
 // DMs, which is exactly where a spoofable username would be dangerous.)
 func normalizeAllowedUsers(list []string) (ids map[string]bool, ignored []string) {
-	for _, s := range list {
-		s = strings.TrimPrefix(strings.TrimSpace(s), "@")
+	for _, raw := range list {
+		s := strings.TrimSpace(raw)
 		if s == "" {
+			continue
+		}
+		// An explicit @-prefixed entry is a username by intent — never a numeric id
+		// (e.g. "@12345" must NOT authorize the account whose id is 12345). Strip the
+		// '@' only for the ignored-warning list, and never parse it as an id.
+		if strings.HasPrefix(s, "@") {
+			ignored = append(ignored, strings.TrimPrefix(s, "@"))
 			continue
 		}
 		if _, err := strconv.ParseInt(s, 10, 64); err == nil {
