@@ -98,9 +98,10 @@ type Config struct {
 	TelegramToken  string `json:"telegram_token,omitempty"`
 	TelegramChatID int64  `json:"telegram_chat_id,omitempty"`
 	// TelegramAllowedUsers optionally restricts who may talk to the bot, by
-	// numeric user id and/or @username. A message is accepted if it comes from the
-	// allowed chat id OR from an allowed user (in any chat, including a private
-	// one) — so you can host in a channel and still let listed users DM the bot.
+	// IMMUTABLE numeric user id. A message is accepted if it comes from the allowed
+	// chat id OR from an allowed user id (in any chat, including a private one) — so
+	// you can host in a channel and still let listed users DM the bot. @usernames
+	// are ignored for access control (they are reassignable → impersonation risk).
 	// Empty means "no user filter" (only the chat-id restriction, if any, applies).
 	TelegramAllowedUsers []string `json:"telegram_allowed_users,omitempty"`
 }

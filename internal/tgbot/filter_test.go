@@ -2,28 +2,35 @@ package tgbot
 
 import "testing"
 
-func TestAllowMessage(t *testing.T) {
-	allowed := normalizeAllowedUsers([]string{"@Alice", " 12345 ", "bob"})
+func TestNormalizeAllowedUsersSplitsIDsFromUsernames(t *testing.T) {
+	ids, ignored := normalizeAllowedUsers([]string{"12345", " 678 ", "@Alice", "bob", ""})
+	if !ids["12345"] || !ids["678"] || len(ids) != 2 {
+		t.Fatalf("numeric ids = %v; want {12345,678}", ids)
+	}
+	if len(ignored) != 2 { // @Alice, bob are usernames, ignored for auth
+		t.Errorf("ignored usernames = %v; want 2", ignored)
+	}
+}
 
+func TestAllowMessage(t *testing.T) {
+	ids, _ := normalizeAllowedUsers([]string{"12345", "@Alice"}) // only 12345 is authoritative
 	cases := []struct {
 		name            string
 		chatID          int64
 		allowed         map[string]bool
 		msgChat, fromID int64
-		username        string
 		want            bool
 	}{
-		{"unrestricted", 0, nil, 999, 1, "nobody", true},
-		{"allowed chat", -100, nil, -100, 5, "x", true},
-		{"other chat blocked", -100, nil, -200, 5, "x", false},
-		{"user by username other chat", -100, allowed, -200, 5, "alice", true},
-		{"username @ and case normalized", -100, allowed, 777, 5, "@Alice", true},
-		{"user by id (private)", 0, allowed, 777, 12345, "", true},
-		{"non-allowed user blocked", -100, allowed, -200, 999, "eve", false},
-		{"allowed chat overrides user filter", -100, allowed, -100, 999, "eve", true},
+		{"unrestricted", 0, nil, 999, 1, true},
+		{"allowed chat", -100, nil, -100, 5, true},
+		{"other chat blocked", -100, nil, -200, 5, false},
+		{"allowed id private dm", 0, ids, 42, 12345, true},
+		{"allowed id other chat", -100, ids, -200, 12345, true},
+		{"non-allowed id blocked", -100, ids, -200, 999, false},
+		{"allowed chat overrides id filter", -100, ids, -100, 999, true},
 	}
 	for _, c := range cases {
-		if got := allowMessage(c.chatID, c.allowed, c.msgChat, c.fromID, c.username); got != c.want {
+		if got := allowMessage(c.chatID, c.allowed, c.msgChat, c.fromID); got != c.want {
 			t.Errorf("%s: allowMessage = %v, want %v", c.name, got, c.want)
 		}
 	}

@@ -78,7 +78,7 @@ func (g *gui) showSettings() {
 	telegramChat.SetPlaceHolder("(optional: restrict the bot to one chat)")
 	telegramUsers := widget.NewMultiLineEntry()
 	telegramUsers.SetText(strings.Join(cfg.TelegramAllowedUsers, "\n"))
-	telegramUsers.SetPlaceHolder("(optional: one user id or @username per line; allowed in any chat, incl. private)")
+	telegramUsers.SetPlaceHolder("(optional: one numeric user id per line; allowed in any chat incl. private. @usernames are ignored for access)")
 
 	form := widget.NewForm(
 		widget.NewFormItem("Provider", provider),
