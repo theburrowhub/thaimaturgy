@@ -231,6 +231,7 @@ var playerSafeCommands = map[string]bool{
 	"status": true, // where the party is + progress counters (no DM notes)
 	"quests": true, "quest": true, // player-facing quest log
 	"note": true, // benign: append a note to the timeline
+	"rest": true, // short/long rest for the party (or a named character)
 }
 
 // delegateToEngine routes a small, player-safe subset of slash commands through
@@ -243,7 +244,7 @@ func (b *Bot) delegateToEngine(m *tgbotapi.Message) {
 		b.reply(m, "Unknown or DM-only command. "+helpText)
 		return
 	}
-	mutating := cmd == "note"
+	mutating := cmd == "note" || cmd == "rest"
 	// Serialize against an in-flight /dm resolution: a mutation applied while the
 	// turn snapshot is open could be lost when that snapshot is merged back.
 	if mutating && b.isResolving() {
@@ -585,6 +586,7 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /save — save the current session
 /status — where the party is and session progress
 /log [n] — show the last n timeline entries (default 15)
+/rest short|long [character] — take a short or long rest
 /quests — list tracked quests
 /note <text> — add a note to the timeline
 /chatid — show this chat's id

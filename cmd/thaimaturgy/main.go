@@ -72,6 +72,7 @@ type gui struct {
 	// virtual-DM mode in place of the adventure browser.
 	modeBtn     *widget.Button
 	beginBtn    *widget.Button // "Begin" — starts the game in virtual-DM mode (hidden once started)
+	restBtn     *widget.Button // "Rest" — short/long rest for the party (virtual-DM mode)
 	sendBtn     *widget.Button
 	diceBtn     *widget.Button
 	saveBtn     *widget.Button
@@ -472,6 +473,8 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.beginBtn = widget.NewButtonWithIcon("Begin", theme.MediaSkipNextIcon(), g.beginGame)
 	g.beginBtn.Importance = widget.HighImportance
 	g.beginBtn.Hide() // shown only in virtual-DM mode before the game has begun (applyMode)
+	g.restBtn = widget.NewButtonWithIcon("Rest", theme.ViewRestoreIcon(), g.restParty)
+	g.restBtn.Hide() // shown only in virtual-DM mode once the game has begun (applyMode)
 	g.diceBtn = widget.NewButton("Dice", g.showDiceRoller)
 	g.telegramBtn = widget.NewButton("Telegram", g.toggleTelegram)
 	g.telegramBtn.Hide() // shown only in virtual-DM mode (applyMode)
@@ -486,6 +489,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 		g.diceBtn,
 		g.modeBtn,
 		g.beginBtn,
+		g.restBtn,
 		g.telegramBtn,
 	)
 
@@ -1121,12 +1125,20 @@ func (g *gui) applyMode() {
 			g.telegramBtn.Hide()
 		}
 	}
-	// The Begin button appears only in virtual-DM mode while the game hasn't begun.
+	// The Begin button appears only in virtual-DM mode while the game hasn't begun;
+	// the Rest button appears in virtual-DM mode once it has.
 	if g.beginBtn != nil {
 		if dm && !g.session.State.GameStarted() {
 			g.beginBtn.Show()
 		} else {
 			g.beginBtn.Hide()
+		}
+	}
+	if g.restBtn != nil {
+		if dm && g.session.State.GameStarted() {
+			g.restBtn.Show()
+		} else {
+			g.restBtn.Hide()
 		}
 	}
 	g.refreshPCPanel()
@@ -1222,6 +1234,25 @@ func (g *gui) beginGame() {
 	g.applyMode() // hides the Begin button now that the game has started
 	g.ask(domain.DMKickoffPrompt(g.config.Language))
 	g.autosave()
+}
+
+// restParty offers a short or long rest and runs the shared /rest command, so
+// the desktop app and Telegram rest identically (issue #30).
+func (g *gui) restParty() {
+	if g.session == nil || !g.modeIsDM() {
+		return
+	}
+	go func() {
+		choice := nativeui.Choice("Rest", "Take a short or long rest for the party?", "Short rest", "Long rest")
+		if choice == 0 {
+			return
+		}
+		cmd := "/rest short"
+		if choice == 2 {
+			cmd = "/rest long"
+		}
+		fyne.Do(func() { g.submit(cmd) })
+	}()
 }
 
 // toggleTelegram starts or stops the in-process Telegram bot hosting the current
