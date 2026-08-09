@@ -217,6 +217,28 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.save()
 		b.event(fmt.Sprintf("%s picked %s", display, name))
 		b.reply(m, fmt.Sprintf("%s now plays %s. Declare actions with /do.", display, name))
+	case "chat", "say":
+		if !b.session.State.GameStarted() {
+			b.reply(m, notStartedMsg)
+			return
+		}
+		if arg == "" {
+			b.reply(m, "Usage: /chat <what your character says>")
+			return
+		}
+		char := b.session.State.PlayerCharacterName(playerID)
+		if char == "" {
+			b.reply(m, "Pick a character first with /pick, then /chat.")
+			return
+		}
+		if b.isResolving() {
+			b.reply(m, "The DM is resolving the round — try again in a moment.")
+			return
+		}
+		b.session.State.AddChat(char, arg)
+		b.save()
+		b.event(fmt.Sprintf("%s (in character): %s", char, arg))
+		b.reply(m, fmt.Sprintf("💬 %s: %s", char, arg))
 	case "assign":
 		b.assign(m)
 	case "me":
@@ -653,6 +675,7 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /assign @user <name> — assign a character to a player (or reply to them with /assign <name>)
 /me — show your character sheet
 /begin — start the game (the DM sets the opening scene)
+/chat <line> — say something in character (context for the DM, not an action)
 /do <action> — declare your character's action this round (after /begin)
 /dm — let the AI Dungeon Master resolve the round and narrate (after /begin)
 /roll <dice> — roll dice (e.g. 2d6+3)
