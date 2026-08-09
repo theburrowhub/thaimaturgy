@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/srd"
 	"github.com/theburrowhub/thaimaturgy/internal/types"
 )
 
@@ -91,6 +92,15 @@ var AvailableTools = []types.Tool{
 		Name:        "list_present_npcs",
 		Description: "List the NPCs currently in the party's room.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+	},
+	{
+		Name:        "lookup_creature",
+		Description: "Look up a complete stat block for a standard creature/monster by name from the embedded D&D 5e SRD (e.g. 'goblin', 'orc', 'skeleton', 'ogre'). Use it to get full combat statistics for a common monster that the module didn't author. For a creature not in the SRD subset, author or improvise a stat block instead.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"name":{"type":"string","description":"The creature's name, e.g. 'goblin'"}},
+			"required":["name"]
+		}`),
 	},
 	{
 		Name:        "list_exits",
@@ -396,6 +406,8 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 		return tr.searchModule(call.ID, args)
 	case "list_present_npcs":
 		return tr.listPresentNPCs(call.ID)
+	case "lookup_creature":
+		return tr.lookupCreature(call.ID, args)
 	case "list_exits":
 		return tr.listExits(call.ID)
 	case "find_path":
@@ -476,10 +488,30 @@ func (tr *ToolRouter) getNPC(id string, args map[string]any) types.ToolResult {
 		return errResult(id, "no npc with id "+nid)
 	}
 	out := FormatNPC(tr.adv(), n)
+	// If the NPC has no authored stat block, auto-fill a full one from the SRD when
+	// its name matches a standard creature (#26). Authored blocks always win.
+	if n.StatBlock == nil {
+		if sb, ok := srd.Lookup(n.Name); ok {
+			out += "\nStat block (auto-filled from " + sb.Source + "; no authored block):\n" + formatStatBlock(&sb)
+		}
+	}
 	if st := tr.state().KnownNPCs[nid]; st != nil {
 		out += fmt.Sprintf("\n[session: met=%v alive=%v disposition=%q]", st.Met, st.Alive, st.Disposition)
 	}
 	return okResult(id, out+tr.worldChangesAppendix("npc", n.ID))
+}
+
+func (tr *ToolRouter) lookupCreature(id string, args map[string]any) types.ToolResult {
+	name, _ := args["name"].(string)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errResult(id, "name is required")
+	}
+	sb, ok := srd.Lookup(name)
+	if !ok {
+		return errResult(id, fmt.Sprintf("no SRD creature named %q in the embedded subset. Available: %s. For anything else, author or improvise a stat block.", name, strings.Join(srd.Names(), ", ")))
+	}
+	return okResult(id, name+"\n"+formatStatBlock(&sb))
 }
 
 func (tr *ToolRouter) getEvent(id string, args map[string]any) types.ToolResult {
