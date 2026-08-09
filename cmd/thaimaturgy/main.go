@@ -1178,7 +1178,11 @@ func (g *gui) refreshPCPanel() {
 		if i > 0 {
 			objs = append(objs, widget.NewSeparator())
 		}
+		name := party[i].Name
 		objs = append(objs, buildPCSheet(&party[i])...)
+		objs = append(objs, widget.NewButtonWithIcon("Edit sheet…", theme.DocumentCreateIcon(), func() {
+			g.showSheetEditor(name)
+		}))
 	}
 	g.pcSheet.Objects = objs
 	g.pcSheet.Refresh()

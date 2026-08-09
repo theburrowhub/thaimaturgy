@@ -16,51 +16,146 @@ import (
 var standardArray = [6]int{15, 14, 13, 12, 10, 8}
 
 type raceInfo struct {
-	speed int
-	bonus map[Ability]int // racial ability score increases
-	names []string        // sample names used when none is supplied
+	speed     int
+	bonus     map[Ability]int // racial ability score increases
+	names     []string        // sample names used when none is supplied
+	languages []string        // starting languages
 }
 
 // Races is the list of supported races (also used to populate UI choosers).
 var Races = []string{"Human", "Elf", "Dwarf", "Halfling", "Half-Orc", "Half-Elf", "Tiefling", "Dragonborn", "Gnome"}
 
 var raceTable = map[string]raceInfo{
-	"human":      {speed: 30, bonus: map[Ability]int{STR: 1, DEX: 1, CON: 1, INT: 1, WIS: 1, CHA: 1}, names: []string{"Alden", "Mira", "Rowan", "Tessa"}},
-	"elf":        {speed: 30, bonus: map[Ability]int{DEX: 2}, names: []string{"Aelar", "Naivara", "Thalion", "Sariel"}},
-	"dwarf":      {speed: 25, bonus: map[Ability]int{CON: 2}, names: []string{"Thorin", "Bruenna", "Dain", "Helga"}},
-	"halfling":   {speed: 25, bonus: map[Ability]int{DEX: 2}, names: []string{"Pip", "Merla", "Lyle", "Rosie"}},
-	"half-orc":   {speed: 30, bonus: map[Ability]int{STR: 2, CON: 1}, names: []string{"Grosh", "Mazka", "Krull", "Emen"}},
-	"half-elf":   {speed: 30, bonus: map[Ability]int{CHA: 2, DEX: 1}, names: []string{"Elyan", "Sella", "Caden", "Wrenna"}},
-	"tiefling":   {speed: 30, bonus: map[Ability]int{CHA: 2, INT: 1}, names: []string{"Damaia", "Kairon", "Nisha", "Zerael"}},
-	"dragonborn": {speed: 30, bonus: map[Ability]int{STR: 2, CHA: 1}, names: []string{"Rhogar", "Sora", "Balasar", "Kava"}},
-	"gnome":      {speed: 25, bonus: map[Ability]int{INT: 2}, names: []string{"Fizwick", "Nissa", "Boddy", "Ella"}},
+	"human":      {speed: 30, bonus: map[Ability]int{STR: 1, DEX: 1, CON: 1, INT: 1, WIS: 1, CHA: 1}, names: []string{"Alden", "Mira", "Rowan", "Tessa"}, languages: []string{"Common"}},
+	"elf":        {speed: 30, bonus: map[Ability]int{DEX: 2}, names: []string{"Aelar", "Naivara", "Thalion", "Sariel"}, languages: []string{"Common", "Elvish"}},
+	"dwarf":      {speed: 25, bonus: map[Ability]int{CON: 2}, names: []string{"Thorin", "Bruenna", "Dain", "Helga"}, languages: []string{"Common", "Dwarvish"}},
+	"halfling":   {speed: 25, bonus: map[Ability]int{DEX: 2}, names: []string{"Pip", "Merla", "Lyle", "Rosie"}, languages: []string{"Common", "Halfling"}},
+	"half-orc":   {speed: 30, bonus: map[Ability]int{STR: 2, CON: 1}, names: []string{"Grosh", "Mazka", "Krull", "Emen"}, languages: []string{"Common", "Orc"}},
+	"half-elf":   {speed: 30, bonus: map[Ability]int{CHA: 2, DEX: 1}, names: []string{"Elyan", "Sella", "Caden", "Wrenna"}, languages: []string{"Common", "Elvish"}},
+	"tiefling":   {speed: 30, bonus: map[Ability]int{CHA: 2, INT: 1}, names: []string{"Damaia", "Kairon", "Nisha", "Zerael"}, languages: []string{"Common", "Infernal"}},
+	"dragonborn": {speed: 30, bonus: map[Ability]int{STR: 2, CHA: 1}, names: []string{"Rhogar", "Sora", "Balasar", "Kava"}, languages: []string{"Common", "Draconic"}},
+	"gnome":      {speed: 25, bonus: map[Ability]int{INT: 2}, names: []string{"Fizwick", "Nissa", "Boddy", "Ella"}, languages: []string{"Common", "Gnomish"}},
 }
 
+// casterKind classifies a class's spell-slot progression.
+type casterKind int
+
+const (
+	casterNone casterKind = iota
+	casterFull            // wizard, cleric, druid, bard, sorcerer
+	casterHalf            // paladin, ranger (spells from level 2)
+	casterPact            // warlock (Pact Magic)
+)
+
 type classInfo struct {
-	hitDie   int
-	priority [6]Ability // ability assignment order, most important first
-	acBase   int        // starting AC base (typical armor for the class)
-	acDexCap int        // max DEX mod added to AC; -1 = no cap (light/no armor)
-	skills   []string   // default proficient skills
-	gold     int        // starting gold pieces
+	hitDie      int
+	priority    [6]Ability // ability assignment order, most important first
+	acBase      int        // starting AC base (typical armor for the class)
+	acDexCap    int        // max DEX mod added to AC; -1 = no cap (light/no armor)
+	skills      []string   // default proficient skills
+	gold        int        // starting gold pieces
+	saves       [2]Ability // the two proficient saving throws
+	caster      casterKind // spell-slot progression
+	castAbility Ability    // spellcasting ability (when a caster)
 }
 
 // Classes is the list of supported classes (also used to populate UI choosers).
 var Classes = []string{"Fighter", "Wizard", "Rogue", "Cleric", "Ranger", "Barbarian", "Bard", "Druid", "Paladin", "Sorcerer", "Warlock", "Monk"}
 
 var classTable = map[string]classInfo{
-	"fighter":   {hitDie: 10, priority: [6]Ability{STR, CON, DEX, WIS, CHA, INT}, acBase: 16, acDexCap: 0, skills: []string{"Athletics", "Perception"}, gold: 75},
-	"barbarian": {hitDie: 12, priority: [6]Ability{STR, CON, DEX, WIS, CHA, INT}, acBase: 14, acDexCap: 2, skills: []string{"Athletics", "Survival"}, gold: 50},
-	"paladin":   {hitDie: 10, priority: [6]Ability{STR, CHA, CON, WIS, DEX, INT}, acBase: 16, acDexCap: 0, skills: []string{"Athletics", "Religion"}, gold: 75},
-	"ranger":    {hitDie: 10, priority: [6]Ability{DEX, WIS, CON, STR, INT, CHA}, acBase: 14, acDexCap: 2, skills: []string{"Survival", "Stealth"}, gold: 50},
-	"cleric":    {hitDie: 8, priority: [6]Ability{WIS, CON, STR, CHA, DEX, INT}, acBase: 14, acDexCap: 2, skills: []string{"Medicine", "Insight"}, gold: 60},
-	"druid":     {hitDie: 8, priority: [6]Ability{WIS, CON, DEX, INT, CHA, STR}, acBase: 13, acDexCap: 2, skills: []string{"Nature", "Perception"}, gold: 40},
-	"monk":      {hitDie: 8, priority: [6]Ability{DEX, WIS, CON, STR, INT, CHA}, acBase: 11, acDexCap: -1, skills: []string{"Acrobatics", "Stealth"}, gold: 20},
-	"rogue":     {hitDie: 8, priority: [6]Ability{DEX, CHA, CON, INT, WIS, STR}, acBase: 11, acDexCap: -1, skills: []string{"Stealth", "Sleight of Hand"}, gold: 40},
-	"bard":      {hitDie: 8, priority: [6]Ability{CHA, DEX, CON, WIS, INT, STR}, acBase: 11, acDexCap: -1, skills: []string{"Persuasion", "Performance"}, gold: 50},
-	"warlock":   {hitDie: 8, priority: [6]Ability{CHA, CON, DEX, WIS, INT, STR}, acBase: 11, acDexCap: -1, skills: []string{"Arcana", "Deception"}, gold: 40},
-	"sorcerer":  {hitDie: 6, priority: [6]Ability{CHA, CON, DEX, WIS, INT, STR}, acBase: 10, acDexCap: -1, skills: []string{"Arcana", "Persuasion"}, gold: 30},
-	"wizard":    {hitDie: 6, priority: [6]Ability{INT, CON, DEX, WIS, CHA, STR}, acBase: 10, acDexCap: -1, skills: []string{"Arcana", "Investigation"}, gold: 30},
+	"fighter":   {hitDie: 10, priority: [6]Ability{STR, CON, DEX, WIS, CHA, INT}, acBase: 16, acDexCap: 0, skills: []string{"Athletics", "Perception"}, gold: 75, saves: [2]Ability{STR, CON}},
+	"barbarian": {hitDie: 12, priority: [6]Ability{STR, CON, DEX, WIS, CHA, INT}, acBase: 14, acDexCap: 2, skills: []string{"Athletics", "Survival"}, gold: 50, saves: [2]Ability{STR, CON}},
+	"paladin":   {hitDie: 10, priority: [6]Ability{STR, CHA, CON, WIS, DEX, INT}, acBase: 16, acDexCap: 0, skills: []string{"Athletics", "Religion"}, gold: 75, saves: [2]Ability{WIS, CHA}, caster: casterHalf, castAbility: CHA},
+	"ranger":    {hitDie: 10, priority: [6]Ability{DEX, WIS, CON, STR, INT, CHA}, acBase: 14, acDexCap: 2, skills: []string{"Survival", "Stealth"}, gold: 50, saves: [2]Ability{STR, DEX}, caster: casterHalf, castAbility: WIS},
+	"cleric":    {hitDie: 8, priority: [6]Ability{WIS, CON, STR, CHA, DEX, INT}, acBase: 14, acDexCap: 2, skills: []string{"Medicine", "Insight"}, gold: 60, saves: [2]Ability{WIS, CHA}, caster: casterFull, castAbility: WIS},
+	"druid":     {hitDie: 8, priority: [6]Ability{WIS, CON, DEX, INT, CHA, STR}, acBase: 13, acDexCap: 2, skills: []string{"Nature", "Perception"}, gold: 40, saves: [2]Ability{INT, WIS}, caster: casterFull, castAbility: WIS},
+	"monk":      {hitDie: 8, priority: [6]Ability{DEX, WIS, CON, STR, INT, CHA}, acBase: 11, acDexCap: -1, skills: []string{"Acrobatics", "Stealth"}, gold: 20, saves: [2]Ability{STR, DEX}},
+	"rogue":     {hitDie: 8, priority: [6]Ability{DEX, CHA, CON, INT, WIS, STR}, acBase: 11, acDexCap: -1, skills: []string{"Stealth", "Sleight of Hand"}, gold: 40, saves: [2]Ability{DEX, INT}},
+	"bard":      {hitDie: 8, priority: [6]Ability{CHA, DEX, CON, WIS, INT, STR}, acBase: 11, acDexCap: -1, skills: []string{"Persuasion", "Performance"}, gold: 50, saves: [2]Ability{DEX, CHA}, caster: casterFull, castAbility: CHA},
+	"warlock":   {hitDie: 8, priority: [6]Ability{CHA, CON, DEX, WIS, INT, STR}, acBase: 11, acDexCap: -1, skills: []string{"Arcana", "Deception"}, gold: 40, saves: [2]Ability{WIS, CHA}, caster: casterPact, castAbility: CHA},
+	"sorcerer":  {hitDie: 6, priority: [6]Ability{CHA, CON, DEX, WIS, INT, STR}, acBase: 10, acDexCap: -1, skills: []string{"Arcana", "Persuasion"}, gold: 30, saves: [2]Ability{CON, CHA}, caster: casterFull, castAbility: CHA},
+	"wizard":    {hitDie: 6, priority: [6]Ability{INT, CON, DEX, WIS, CHA, STR}, acBase: 10, acDexCap: -1, skills: []string{"Arcana", "Investigation"}, gold: 30, saves: [2]Ability{INT, WIS}, caster: casterFull, castAbility: INT},
+}
+
+// fullCasterSlots[level] gives the spell slots for spell levels 1..9 of a full
+// caster (wizard/cleric/druid/bard/sorcerer). Index 0 is unused.
+var fullCasterSlots = [21][9]int{
+	{}, {2}, {3}, {4, 2}, {4, 3}, {4, 3, 2}, {4, 3, 3}, {4, 3, 3, 1}, {4, 3, 3, 2},
+	{4, 3, 3, 3, 1}, {4, 3, 3, 3, 2}, {4, 3, 3, 3, 2, 1}, {4, 3, 3, 3, 2, 1},
+	{4, 3, 3, 3, 2, 1, 1}, {4, 3, 3, 3, 2, 1, 1}, {4, 3, 3, 3, 2, 1, 1, 1},
+	{4, 3, 3, 3, 2, 1, 1, 1}, {4, 3, 3, 3, 2, 1, 1, 1, 1}, {4, 3, 3, 3, 3, 1, 1, 1, 1},
+	{4, 3, 3, 3, 3, 2, 1, 1, 1}, {4, 3, 3, 3, 3, 2, 2, 1, 1},
+}
+
+// halfCasterSlots[level] gives the slots of a half caster (paladin/ranger), whose
+// spellcasting begins at level 2.
+var halfCasterSlots = [21][9]int{
+	{}, {}, {2}, {3}, {3}, {4, 2}, {4, 2}, {4, 3}, {4, 3},
+	{4, 3, 2}, {4, 3, 2}, {4, 3, 3}, {4, 3, 3}, {4, 3, 3, 1}, {4, 3, 3, 1},
+	{4, 3, 3, 2}, {4, 3, 3, 2}, {4, 3, 3, 3, 1}, {4, 3, 3, 3, 1},
+	{4, 3, 3, 3, 2}, {4, 3, 3, 3, 2},
+}
+
+// warlockPact returns the Pact Magic slot count and (single) slot level for a
+// warlock of the given level.
+func warlockPact(level int) (count, slotLevel int) {
+	switch {
+	case level <= 0:
+		return 0, 0
+	case level == 1:
+		return 1, 1
+	case level == 2:
+		return 2, 1
+	case level <= 4:
+		return 2, 2
+	case level <= 6:
+		return 2, 3
+	case level <= 8:
+		return 2, 4
+	case level <= 10:
+		return 2, 5
+	case level <= 16:
+		return 3, 5
+	default:
+		return 4, 5
+	}
+}
+
+// buildSpellcasting constructs the spellcasting block for a caster class at a
+// level, populating slots and the derived save DC / attack bonus. Returns nil for
+// non-casters. The spellbook (known spells) is left empty for the user/AI to fill.
+func buildSpellcasting(ci classInfo, level, profBonus int, ab AbilityScores) *Spellcasting {
+	if ci.caster == casterNone {
+		return nil
+	}
+	if level > 20 {
+		level = 20
+	}
+	var slots SpellSlots
+	switch ci.caster {
+	case casterFull:
+		slots.Max = fullCasterSlots[level]
+	case casterHalf:
+		slots.Max = halfCasterSlots[level]
+	case casterPact:
+		if count, sl := warlockPact(level); count > 0 {
+			if i, ok := slotIndex(sl); ok {
+				slots.Max[i] = count
+			}
+		}
+	}
+	if slots.Max == ([9]int{}) {
+		// A half caster below level 2 has no slots yet; still expose the block so
+		// the DC/attack and future spells have a home.
+		slots = SpellSlots{}
+	}
+	mod := Modifier(ab.Get(ci.castAbility))
+	return &Spellcasting{
+		Ability:     ci.castAbility,
+		SaveDC:      8 + profBonus + mod,
+		AttackBonus: profBonus + mod,
+		Slots:       slots,
+	}
 }
 
 // NormalizeRace maps free-form input to a supported race name (default Human).
@@ -164,6 +259,14 @@ func GenerateCharacter(name, race, class string, level int) *Character {
 			}
 		}
 	}
+
+	// Saving-throw proficiencies (the class's two), starting languages (from the
+	// race) and, for casters, the spellcasting block with slots and DC/attack.
+	c.SavingThrows = []Ability{ci.saves[0], ci.saves[1]}
+	if len(ri.languages) > 0 {
+		c.Languages = append([]string(nil), ri.languages...)
+	}
+	c.Spellcasting = buildSpellcasting(ci, level, c.ProficiencyBonus, c.Abilities)
 
 	if c.Name == "" {
 		c.Name = sampleName(ri, className)

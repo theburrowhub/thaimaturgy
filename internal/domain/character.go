@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"strings"
 )
 
 type Ability int
@@ -134,6 +135,72 @@ const (
 	ConditionUnconscious   Condition = "Unconscious"
 )
 
+// Trait is a class/racial/background feature or trait on a character sheet
+// (named CharacterTrait-style to avoid colliding with a room's Feature).
+type Trait struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Source      string `json:"source,omitempty"` // e.g. Race, Class, Background, Feat
+}
+
+// Spell is an entry in a character's spellbook. Level 0 is a cantrip.
+type Spell struct {
+	Name        string `json:"name"`
+	Level       int    `json:"level"`
+	Prepared    bool   `json:"prepared,omitempty"`
+	School      string `json:"school,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// SpellSlots tracks max and used spell slots for spell levels 1..9. Index i holds
+// the slots of spell level i+1 (index 0 = 1st-level slots); cantrips use no slots.
+type SpellSlots struct {
+	Max  [9]int `json:"max"`
+	Used [9]int `json:"used"`
+}
+
+// slotIndex converts a 1..9 spell level to a slice index, reporting validity.
+func slotIndex(level int) (int, bool) {
+	if level < 1 || level > 9 {
+		return 0, false
+	}
+	return level - 1, true
+}
+
+// MaxAt returns the maximum slots at a spell level (0 for out-of-range levels).
+func (s *SpellSlots) MaxAt(level int) int {
+	if i, ok := slotIndex(level); ok {
+		return s.Max[i]
+	}
+	return 0
+}
+
+// RemainingAt returns the unspent slots at a spell level, clamped to [0, max].
+func (s *SpellSlots) RemainingAt(level int) int {
+	i, ok := slotIndex(level)
+	if !ok {
+		return 0
+	}
+	if r := s.Max[i] - s.Used[i]; r > 0 {
+		return r
+	}
+	return 0
+}
+
+// Spellcasting is the spellcasting block of a caster's sheet. It is a pointer on
+// Character (nil for non-casters), so martial characters and sessions saved
+// before #23 keep an unchanged, compact sheet.
+type Spellcasting struct {
+	Ability     Ability    `json:"ability"` // the spellcasting ability (INT/WIS/CHA)
+	SaveDC      int        `json:"save_dc,omitempty"`
+	AttackBonus int        `json:"attack_bonus,omitempty"`
+	Slots       SpellSlots `json:"slots"`
+	Spells      []Spell    `json:"spells,omitempty"` // spellbook: known / prepared
+}
+
+// RestoreAllSlots recovers every spent spell slot (a long rest).
+func (sc *Spellcasting) RestoreAllSlots() { sc.Slots.Used = [9]int{} }
+
 type Character struct {
 	Name       string `json:"name"`
 	Race       string `json:"race"`
@@ -156,11 +223,21 @@ type Character struct {
 	Initiative int `json:"initiative"`
 	Speed      int `json:"speed"`
 
-	ProficiencyBonus int `json:"proficiency_bonus"`
+	ProficiencyBonus int  `json:"proficiency_bonus"`
+	Inspiration      bool `json:"inspiration,omitempty"`
 
-	Skills     []Skill         `json:"skills"`
-	Inventory  []InventoryItem `json:"inventory"`
-	Conditions []Condition     `json:"conditions"`
+	// SavingThrows lists the abilities the character is proficient in for saves.
+	SavingThrows []Ability `json:"saving_throws,omitempty"`
+
+	Skills        []Skill         `json:"skills"`
+	Inventory     []InventoryItem `json:"inventory"`
+	Conditions    []Condition     `json:"conditions"`
+	Languages     []string        `json:"languages,omitempty"`
+	Proficiencies []string        `json:"proficiencies,omitempty"` // armor / weapons / tools
+	Features      []Trait         `json:"features,omitempty"`      // racial / class / background traits
+
+	// Spellcasting is nil for non-casters (backward compatible).
+	Spellcasting *Spellcasting `json:"spellcasting,omitempty"`
 
 	Gold  int    `json:"gold"`
 	XP    int    `json:"xp"`
@@ -213,6 +290,164 @@ func (c *Character) SkillBonus(skillName string) int {
 		}
 	}
 	return 0
+}
+
+// SaveProficient reports whether the character is proficient in an ability's
+// saving throw.
+func (c *Character) SaveProficient(a Ability) bool {
+	for _, s := range c.SavingThrows {
+		if s == a {
+			return true
+		}
+	}
+	return false
+}
+
+// SaveBonus is the saving-throw bonus for an ability: the ability modifier plus
+// the proficiency bonus when proficient.
+func (c *Character) SaveBonus(a Ability) int {
+	bonus := Modifier(c.Abilities.Get(a))
+	if c.SaveProficient(a) {
+		bonus += c.ProficiencyBonus
+	}
+	return bonus
+}
+
+// SetSaveProficient adds or removes a saving-throw proficiency.
+func (c *Character) SetSaveProficient(a Ability, prof bool) {
+	if prof {
+		if !c.SaveProficient(a) {
+			c.SavingThrows = append(c.SavingThrows, a)
+		}
+		return
+	}
+	for i, s := range c.SavingThrows {
+		if s == a {
+			c.SavingThrows = append(c.SavingThrows[:i], c.SavingThrows[i+1:]...)
+			return
+		}
+	}
+}
+
+// SpellSlotsRemaining returns the unspent slots at a spell level (0 for a
+// non-caster or an invalid level).
+func (c *Character) SpellSlotsRemaining(level int) int {
+	if c.Spellcasting == nil {
+		return 0
+	}
+	return c.Spellcasting.Slots.RemainingAt(level)
+}
+
+// UseSpellSlot spends one slot at the given spell level, returning false when the
+// character is not a caster, the level is invalid, or no slot remains.
+func (c *Character) UseSpellSlot(level int) bool {
+	if c.Spellcasting == nil {
+		return false
+	}
+	i, ok := slotIndex(level)
+	if !ok || c.Spellcasting.Slots.RemainingAt(level) <= 0 {
+		return false
+	}
+	c.Spellcasting.Slots.Used[i]++
+	return true
+}
+
+// RestoreSpellSlot recovers one spent slot at a spell level (a short-rest feature
+// or an undo); it never drops Used below zero.
+func (c *Character) RestoreSpellSlot(level int) {
+	if c.Spellcasting == nil {
+		return
+	}
+	if i, ok := slotIndex(level); ok && c.Spellcasting.Slots.Used[i] > 0 {
+		c.Spellcasting.Slots.Used[i]--
+	}
+}
+
+// AddSpell adds (or, by name, updates) a spell in the spellbook, creating the
+// spellcasting block if needed so a previously-martial character can learn magic.
+func (c *Character) AddSpell(sp Spell) {
+	if c.Spellcasting == nil {
+		c.Spellcasting = &Spellcasting{Ability: INT}
+	}
+	for i := range c.Spellcasting.Spells {
+		if strings.EqualFold(c.Spellcasting.Spells[i].Name, sp.Name) {
+			c.Spellcasting.Spells[i] = sp
+			return
+		}
+	}
+	c.Spellcasting.Spells = append(c.Spellcasting.Spells, sp)
+}
+
+// RemoveSpell drops a spell from the spellbook by name (case-insensitive).
+func (c *Character) RemoveSpell(name string) bool {
+	if c.Spellcasting == nil {
+		return false
+	}
+	for i, sp := range c.Spellcasting.Spells {
+		if strings.EqualFold(sp.Name, name) {
+			c.Spellcasting.Spells = append(c.Spellcasting.Spells[:i], c.Spellcasting.Spells[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// SetSpellPrepared toggles a spell's prepared state by name (case-insensitive).
+func (c *Character) SetSpellPrepared(name string, prepared bool) bool {
+	if c.Spellcasting == nil {
+		return false
+	}
+	for i := range c.Spellcasting.Spells {
+		if strings.EqualFold(c.Spellcasting.Spells[i].Name, name) {
+			c.Spellcasting.Spells[i].Prepared = prepared
+			return true
+		}
+	}
+	return false
+}
+
+// Normalize clamps the sheet to a self-consistent state after user editing, so an
+// out-of-range value entered by hand can never persist: HP within [0, MaxHP] (a
+// positive MaxHP), non-negative temp HP / gold / XP, hit dice used within
+// [0, max], item quantities at least 1, and spell slots used within [0, max].
+func (c *Character) Normalize() {
+	if c.MaxHP < 1 {
+		c.MaxHP = 1
+	}
+	c.SetHP(c.CurrentHP)
+	if c.TempHP < 0 {
+		c.TempHP = 0
+	}
+	if c.Gold < 0 {
+		c.Gold = 0
+	}
+	if c.XP < 0 {
+		c.XP = 0
+	}
+	if c.Level < 1 {
+		c.Level = 1
+	}
+	if c.HitDiceUsed < 0 {
+		c.HitDiceUsed = 0
+	}
+	if c.HitDiceUsed > c.HitDiceMax() {
+		c.HitDiceUsed = c.HitDiceMax()
+	}
+	for i := range c.Inventory {
+		if c.Inventory[i].Quantity < 1 {
+			c.Inventory[i].Quantity = 1
+		}
+	}
+	if c.Spellcasting != nil {
+		for i := range c.Spellcasting.Slots.Used {
+			if c.Spellcasting.Slots.Used[i] < 0 {
+				c.Spellcasting.Slots.Used[i] = 0
+			}
+			if c.Spellcasting.Slots.Used[i] > c.Spellcasting.Slots.Max[i] {
+				c.Spellcasting.Slots.Used[i] = c.Spellcasting.Slots.Max[i]
+			}
+		}
+	}
 }
 
 func (c *Character) AddItem(item InventoryItem) {
@@ -305,8 +540,7 @@ func (c *Character) HitDiceRemaining() int {
 }
 
 // LongRest restores the character after a long rest: HP to max, temp HP cleared,
-// and up to half the total hit dice recovered (D&D 5e). Spell slots and other
-// long-rest resources will be restored here once implemented (see #23).
+// up to half the total hit dice recovered, and all spell slots restored (D&D 5e).
 func (c *Character) LongRest() {
 	c.CurrentHP = c.MaxHP
 	c.TempHP = 0
@@ -316,6 +550,9 @@ func (c *Character) LongRest() {
 	}
 	if c.HitDiceUsed -= recover; c.HitDiceUsed < 0 {
 		c.HitDiceUsed = 0
+	}
+	if c.Spellcasting != nil {
+		c.Spellcasting.RestoreAllSlots()
 	}
 }
 
