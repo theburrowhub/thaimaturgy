@@ -283,6 +283,15 @@ func (s *SessionState) touch() { s.UpdatedAt = time.Now() }
 
 // SetLocation records the party's current zone and room, marking the room
 // visited and logging the move.
+// Location returns the party's current zone and room ids under the lock, for
+// safe reads from goroutines that run concurrently with SetLocation (e.g. the
+// Telegram command handler while an oracle turn resolves).
+func (s *SessionState) Location() (zone, room string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.CurrentZone, s.CurrentRoom
+}
+
 func (s *SessionState) SetLocation(zoneID, roomID, roomName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

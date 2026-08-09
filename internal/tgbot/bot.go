@@ -670,7 +670,10 @@ func (b *Bot) reply(m *tgbotapi.Message, text string) { b.send(m.Chat.ID, text) 
 // sendZoneMap sends the current zone's map image to the chat (issue #24). Only
 // the party's current zone is exposed, to avoid revealing unexplored areas.
 func (b *Bot) sendZoneMap(m *tgbotapi.Message) {
-	zone := b.session.Adventure.Zone(b.session.State.CurrentZone)
+	// Read the location under the session mutex — a /dm turn may be writing it in
+	// a background goroutine (Adventure itself is immutable, safe to read).
+	zoneID, _ := b.session.State.Location()
+	zone := b.session.Adventure.Zone(zoneID)
 	if zone == nil {
 		b.reply(m, "The party isn't in a known zone yet.")
 		return
