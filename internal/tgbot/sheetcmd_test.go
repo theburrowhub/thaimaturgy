@@ -58,8 +58,12 @@ func TestParseItemArg(t *testing.T) {
 		{"remove Torch x3", "remove", "Torch", 3, true},
 		{"rm Shield", "remove", "Shield", 1, true},
 		{"drop Potion", "remove", "Potion", 1, true},
-		{"add", "", "", 0, false},        // no name
-		{"give Sword", "", "", 0, false}, // unknown action
+		{"add Bag x of holding", "add", "Bag x of holding", 1, true}, // non-numeric suffix stays in name
+		{"add", "", "", 0, false},                                    // no name
+		{"give Sword", "", "", 0, false},                             // unknown action
+		{"add Torch x0", "", "", 0, false},                           // non-positive quantity rejected
+		{"add Torch x-2", "", "", 0, false},
+		{"add Torch x99999", "", "", 0, false}, // above maxItemQty
 		{"", "", "", 0, false},
 	}
 	for _, c := range cases {

@@ -31,5 +31,13 @@ DM adjusts sheets through the AI's tools; those paths are unchanged.
 - The underlying `Character` mutators clamp to valid ranges (HP within
   `[0, MaxHP]`, gold ≥ 0, XP only increases), so a command can't drive the sheet
   into an invalid state.
+- Numeric inputs are bounded (HP/gold/XP amounts to ±1,000,000; item quantities
+  to 10,000) so a huge value can't overflow the arithmetic and wrap a stat
+  negative; an unparsable/non-positive `xN` quantity is rejected rather than
+  folded into the item name.
+- A removal reports the quantity **actually** removed (bounded by what's carried),
+  so the DM-facing log never overstates a drop.
+- If persisting the change to disk fails, the reply says so explicitly (the edit
+  is in memory but was not saved) instead of reporting a false success.
 - Access to the bot itself is still gated by the chat-id / immutable-user-id
   allow-list (#34).

@@ -2,12 +2,21 @@ package tgbot
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+)
+
+const (
+	// maxSheetDelta bounds an HP/gold/XP amount so the subsequent arithmetic on the
+	// character can never overflow (a player can't wrap HP negative with a huge
+	// heal). maxItemQty bounds a single inventory quantity for the same reason.
+	maxSheetDelta = 1_000_000
+	maxItemQty    = 10_000
 )
 
 // This file implements editing a player character's sheet from Telegram (#31).
@@ -65,12 +74,25 @@ func (b *Bot) withOwnCharacter(m *tgbotapi.Message, fn func(*domain.Character)) 
 }
 
 // recordSheetChange logs a sheet edit to the timeline (visible to the DM and in
-// /log), persists, and mirrors it to the host UI.
-func (b *Bot) recordSheetChange(name, desc string) {
+// /log), persists it, and replies. If persistence fails the reply says so
+// explicitly (the mutation is already in memory but was NOT written to disk), so
+// a full/unwritable disk never produces a false success.
+func (b *Bot) recordSheetChange(m *tgbotapi.Message, name, desc, reply string) {
 	b.session.State.AppendLog(domain.LogEntry{Type: domain.LogParty, Message: name + " " + desc})
-	b.save()
+	b.saveMu.Lock()
+	err := b.store.SaveSession(b.session.State)
+	b.saveMu.Unlock()
+	if err != nil {
+		log.Printf("save: %v", err)
+		b.reply(m, "⚠ "+name+" "+desc+" — applied in memory but NOT saved to disk ("+err.Error()+"). It may be lost on restart.")
+		return
+	}
 	b.event(name + " " + desc)
+	b.reply(m, reply)
 }
+
+// deltaInRange reports whether an HP/gold/XP amount is within safe bounds.
+func deltaInRange(n int) bool { return n >= -maxSheetDelta && n <= maxSheetDelta }
 
 // parseDelta parses an amount that may be a set ("=10") or a signed delta
 // ("+3", "-5", "7"), returning the value and whether it was a set.
@@ -90,6 +112,10 @@ func (b *Bot) editHP(m *tgbotapi.Message, arg string) {
 		b.reply(m, "Usage: /hp -5 (damage), /hp +3 (heal), /hp =10 (set current HP)")
 		return
 	}
+	if !deltaInRange(n) {
+		b.reply(m, fmt.Sprintf("HP amount out of range (use at most ±%d).", maxSheetDelta))
+		return
+	}
 	var desc string
 	name, ok := b.withOwnCharacter(m, func(c *domain.Character) {
 		switch {
@@ -107,8 +133,7 @@ func (b *Bot) editHP(m *tgbotapi.Message, arg string) {
 	if !ok {
 		return
 	}
-	b.recordSheetChange(name, desc)
-	b.reply(m, "❤️ "+name+": "+desc)
+	b.recordSheetChange(m, name, desc, "❤️ "+name+": "+desc)
 }
 
 func (b *Bot) editCondition(m *tgbotapi.Message, arg string, add bool) {
@@ -134,8 +159,7 @@ func (b *Bot) editCondition(m *tgbotapi.Message, arg string, add bool) {
 	if !done {
 		return
 	}
-	b.recordSheetChange(name, desc)
-	b.reply(m, "🩸 "+name+" "+desc)
+	b.recordSheetChange(m, name, desc, "🩸 "+name+" "+desc)
 }
 
 func (b *Bot) editGold(m *tgbotapi.Message, arg string) {
@@ -144,38 +168,49 @@ func (b *Bot) editGold(m *tgbotapi.Message, arg string) {
 		b.reply(m, "Usage: /gold +50, /gold -10, or /gold =100 (set)")
 		return
 	}
+	if !deltaInRange(n) {
+		b.reply(m, fmt.Sprintf("Gold amount out of range (use at most ±%d).", maxSheetDelta))
+		return
+	}
 	var desc string
 	name, ok := b.withOwnCharacter(m, func(c *domain.Character) {
 		if set {
 			c.SetGold(n)
 		} else {
-			c.SetGold(c.Gold + n)
+			// Clamp the pre-sum to avoid int overflow; SetGold clamps negatives.
+			sum := c.Gold + n
+			if (n > 0 && sum < c.Gold) || (n < 0 && sum > c.Gold) {
+				sum = c.Gold // overflow guard (unreachable given deltaInRange, defensive)
+			}
+			c.SetGold(sum)
 		}
 		desc = fmt.Sprintf("gold is now %d", c.Gold)
 	})
 	if !ok {
 		return
 	}
-	b.recordSheetChange(name, desc)
-	b.reply(m, "💰 "+name+": "+desc)
+	b.recordSheetChange(m, name, desc, "💰 "+name+": "+desc)
 }
 
 func (b *Bot) editXP(m *tgbotapi.Message, arg string) {
 	n, err := strconv.Atoi(strings.TrimSpace(arg))
-	if err != nil || n <= 0 {
-		b.reply(m, "Usage: /xp 150 — award experience (positive)")
+	if err != nil || n <= 0 || n > maxSheetDelta {
+		b.reply(m, fmt.Sprintf("Usage: /xp 150 — award experience (1..%d)", maxSheetDelta))
 		return
 	}
 	var desc string
 	name, ok := b.withOwnCharacter(m, func(c *domain.Character) {
+		before := c.XP
 		c.AwardXP(n)
+		if c.XP < before {
+			c.XP = before // overflow guard (unreachable given the bound, defensive)
+		}
 		desc = fmt.Sprintf("gained %d XP → %d total", n, c.XP)
 	})
 	if !ok {
 		return
 	}
-	b.recordSheetChange(name, desc)
-	b.reply(m, "✨ "+name+": "+desc)
+	b.recordSheetChange(m, name, desc, "✨ "+name+": "+desc)
 }
 
 // parseItemArg parses "add <name> [xN]" / "remove <name> [xN]" into a normalized
@@ -197,7 +232,15 @@ func parseItemArg(arg string) (action, itemName string, qty int, ok bool) {
 	rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(arg), fields[0]))
 	qty = 1
 	if i := strings.LastIndex(rest, " x"); i >= 0 {
-		if v, err := strconv.Atoi(strings.TrimSpace(rest[i+2:])); err == nil && v > 0 {
+		suffix := strings.TrimSpace(rest[i+2:])
+		if v, err := strconv.Atoi(suffix); err == nil {
+			// A numeric "xN" suffix is a quantity: it must be positive and bounded,
+			// else the whole command is rejected (e.g. "x0" must not fall through and
+			// be kept as part of the item name). A non-numeric suffix (e.g.
+			// "x of holding") is left as part of the name.
+			if v < 1 || v > maxItemQty {
+				return "", "", 0, false
+			}
 			qty = v
 			rest = strings.TrimSpace(rest[:i])
 		}
@@ -223,12 +266,28 @@ func (b *Bot) editItem(m *tgbotapi.Message, arg string) {
 			c.AddItem(domain.InventoryItem{Name: itemName, Quantity: qty})
 			desc = fmt.Sprintf("picked up %s x%d", itemName, qty)
 			applied = true
-		} else {
-			applied = c.RemoveItem(itemName, qty)
-			if applied {
-				desc = fmt.Sprintf("dropped %s x%d", itemName, qty)
+			return
+		}
+		// Removal: report the quantity ACTUALLY removed (bounded by what's carried),
+		// so the DM-facing log never claims more was dropped than existed. RemoveItem
+		// matches the name exactly, so use the same match to read the current stack.
+		have := 0
+		for _, it := range c.Inventory {
+			if it.Name == itemName {
+				have = it.Quantity
+				break
 			}
 		}
+		if have == 0 {
+			return
+		}
+		removed := qty
+		if removed > have {
+			removed = have
+		}
+		c.RemoveItem(itemName, qty)
+		desc = fmt.Sprintf("dropped %s x%d", itemName, removed)
+		applied = true
 	})
 	if !done {
 		return
@@ -237,8 +296,7 @@ func (b *Bot) editItem(m *tgbotapi.Message, arg string) {
 		b.reply(m, fmt.Sprintf("%s isn't carrying %q.", name, itemName))
 		return
 	}
-	b.recordSheetChange(name, desc)
-	b.reply(m, "🎒 "+name+": "+desc)
+	b.recordSheetChange(m, name, desc, "🎒 "+name+": "+desc)
 }
 
 // editNote sets the character's personal sheet notes (distinct from /note, which
@@ -255,6 +313,5 @@ func (b *Bot) editNote(m *tgbotapi.Message, arg string) {
 	if !ok {
 		return
 	}
-	b.recordSheetChange(name, "updated their character notes")
-	b.reply(m, "📝 "+name+": notes updated.")
+	b.recordSheetChange(m, name, "updated their character notes", "📝 "+name+": notes updated.")
 }
