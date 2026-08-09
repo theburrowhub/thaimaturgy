@@ -314,13 +314,33 @@ func FormatCharacter(c *domain.Character) string {
 	if c.TempHP > 0 {
 		fmt.Fprintf(&sb, " (+%d temp)", c.TempHP)
 	}
-	fmt.Fprintf(&sb, " | AC: %d | Speed: %d | Prof: +%d\n", c.AC, c.Speed, c.ProficiencyBonus)
+	fmt.Fprintf(&sb, " | AC: %d | Speed: %d | Prof: +%d", c.AC, c.Speed, c.ProficiencyBonus)
+	if c.Inspiration {
+		sb.WriteString(" | Inspiration")
+	}
+	sb.WriteString("\n")
 	a := c.Abilities
 	fmt.Fprintf(&sb, "STR %d (%s)  DEX %d (%s)  CON %d (%s)  INT %d (%s)  WIS %d (%s)  CHA %d (%s)\n",
 		a.STR, domain.ModifierString(a.STR), a.DEX, domain.ModifierString(a.DEX),
 		a.CON, domain.ModifierString(a.CON), a.INT, domain.ModifierString(a.INT),
 		a.WIS, domain.ModifierString(a.WIS), a.CHA, domain.ModifierString(a.CHA))
-	fmt.Fprintf(&sb, "Gold: %d | XP: %d\n", c.Gold, c.XP)
+	// Saving throws (mark the proficient ones with a •).
+	saves := make([]string, 0, 6)
+	for _, ab := range []domain.Ability{domain.STR, domain.DEX, domain.CON, domain.INT, domain.WIS, domain.CHA} {
+		mark := ""
+		if c.SaveProficient(ab) {
+			mark = "•"
+		}
+		saves = append(saves, fmt.Sprintf("%s%s %s", mark, ab, signed(c.SaveBonus(ab))))
+	}
+	sb.WriteString("Saves: " + strings.Join(saves, "  ") + "\n")
+	fmt.Fprintf(&sb, "Gold: %d | XP: %d | Hit dice: %d/%d\n", c.Gold, c.XP, c.HitDiceRemaining(), c.HitDiceMax())
+	if len(c.Languages) > 0 {
+		sb.WriteString("Languages: " + strings.Join(c.Languages, ", ") + "\n")
+	}
+	if len(c.Proficiencies) > 0 {
+		sb.WriteString("Proficiencies: " + strings.Join(c.Proficiencies, ", ") + "\n")
+	}
 	if len(c.Conditions) > 0 {
 		conds := make([]string, len(c.Conditions))
 		for i, cd := range c.Conditions {
@@ -342,8 +362,50 @@ func FormatCharacter(c *domain.Character) string {
 		}
 		sb.WriteString("Inventory: " + strings.Join(items, ", ") + "\n")
 	}
+	if sc := c.Spellcasting; sc != nil {
+		fmt.Fprintf(&sb, "Spellcasting: %s | Save DC %d | Attack %s\n", sc.Ability, sc.SaveDC, signed(sc.AttackBonus))
+		var slots []string
+		for lvl := 1; lvl <= 9; lvl++ {
+			if m := sc.Slots.MaxAt(lvl); m > 0 {
+				slots = append(slots, fmt.Sprintf("L%d %d/%d", lvl, sc.Slots.RemainingAt(lvl), m))
+			}
+		}
+		if len(slots) > 0 {
+			sb.WriteString("Spell slots: " + strings.Join(slots, "  ") + "\n")
+		}
+		if len(sc.Spells) > 0 {
+			names := make([]string, 0, len(sc.Spells))
+			for _, sp := range sc.Spells {
+				lvl := "cantrip"
+				if sp.Level > 0 {
+					lvl = fmt.Sprintf("L%d", sp.Level)
+				}
+				tag := ""
+				if sp.Prepared {
+					tag = "*"
+				}
+				names = append(names, fmt.Sprintf("%s%s [%s]", sp.Name, tag, lvl))
+			}
+			sb.WriteString("Spells (* = prepared): " + strings.Join(names, ", ") + "\n")
+		}
+	}
+	if len(c.Features) > 0 {
+		feats := make([]string, 0, len(c.Features))
+		for _, f := range c.Features {
+			feats = append(feats, f.Name)
+		}
+		sb.WriteString("Features: " + strings.Join(feats, ", ") + "\n")
+	}
 	writeField(&sb, "Notes", c.Notes)
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+// signed formats an integer with an explicit sign (+3, -1, +0).
+func signed(n int) string {
+	if n >= 0 {
+		return fmt.Sprintf("+%d", n)
+	}
+	return fmt.Sprintf("%d", n)
 }
 
 // FormatParty renders a whole player party, one sheet per member, separated by

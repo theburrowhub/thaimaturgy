@@ -41,8 +41,29 @@ func buildPCSheet(c *domain.Character) []fyne.CanvasObject {
 		abilityBox("INT", a.INT), abilityBox("WIS", a.WIS), abilityBox("CHA", a.CHA),
 	))
 
-	objs = append(objs, widget.NewSeparator(),
-		widget.NewLabel(fmt.Sprintf("Gold: %d      XP: %d", c.Gold, c.XP)))
+	// Saving throws (proficient ones marked with •).
+	saves := make([]string, 0, 6)
+	for _, ab := range []domain.Ability{domain.STR, domain.DEX, domain.CON, domain.INT, domain.WIS, domain.CHA} {
+		mark := ""
+		if c.SaveProficient(ab) {
+			mark = "•"
+		}
+		saves = append(saves, fmt.Sprintf("%s%s %+d", mark, ab, c.SaveBonus(ab)))
+	}
+	objs = append(objs, sectionLabel("Saving throws"), wrapLabel(strings.Join(saves, "   ")))
+
+	line := fmt.Sprintf("Gold: %d      XP: %d      Hit dice: %d/%d", c.Gold, c.XP, c.HitDiceRemaining(), c.HitDiceMax())
+	if c.Inspiration {
+		line += "      ★ Inspiration"
+	}
+	objs = append(objs, widget.NewSeparator(), widget.NewLabel(line))
+
+	if len(c.Languages) > 0 {
+		objs = append(objs, sectionLabel("Languages"), wrapLabel(strings.Join(c.Languages, ", ")))
+	}
+	if len(c.Proficiencies) > 0 {
+		objs = append(objs, sectionLabel("Proficiencies"), wrapLabel(strings.Join(c.Proficiencies, ", ")))
+	}
 
 	if len(c.Conditions) > 0 {
 		conds := make([]string, len(c.Conditions))
@@ -63,6 +84,45 @@ func buildPCSheet(c *domain.Character) []fyne.CanvasObject {
 				line += " (equipped)"
 			}
 			objs = append(objs, wrapLabel(line))
+		}
+	}
+
+	if sc := c.Spellcasting; sc != nil {
+		objs = append(objs, sectionLabel("Spellcasting"),
+			wrapLabel(fmt.Sprintf("%s · Save DC %d · Attack %+d", sc.Ability, sc.SaveDC, sc.AttackBonus)))
+		var slots []string
+		for lvl := 1; lvl <= 9; lvl++ {
+			if m := sc.Slots.MaxAt(lvl); m > 0 {
+				slots = append(slots, fmt.Sprintf("L%d %d/%d", lvl, sc.Slots.RemainingAt(lvl), m))
+			}
+		}
+		if len(slots) > 0 {
+			objs = append(objs, wrapLabel("Slots: "+strings.Join(slots, "   ")))
+		}
+		for _, sp := range sc.Spells {
+			lvl := "cantrip"
+			if sp.Level > 0 {
+				lvl = fmt.Sprintf("L%d", sp.Level)
+			}
+			row := fmt.Sprintf("• %s (%s)", sp.Name, lvl)
+			if sp.Prepared {
+				row += " — prepared"
+			}
+			objs = append(objs, wrapLabel(row))
+		}
+	}
+
+	if len(c.Features) > 0 {
+		objs = append(objs, sectionLabel("Features & traits"))
+		for _, f := range c.Features {
+			row := "• " + f.Name
+			if f.Source != "" {
+				row += " (" + f.Source + ")"
+			}
+			if f.Description != "" {
+				row += ": " + f.Description
+			}
+			objs = append(objs, wrapLabel(row))
 		}
 	}
 
