@@ -12,6 +12,7 @@ package httpapi
 
 import (
 	"crypto/rand"
+	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +29,12 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
+
+// webFS holds the embedded single-page web UI (issue #36, Phase C), so the server
+// ships as one self-contained binary with no external assets.
+//
+//go:embed web
+var webFS embed.FS
 
 // maxBodyBytes bounds a JSON request body so a client can't exhaust memory.
 const maxBodyBytes = 1 << 20 // 1 MiB
@@ -79,7 +87,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/roster/{id}", s.deleteRosterCharacter)
 	mux.HandleFunc("GET /api/config", s.getConfig)
 	mux.HandleFunc("PUT /api/config", s.putConfig)
-	mux.HandleFunc("GET /", s.index)
+	mux.HandleFunc("GET /", s.static)
 
 	return s.withAuth(mux)
 }
@@ -432,13 +440,35 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
 }
 
-func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
+// static serves the embedded web UI, falling back to index.html for unknown
+// paths so client-side routing works. Unsafe paths resolve to index.html.
+func (s *Server) static(w http.ResponseWriter, r *http.Request) {
+	// Never SPA-fallback an /api path: an unknown/misspelled API route must 404 as
+	// JSON, not return the HTML shell with 200 (which clients would misread as
+	// success).
+	if strings.HasPrefix(r.URL.Path, "/api") {
+		httpError(w, http.StatusNotFound, "no such API endpoint")
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, indexHTML)
+	p := strings.TrimPrefix(r.URL.Path, "/")
+	if p == "" || strings.Contains(p, "..") {
+		p = "index.html"
+	}
+	b, err := webFS.ReadFile("web/" + p)
+	if err != nil {
+		b, err = webFS.ReadFile("web/index.html")
+		p = "index.html"
+		if err != nil {
+			http.Error(w, "web UI not built into this binary", http.StatusInternalServerError)
+			return
+		}
+	}
+	ct := mime.TypeByExtension(path.Ext(p))
+	if ct == "" {
+		ct = "text/html; charset=utf-8"
+	}
+	w.Header().Set("Content-Type", ct)
+	_, _ = w.Write(b)
 }
 
 // --- helpers -------------------------------------------------------------
@@ -480,11 +510,3 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	}
 	return true
 }
-
-const indexHTML = `<!doctype html><html><head><meta charset="utf-8">
-<title>thAImaturgy server</title></head><body>
-<h1>thAImaturgy server</h1>
-<p>The JSON API is under <code>/api/</code>. The full web UI ships in Phase C (#36).</p>
-<p>Try <a href="/api/health">/api/health</a>, <a href="/api/adventures">/api/adventures</a>,
-<a href="/api/sessions">/api/sessions</a>.</p>
-</body></html>`
