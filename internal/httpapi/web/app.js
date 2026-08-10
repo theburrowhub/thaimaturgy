@@ -95,6 +95,7 @@ async function loadLibrary() {
 
 let current = null;   // session name
 let evtSource = null; // EventSource
+let openGen = 0;      // bumped on each open/leave; stale async work checks it
 
 function appendLine(cls, text) {
   const t = $("#transcript");
@@ -102,10 +103,20 @@ function appendLine(cls, text) {
   t.scrollTop = t.scrollHeight;
 }
 
+// leaveSession invalidates any in-flight open and tears down the live stream.
+function leaveSession() {
+  openGen++;
+  current = null;
+  if (evtSource) { evtSource.close(); evtSource = null; }
+}
+
 async function openSession(name) {
-  current = name;
+  const gen = ++openGen; // this open supersedes any earlier one
+  if (evtSource) { evtSource.close(); evtSource = null; }
   try {
     const st = await api("GET", "/sessions/" + encodeURIComponent(name));
+    if (gen !== openGen) return; // a newer open (or leave) happened while loading
+    current = name;
     $("#session-name").textContent = name;
     $("#session-loc").textContent = st.current_room ? ("in " + (st.current_room)) : "";
     renderParty(st);
@@ -114,8 +125,8 @@ async function openSession(name) {
     const conv = (st.conversation && st.conversation.messages) || [];
     for (const m of conv) appendLine(m.role === "assistant" ? "a" : "u", (m.role === "assistant" ? "" : "» ") + m.content);
     show2("session");
-    subscribeEvents(name);
-  } catch (e) { status(e.message, true); }
+    subscribeEvents(name, gen);
+  } catch (e) { if (gen === openGen) status(e.message, true); }
 }
 
 function renderParty(st) {
@@ -133,15 +144,17 @@ function show2(view) { // show session (not in the nav)
   $("#view-session").classList.remove("hidden");
 }
 
-async function subscribeEvents(name) {
+async function subscribeEvents(name, gen) {
   if (evtSource) { evtSource.close(); evtSource = null; }
   let url = "/api/sessions/" + encodeURIComponent(name) + "/events";
   if (token()) {
     try {
       const t = await api("POST", "/sse-ticket");
+      if (gen !== openGen) return; // superseded while fetching the ticket
       url += "?ticket=" + encodeURIComponent(t.ticket);
-    } catch (e) { status("live updates unavailable: " + e.message, true); return; }
+    } catch (e) { if (gen === openGen) status("live updates unavailable: " + e.message, true); return; }
   }
+  if (gen !== openGen) return;
   evtSource = new EventSource(url);
   evtSource.addEventListener("log", (ev) => {
     try {
@@ -152,15 +165,16 @@ async function subscribeEvents(name) {
   evtSource.onerror = () => { /* EventSource auto-reconnects within the ticket window */ };
 }
 
-$("#back").onclick = () => { if (evtSource) evtSource.close(); show("library"); };
+$("#back").onclick = () => { leaveSession(); show("library"); };
 $("#save").onclick = async () => {
   try { await api("POST", "/sessions/" + encodeURIComponent(current) + "/save"); status("Saved."); }
   catch (e) { status(e.message, true); }
 };
 $("#close").onclick = async () => {
+  const name = current;
   try {
-    await api("POST", "/sessions/" + encodeURIComponent(current) + "/close");
-    if (evtSource) evtSource.close();
+    await api("POST", "/sessions/" + encodeURIComponent(name) + "/close");
+    leaveSession();
     status("Closed."); show("library");
   } catch (e) { status(e.message, true); }
 };

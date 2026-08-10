@@ -443,6 +443,13 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 // static serves the embedded web UI, falling back to index.html for unknown
 // paths so client-side routing works. Unsafe paths resolve to index.html.
 func (s *Server) static(w http.ResponseWriter, r *http.Request) {
+	// Never SPA-fallback an /api path: an unknown/misspelled API route must 404 as
+	// JSON, not return the HTML shell with 200 (which clients would misread as
+	// success).
+	if strings.HasPrefix(r.URL.Path, "/api") {
+		httpError(w, http.StatusNotFound, "no such API endpoint")
+		return
+	}
 	p := strings.TrimPrefix(r.URL.Path, "/")
 	if p == "" || strings.Contains(p, "..") {
 		p = "index.html"
