@@ -109,6 +109,11 @@ func (g *gui) showPartyEditor() {
 		g.showRoster()
 	})
 
+	newCharBtn := widget.NewButton("New character…", func() {
+		pop.Hide()
+		g.showCharacterCreator()
+	})
+
 	closeBtn = widget.NewButton("Close", func() { pop.Hide() })
 
 	content := container.NewVBox(
@@ -119,7 +124,7 @@ func (g *gui) showPartyEditor() {
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle("Adjust with AI", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		prompt,
-		container.NewHBox(aiBtn, defBtn, rosterBtn),
+		container.NewHBox(aiBtn, defBtn, newCharBtn, rosterBtn),
 		status,
 		widget.NewSeparator(),
 		closeBtn,
