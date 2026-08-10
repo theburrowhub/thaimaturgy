@@ -1,0 +1,20 @@
+services:
+  thaimaturgy:
+    build: .
+    image: thaimaturgy-server
+    ports:
+      - "127.0.0.1:8765:8765" # publish on the host's loopback by default
+    environment:
+      # Required: a wildcard container bind refuses to start without a token.
+      THAIM_SERVER_TOKEN: ${THAIM_SERVER_TOKEN:?set THAIM_SERVER_TOKEN in your env or a .env file}
+      # Provide whichever provider credential you use, e.g.:
+      # THAIM_ANTHROPIC_API_KEY: ${THAIM_ANTHROPIC_API_KEY:-}
+      # THAIM_OPENAI_API_KEY: ${THAIM_OPENAI_API_KEY:-}
+      # THAIM_PROVIDER: ${THAIM_PROVIDER:-}
+      # THAIM_MODEL: ${THAIM_MODEL:-}
+    volumes:
+      - thaimaturgy-data:/data # adventures, sessions, config persist here
+    restart: unless-stopped
+
+volumes:
+  thaimaturgy-data:
