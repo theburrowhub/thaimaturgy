@@ -203,9 +203,26 @@ func ProficiencyBonusForLevel(level int) int {
 }
 
 // GenerateCharacter builds a full character sheet from a race, class and level by
-// simplified D&D 5e rules. Unknown race/class fall back to Human/Fighter; an empty
-// name draws a sample name for the race. Level defaults to 1 when < 1.
+// simplified D&D 5e rules, assigning the standard array by the class's ability
+// priority. Unknown race/class fall back to Human/Fighter; an empty name draws a
+// sample name for the race. Level defaults to 1 when < 1.
 func GenerateCharacter(name, race, class string, level int) *Character {
+	return buildCharacter(name, race, class, level, nil)
+}
+
+// GenerateCharacterWithAbilities builds a sheet like GenerateCharacter but from
+// caller-provided BASE ability scores (as rolled / from the standard array /
+// entered by hand, before racial increases). Racial ASIs are added on top and all
+// derived stats (HP, AC, saves, spellcasting…) are computed from the result. Used
+// by the GUI character creator (#1).
+func GenerateCharacterWithAbilities(name, race, class string, level int, base AbilityScores) *Character {
+	return buildCharacter(name, race, class, level, &base)
+}
+
+// buildCharacter is the shared core. When base is nil the standard array is
+// assigned by the class's priority; otherwise base is used as the pre-racial
+// scores. Racial increases are then applied and the rest of the sheet derived.
+func buildCharacter(name, race, class string, level int, base *AbilityScores) *Character {
 	if level < 1 {
 		level = 1
 	}
@@ -217,10 +234,14 @@ func GenerateCharacter(name, race, class string, level int) *Character {
 	c := NewCharacter(name, raceName, className)
 	c.Level = level
 
-	// Ability scores: standard array assigned by the class's priority, then racial
-	// increases applied.
-	for i, ab := range ci.priority {
-		c.Abilities.Set(ab, standardArray[i])
+	// Ability scores: caller-provided base, or the standard array assigned by the
+	// class's priority; then racial increases applied.
+	if base != nil {
+		c.Abilities = *base
+	} else {
+		for i, ab := range ci.priority {
+			c.Abilities.Set(ab, standardArray[i])
+		}
 	}
 	for ab, bonus := range ri.bonus {
 		c.Abilities.Set(ab, c.Abilities.Get(ab)+bonus)

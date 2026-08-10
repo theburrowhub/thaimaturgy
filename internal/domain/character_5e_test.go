@@ -160,6 +160,32 @@ func TestGenerateCharacterCaster(t *testing.T) {
 	}
 }
 
+func TestGenerateCharacterWithAbilities(t *testing.T) {
+	// Base scores (pre-racial); a Dwarf gets CON +2 on top.
+	base := AbilityScores{STR: 15, DEX: 12, CON: 14, INT: 10, WIS: 13, CHA: 8}
+	c := GenerateCharacterWithAbilities("Thrain", "Dwarf", "Fighter", 1, base)
+	if c.Abilities.STR != 15 {
+		t.Errorf("STR = %d; want the provided 15", c.Abilities.STR)
+	}
+	if c.Abilities.CON != 16 { // 14 + Dwarf racial +2
+		t.Errorf("CON = %d; want 16 (14 + racial)", c.Abilities.CON)
+	}
+	// HP is derived from the resulting CON modifier (+3): d10 + 3 = 13 at L1.
+	if c.MaxHP != 13 {
+		t.Errorf("MaxHP = %d; want 13 (d10 + CON mod)", c.MaxHP)
+	}
+	if c.MaxHP != c.CurrentHP {
+		t.Error("a fresh character should start at full HP")
+	}
+	// Saving throws and (non-)spellcasting still come from the class.
+	if !c.SaveProficient(STR) || !c.SaveProficient(CON) {
+		t.Error("fighter should have STR and CON save proficiencies")
+	}
+	if c.Spellcasting != nil {
+		t.Error("a fighter must not have a spellcasting block")
+	}
+}
+
 func TestCharacterJSONRoundTripWithSpells(t *testing.T) {
 	c := GenerateCharacter("Mage", "Elf", "Wizard", 3)
 	c.AddSpell(Spell{Name: "Fireball", Level: 3, Prepared: true})
