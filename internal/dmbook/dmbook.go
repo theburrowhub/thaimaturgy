@@ -266,18 +266,34 @@ func writeStatBlock(b *strings.Builder, s *domain.StatBlock) {
 		return
 	}
 	b.WriteString("**Stat block:**\n\n")
+	if class := statClassLine(s); class != "" {
+		fmt.Fprintf(b, "- *%s*\n", class)
+	}
 	var parts []string
 	if s.AC > 0 {
 		parts = append(parts, fmt.Sprintf("AC %d", s.AC))
 	}
-	if s.MaxHP > 0 {
-		parts = append(parts, fmt.Sprintf("HP %d", s.MaxHP))
+	if s.MaxHP > 0 || s.HitDice != "" {
+		hp := "HP"
+		if s.MaxHP > 0 {
+			hp += fmt.Sprintf(" %d", s.MaxHP)
+		}
+		if s.HitDice != "" {
+			hp += " (" + s.HitDice + ")"
+		}
+		parts = append(parts, hp)
 	}
 	if s.Speed != "" {
 		parts = append(parts, "Speed "+s.Speed)
 	}
 	if s.CR != "" {
 		parts = append(parts, "CR "+s.CR)
+	}
+	if s.XP > 0 {
+		parts = append(parts, fmt.Sprintf("%d XP", s.XP))
+	}
+	if s.ProfBonus > 0 {
+		parts = append(parts, fmt.Sprintf("Prof +%d", s.ProfBonus))
 	}
 	if len(parts) > 0 {
 		fmt.Fprintf(b, "- %s\n", strings.Join(parts, " · "))
@@ -288,13 +304,46 @@ func writeStatBlock(b *strings.Builder, s *domain.StatBlock) {
 			a.CON, domain.ModifierString(a.CON), a.INT, domain.ModifierString(a.INT),
 			a.WIS, domain.ModifierString(a.WIS), a.CHA, domain.ModifierString(a.CHA))
 	}
-	if len(s.Skills) > 0 {
-		fmt.Fprintf(b, "- Skills: %s\n", strings.Join(s.Skills, ", "))
-	}
+	writeStatList(b, "Saving throws", s.SavingThrows)
+	writeStatList(b, "Skills", s.Skills)
+	writeStatList(b, "Damage resistances", s.DamageResistances)
+	writeStatList(b, "Damage immunities", s.DamageImmunities)
+	writeStatList(b, "Damage vulnerabilities", s.DamageVulnerabilities)
+	writeStatList(b, "Condition immunities", s.ConditionImmunities)
+	writeStatList(b, "Senses", s.Senses)
+	writeStatList(b, "Languages", s.Languages)
 	for _, t := range s.Traits {
 		fmt.Fprintf(b, "- *Trait:* %s\n", oneLine(t))
 	}
-	for _, act := range s.Actions {
+	writeBookActions(b, "Action", s.Actions)
+	writeBookActions(b, "Reaction", s.Reactions)
+	writeBookActions(b, "Legendary Action", s.LegendaryActions)
+	if s.Source != "" {
+		fmt.Fprintf(b, "- *Source:* %s\n", oneLine(s.Source))
+	}
+	b.WriteString("\n")
+}
+
+// statClassLine renders the "Size Type, Alignment" descriptor, or "".
+func statClassLine(s *domain.StatBlock) string {
+	line := strings.TrimSpace(strings.TrimSpace(s.Size + " " + s.Type))
+	if s.Alignment != "" {
+		if line != "" {
+			line += ", "
+		}
+		line += s.Alignment
+	}
+	return line
+}
+
+func writeStatList(b *strings.Builder, label string, items []string) {
+	if len(items) > 0 {
+		fmt.Fprintf(b, "- %s: %s\n", label, strings.Join(items, ", "))
+	}
+}
+
+func writeBookActions(b *strings.Builder, label string, actions []domain.Action) {
+	for _, act := range actions {
 		line := act.Name
 		if act.ToHit != "" {
 			line += " (" + act.ToHit + " to hit"
@@ -308,9 +357,8 @@ func writeStatBlock(b *strings.Builder, s *domain.StatBlock) {
 		if act.Description != "" {
 			line += ": " + act.Description
 		}
-		fmt.Fprintf(b, "- *Action:* %s\n", oneLine(line))
+		fmt.Fprintf(b, "- *%s:* %s\n", label, oneLine(line))
 	}
-	b.WriteString("\n")
 }
 
 func writeEvent(b *strings.Builder, e *domain.Event) {

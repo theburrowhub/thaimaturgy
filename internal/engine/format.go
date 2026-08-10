@@ -138,19 +138,44 @@ func writeImageLines(sb *strings.Builder, paths []string) {
 
 func formatStatBlock(sb2 *domain.StatBlock) string {
 	var sb strings.Builder
+	// Classification line (e.g. "Medium Humanoid, Chaotic Evil"), when present.
+	if class := joinNonEmpty(" ", sb2.Size, sb2.Type); class != "" || sb2.Alignment != "" {
+		line := class
+		if sb2.Alignment != "" {
+			if line != "" {
+				line += ", "
+			}
+			line += sb2.Alignment
+		}
+		sb.WriteString(line + "\n")
+	}
 	sb.WriteString("Stats: ")
 	parts := []string{}
 	if sb2.AC > 0 {
 		parts = append(parts, fmt.Sprintf("AC %d", sb2.AC))
 	}
-	if sb2.MaxHP > 0 {
-		parts = append(parts, fmt.Sprintf("HP %d", sb2.MaxHP))
+	// HP and hit dice render independently (either may be set alone).
+	if sb2.MaxHP > 0 || sb2.HitDice != "" {
+		hp := "HP"
+		if sb2.MaxHP > 0 {
+			hp += fmt.Sprintf(" %d", sb2.MaxHP)
+		}
+		if sb2.HitDice != "" {
+			hp += " (" + sb2.HitDice + ")"
+		}
+		parts = append(parts, hp)
 	}
 	if sb2.Speed != "" {
 		parts = append(parts, "Speed "+sb2.Speed)
 	}
 	if sb2.CR != "" {
 		parts = append(parts, "CR "+sb2.CR)
+	}
+	if sb2.XP > 0 {
+		parts = append(parts, fmt.Sprintf("%d XP", sb2.XP))
+	}
+	if sb2.ProfBonus > 0 {
+		parts = append(parts, fmt.Sprintf("Prof +%d", sb2.ProfBonus))
 	}
 	sb.WriteString(strings.Join(parts, ", ") + "\n")
 	a := sb2.Abilities
@@ -160,14 +185,37 @@ func formatStatBlock(sb2 *domain.StatBlock) string {
 			a.CON, domain.ModifierString(a.CON), a.INT, domain.ModifierString(a.INT),
 			a.WIS, domain.ModifierString(a.WIS), a.CHA, domain.ModifierString(a.CHA))
 	}
-	if len(sb2.Skills) > 0 {
-		sb.WriteString("  Skills: " + strings.Join(sb2.Skills, ", ") + "\n")
-	}
+	writeStatLine(&sb, "Saving throws", sb2.SavingThrows)
+	writeStatLine(&sb, "Skills", sb2.Skills)
+	writeStatLine(&sb, "Damage resistances", sb2.DamageResistances)
+	writeStatLine(&sb, "Damage immunities", sb2.DamageImmunities)
+	writeStatLine(&sb, "Damage vulnerabilities", sb2.DamageVulnerabilities)
+	writeStatLine(&sb, "Condition immunities", sb2.ConditionImmunities)
+	writeStatLine(&sb, "Senses", sb2.Senses)
+	writeStatLine(&sb, "Languages", sb2.Languages)
 	for _, t := range sb2.Traits {
 		sb.WriteString("  Trait: " + t + "\n")
 	}
-	for _, act := range sb2.Actions {
-		line := "  Action: " + act.Name
+	writeActions(&sb, "Action", sb2.Actions)
+	writeActions(&sb, "Reaction", sb2.Reactions)
+	writeActions(&sb, "Legendary Action", sb2.LegendaryActions)
+	if sb2.Source != "" {
+		sb.WriteString("  [source: " + sb2.Source + "]\n")
+	}
+	return sb.String()
+}
+
+// writeStatLine appends "  <label>: a, b, c\n" when the list is non-empty.
+func writeStatLine(sb *strings.Builder, label string, items []string) {
+	if len(items) > 0 {
+		sb.WriteString("  " + label + ": " + strings.Join(items, ", ") + "\n")
+	}
+}
+
+// writeActions renders a group of stat-block actions under a label.
+func writeActions(sb *strings.Builder, label string, actions []domain.Action) {
+	for _, act := range actions {
+		line := "  " + label + ": " + act.Name
 		if act.ToHit != "" {
 			line += " (" + act.ToHit + " to hit"
 			if act.Damage != "" {
@@ -182,7 +230,17 @@ func formatStatBlock(sb2 *domain.StatBlock) string {
 		}
 		sb.WriteString(line + "\n")
 	}
-	return sb.String()
+}
+
+// joinNonEmpty joins only the non-empty parts with sep.
+func joinNonEmpty(sep string, parts ...string) string {
+	var out []string
+	for _, p := range parts {
+		if strings.TrimSpace(p) != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, sep)
 }
 
 // FormatZone renders a zone overview and its room list.

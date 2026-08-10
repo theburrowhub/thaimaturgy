@@ -244,16 +244,43 @@ type NPC struct {
 	DefaultLocation string   `json:"default_location,omitempty"` // room ID
 }
 
-// StatBlock holds the mechanical combat statistics of an NPC or creature.
+// StatBlock holds the mechanical combat statistics of an NPC or creature. It is a
+// full 5e-style stat block; every field beyond the original core (AC/HP/speed/
+// abilities/CR/skills/traits/actions) is optional and additive, so modules and
+// sessions authored before #26 load unchanged.
 type StatBlock struct {
 	AC        int           `json:"ac,omitempty"`
 	MaxHP     int           `json:"max_hp,omitempty"`
+	HitDice   string        `json:"hit_dice,omitempty"` // e.g. "2d6" (average shown as MaxHP)
 	Speed     string        `json:"speed,omitempty"`
 	Abilities AbilityScores `json:"abilities,omitempty"`
 	CR        string        `json:"cr,omitempty"` // challenge rating
-	Skills    []string      `json:"skills,omitempty"`
-	Traits    []string      `json:"traits,omitempty"`
-	Actions   []Action      `json:"actions,omitempty"`
+	XP        int           `json:"xp,omitempty"`
+	ProfBonus int           `json:"proficiency_bonus,omitempty"`
+
+	// Descriptive classification.
+	Size      string `json:"size,omitempty"`      // Tiny…Gargantuan
+	Type      string `json:"type,omitempty"`      // e.g. Humanoid, Beast, Undead
+	Alignment string `json:"alignment,omitempty"` // e.g. "Chaotic Evil"
+
+	// Proficiencies and defenses, each rendered as free-form lines (e.g.
+	// "DEX +4", "darkvision 60 ft.", "Poisoned").
+	SavingThrows          []string `json:"saving_throws,omitempty"`
+	Skills                []string `json:"skills,omitempty"`
+	Senses                []string `json:"senses,omitempty"`
+	Languages             []string `json:"languages,omitempty"`
+	DamageResistances     []string `json:"damage_resistances,omitempty"`
+	DamageImmunities      []string `json:"damage_immunities,omitempty"`
+	DamageVulnerabilities []string `json:"damage_vulnerabilities,omitempty"`
+	ConditionImmunities   []string `json:"condition_immunities,omitempty"`
+
+	Traits           []string `json:"traits,omitempty"`
+	Actions          []Action `json:"actions,omitempty"`
+	Reactions        []Action `json:"reactions,omitempty"`
+	LegendaryActions []Action `json:"legendary_actions,omitempty"`
+
+	// Source notes where the block came from (e.g. "SRD 5.1") for attribution.
+	Source string `json:"source,omitempty"`
 }
 
 // Action is a single attack or special ability in a stat block.
