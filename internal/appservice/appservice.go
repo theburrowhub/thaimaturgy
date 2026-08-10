@@ -31,11 +31,7 @@ type Service struct {
 	config   *domain.Config
 	sessions map[string]*OpenSession // by session name
 
-	// saveMu serializes ALL session disk writes (explicit, autosave, close) so
-	// they can't interleave; unregistering a session happens while holding it, so
-	// a save always sees a consistent registered/closed decision.
-	saveMu sync.Mutex
-
+	configMu   sync.Mutex  // serializes SaveConfig's persist+adopt as one op
 	autosaveCh chan string // session names queued for background save
 }
 
@@ -46,8 +42,15 @@ type OpenSession struct {
 	Cmd     *engine.CommandHandler
 	journal *storage.SessionJournal
 
+	// opMu serializes this session's mutating operations (command, oracle turn,
+	// save) with its closure, so no mutation or save crosses CloseSession. closed
+	// is set (under opMu) once the session has been closed, so an operation that
+	// wins the lock after closure bails instead of acting on a dead session.
+	opMu   sync.Mutex
+	closed bool
+
 	errMu       sync.Mutex
-	lastSaveErr error // most recent autosave failure (nil once a save succeeds)
+	lastSaveErr error // most recent save failure (nil once a save succeeds)
 }
 
 func (o *OpenSession) setSaveErr(err error) {
@@ -78,6 +81,18 @@ func New(store *storage.Storage, config *domain.Config, provider providers.Provi
 	return s
 }
 
+// persist saves a session and writes roster progression back (#33). The caller
+// must hold the session's opMu. It records the outcome on the session for
+// AutosaveError and returns it.
+func (s *Service) persist(os *OpenSession) error {
+	err := s.store.SaveSession(os.Session.State)
+	if err == nil {
+		_, err = s.store.SyncPartyToRoster(rosterLinked(os.Session.State))
+	}
+	os.setSaveErr(err)
+	return err
+}
+
 // SetProvider swaps the active provider for future oracle turns (e.g. after a
 // settings change).
 func (s *Service) SetProvider(p providers.Provider) {
@@ -96,8 +111,12 @@ func (s *Service) Config() *domain.Config {
 	return s.config
 }
 
-// SaveConfig persists the configuration and adopts it.
+// SaveConfig persists the configuration and adopts it as one serialized
+// operation, so two concurrent calls can't leave the running service and the disk
+// disagreeing about which config won.
 func (s *Service) SaveConfig(cfg *domain.Config) error {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
 	if err := s.store.SaveConfig(cfg); err != nil {
 		return err
 	}
@@ -212,17 +231,20 @@ func (s *Service) Get(name string) (*OpenSession, bool) {
 	return os, ok
 }
 
-// SaveSession persists an open session synchronously (under the save lock).
+// SaveSession persists an open session synchronously, re-validating under the
+// session's opMu that it's still open — so a save can't race its closure and
+// resurrect a deleted/renamed session.
 func (s *Service) SaveSession(name string) error {
 	os, ok := s.Get(name)
 	if !ok {
 		return fmt.Errorf("session %q is not open", name)
 	}
-	s.saveMu.Lock()
-	defer s.saveMu.Unlock()
-	err := s.store.SaveSession(os.Session.State)
-	os.setSaveErr(err)
-	return err
+	os.opMu.Lock()
+	defer os.opMu.Unlock()
+	if os.closed {
+		return fmt.Errorf("session %q is not open", name)
+	}
+	return s.persist(os)
 }
 
 // AutosaveError returns the most recent autosave error for an open session (nil
@@ -235,23 +257,28 @@ func (s *Service) AutosaveError(name string) error {
 	return nil
 }
 
-// CloseSession saves the session FIRST and only unregisters + closes its journal
-// on success — so a failed final save (disk full, etc.) leaves the session live
-// and retryable rather than discarding the only copy of unsaved changes. The
-// save and the unregister happen under the save lock, and every other save
-// re-checks registration under that same lock, so a queued autosave can never
-// resurrect the session after it closes.
+// CloseSession does a final save (including roster write-back) FIRST, and only
+// then marks the session closed, unregisters it, and closes its journal — so a
+// failed final save leaves the session live and retryable rather than discarding
+// unsaved changes. It holds the session's opMu across the whole thing, so it
+// waits for any in-flight command/oracle turn and blocks new ones (they see
+// closed and bail), and its final save captures their mutations. Roster
+// progression is written back here too, so a queued-but-dropped autosave can't
+// leave the roster stale.
 func (s *Service) CloseSession(name string) error {
 	os, ok := s.Get(name)
 	if !ok {
 		return nil
 	}
-	s.saveMu.Lock()
-	defer s.saveMu.Unlock()
-	if err := s.store.SaveSession(os.Session.State); err != nil {
-		os.setSaveErr(err)
+	os.opMu.Lock()
+	defer os.opMu.Unlock()
+	if os.closed {
+		return nil
+	}
+	if err := s.persist(os); err != nil {
 		return fmt.Errorf("not closing %q — final save failed (retry): %w", name, err)
 	}
+	os.closed = true
 	s.mu.Lock()
 	delete(s.sessions, name)
 	s.mu.Unlock()
@@ -284,7 +311,13 @@ func (s *Service) ExecuteCommand(name, raw string) (*engine.CommandResult, error
 	if !ok {
 		return nil, fmt.Errorf("session %q is not open", name)
 	}
+	os.opMu.Lock()
+	if os.closed {
+		os.opMu.Unlock()
+		return nil, fmt.Errorf("session %q is not open", name)
+	}
 	res := os.Cmd.Execute(engine.ParseCommand(raw))
+	os.opMu.Unlock()
 	if res != nil && res.Success {
 		s.Autosave(name)
 	}
@@ -292,13 +325,21 @@ func (s *Service) ExecuteCommand(name, raw string) (*engine.CommandResult, error
 }
 
 // AskOracle runs one oracle/DM turn against an open session and returns the
-// response, autosaving afterwards. Requires a configured provider.
+// response, autosaving afterwards. The turn holds the session's opMu, so a close
+// waits for it to finish and captures its mutations. Requires a configured
+// provider.
 func (s *Service) AskOracle(ctx context.Context, name, input string) (*engine.Response, error) {
 	os, ok := s.Get(name)
 	if !ok {
 		return nil, fmt.Errorf("session %q is not open", name)
 	}
+	os.opMu.Lock()
+	if os.closed {
+		os.opMu.Unlock()
+		return nil, fmt.Errorf("session %q is not open", name)
+	}
 	resp := os.Oracle.Ask(ctx, input)
+	os.opMu.Unlock()
 	s.Autosave(name)
 	return resp, nil
 }
@@ -328,24 +369,21 @@ func (s *Service) autosaveLoop() {
 	}
 }
 
-// doAutosave saves a session by name under the save lock, re-checking under that
-// lock that it's still registered — so a save queued before CloseSession/
-// DeleteSession can't resurrect the session or leave a stale duplicate (the
-// unregister also happens under the save lock). Persistence failures are recorded
-// on the session for callers to surface (AutosaveError).
+// doAutosave saves a session by name under its opMu, skipping it if it closed
+// meanwhile — so a save queued before CloseSession/DeleteSession can't resurrect
+// the session or leave a stale duplicate (CloseSession already persisted the
+// latest state before closing). Failures are recorded for AutosaveError.
 func (s *Service) doAutosave(name string) {
-	s.saveMu.Lock()
-	defer s.saveMu.Unlock()
 	os, ok := s.Get(name)
 	if !ok {
-		return // closed/deleted meanwhile → drop the stale write
+		return
 	}
-	err := s.store.SaveSession(os.Session.State)
-	if err == nil {
-		// Write progression back to roster-linked party members (#33).
-		_, err = s.store.SyncPartyToRoster(rosterLinked(os.Session.State))
+	os.opMu.Lock()
+	defer os.opMu.Unlock()
+	if os.closed {
+		return // closed meanwhile → its final save already persisted the state
 	}
-	os.setSaveErr(err)
+	_ = s.persist(os)
 }
 
 func rosterLinked(st *domain.SessionState) []*domain.Character {

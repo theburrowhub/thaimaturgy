@@ -187,6 +187,44 @@ func TestExecuteCommandUnopenedSession(t *testing.T) {
 	}
 }
 
+func TestExecuteCommandRejectedAfterClose(t *testing.T) {
+	svc, _ := newService(t)
+	name, _ := svc.NewSession("crypt")
+	if err := svc.CloseSession(name); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if _, err := svc.ExecuteCommand(name, "/note late"); err == nil {
+		t.Error("a command after close must be rejected, not silently lost")
+	}
+}
+
+func TestCloseSessionWritesRosterBack(t *testing.T) {
+	svc, store := newService(t)
+	// A roster character that the party will control.
+	id, err := store.SaveCharacter(domain.NewCharacter("Alice", "Elf", "Wizard"))
+	if err != nil {
+		t.Fatalf("save char: %v", err)
+	}
+	name, _ := svc.NewSession("crypt")
+	os, _ := svc.Get(name)
+	linked := domain.NewCharacter("Alice", "Elf", "Wizard")
+	linked.ID = id
+	linked.XP = 777 // progression made during the session
+	os.Session.State.SetParty([]*domain.Character{linked})
+
+	if err := svc.CloseSession(name); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	// The final close save must have written the roster-linked progression back.
+	reloaded, err := store.LoadCharacter(id)
+	if err != nil {
+		t.Fatalf("load char: %v", err)
+	}
+	if reloaded.XP != 777 {
+		t.Errorf("roster progression not written back on close: XP=%d", reloaded.XP)
+	}
+}
+
 func TestRosterAndConfigDelegation(t *testing.T) {
 	svc, _ := newService(t)
 	id, err := svc.SaveCharacter(domain.NewCharacter("Alice", "Elf", "Wizard"))
