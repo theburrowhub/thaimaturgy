@@ -127,10 +127,23 @@ func main() {
 		return
 	}
 
-	// Remote mode: point the desktop app at a running server (#60).
+	// Remote mode: point the desktop app at a running server (#60). The token is
+	// NOT a value-bearing flag (that would leak it into shell history / argv /
+	// --help): it comes from THAIM_SERVER_TOKEN or, to keep it off the environment
+	// too, a file named by --token-file.
 	serverURL := flag.String("server", os.Getenv("THAIM_SERVER"), "run as a client against a thaimaturgy-server at this URL (remote mode)")
-	serverToken := flag.String("token", os.Getenv("THAIM_SERVER_TOKEN"), "bearer token for --server")
+	tokenFile := flag.String("token-file", "", "read the server bearer token from this file (keeps it out of argv)")
 	flag.Parse()
+
+	serverToken := os.Getenv("THAIM_SERVER_TOKEN")
+	if *tokenFile != "" {
+		b, ferr := os.ReadFile(*tokenFile)
+		if ferr != nil {
+			fmt.Fprintf(os.Stderr, "token-file: %v\n", ferr)
+			os.Exit(1)
+		}
+		serverToken = strings.TrimSpace(string(b))
+	}
 
 	store, err := storage.New()
 	if err != nil {
@@ -162,7 +175,7 @@ func main() {
 	g.win = g.app.NewWindow("thAImaturgy — DM Oracle")
 	g.win.Resize(fyne.NewSize(1200, 780))
 	if url := strings.TrimSpace(*serverURL); url != "" {
-		g.remote = apiclient.New(url, strings.TrimSpace(*serverToken))
+		g.remote = apiclient.New(url, serverToken)
 		g.showRemoteLibrary()
 	} else {
 		g.showLibrary()
