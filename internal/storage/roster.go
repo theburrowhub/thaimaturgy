@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -22,8 +24,8 @@ func (s *Storage) characterPath(id string) string {
 	return filepath.Join(s.charactersDir(), id+".json")
 }
 
-// slugifyName derives a filesystem-safe id from a character name (lower-case,
-// alphanumerics and hyphens). Falls back to "character" when nothing survives.
+// slugifyName derives a readable, filesystem-safe prefix from a character name.
+// Falls back to "character" when nothing survives.
 func slugifyName(name string) string {
 	var b strings.Builder
 	lastDash := false
@@ -46,17 +48,36 @@ func slugifyName(name string) string {
 	return slug
 }
 
+// newRosterID mints a NON-REUSABLE id: a readable name slug plus a random token.
+// Because the token is random, deleting a character and creating another with the
+// same name yields a different id, so a stale session link (which stores the old
+// id) can never silently target the new entry (Heimdallm review).
+func newRosterID(name string) (string, error) {
+	var buf [6]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", fmt.Errorf("failed to generate character id: %w", err)
+	}
+	return slugifyName(name) + "-" + hex.EncodeToString(buf[:]), nil
+}
+
 // validRosterID guards against path traversal in a caller-supplied id.
 func validRosterID(id string) bool {
 	return id != "" && !strings.ContainsAny(id, `/\`) && !strings.Contains(id, "..")
 }
 
-// SaveCharacter persists a character to the roster and returns its id. If the
-// character has no ID yet, one is derived from its name and made unique against
-// existing entries; the ID is written back into the passed character so the
-// caller can keep the link. An existing ID updates that entry in place (this is
-// how a session writes progression back).
+// SaveCharacter persists a character to the roster and returns its id. A new
+// character (empty ID) is assigned a fresh non-reusable id; an existing ID updates
+// that entry in place (how a session writes progression back). The id is written
+// back into the passed character. Serialized against other roster operations.
 func (s *Storage) SaveCharacter(c *domain.Character) (string, error) {
+	s.rosterMu.Lock()
+	defer s.rosterMu.Unlock()
+	return s.saveCharacterLocked(c)
+}
+
+// saveCharacterLocked is the lock-free core of SaveCharacter (caller holds
+// rosterMu), so SyncPartyToRoster can save without re-locking.
+func (s *Storage) saveCharacterLocked(c *domain.Character) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("nil character")
 	}
@@ -67,7 +88,11 @@ func (s *Storage) SaveCharacter(c *domain.Character) (string, error) {
 		return "", fmt.Errorf("failed to create characters directory: %w", err)
 	}
 	if c.ID == "" {
-		c.ID = s.uniqueRosterID(slugifyName(c.Name))
+		id, err := newRosterID(c.Name)
+		if err != nil {
+			return "", err
+		}
+		c.ID = id
 	} else if !validRosterID(c.ID) {
 		return "", fmt.Errorf("invalid character id: %q", c.ID)
 	}
@@ -81,16 +106,6 @@ func (s *Storage) SaveCharacter(c *domain.Character) (string, error) {
 	return c.ID, nil
 }
 
-// uniqueRosterID returns base, or base-2, base-3… so a second "Alice" doesn't
-// overwrite the first.
-func (s *Storage) uniqueRosterID(base string) string {
-	id := base
-	for i := 2; s.characterExists(id); i++ {
-		id = fmt.Sprintf("%s-%d", base, i)
-	}
-	return id
-}
-
 func (s *Storage) characterExists(id string) bool {
 	_, err := os.Stat(s.characterPath(id))
 	return err == nil
@@ -98,6 +113,12 @@ func (s *Storage) characterExists(id string) bool {
 
 // LoadCharacter reads a roster character by id (ensuring its ID field is set).
 func (s *Storage) LoadCharacter(id string) (*domain.Character, error) {
+	s.rosterMu.Lock()
+	defer s.rosterMu.Unlock()
+	return s.loadCharacterLocked(id)
+}
+
+func (s *Storage) loadCharacterLocked(id string) (*domain.Character, error) {
 	if !validRosterID(id) {
 		return nil, fmt.Errorf("invalid character id: %q", id)
 	}
@@ -113,8 +134,14 @@ func (s *Storage) LoadCharacter(id string) (*domain.Character, error) {
 	return &c, nil
 }
 
-// ListCharacters returns every roster character, sorted by name.
+// ListCharacters returns every roster character, sorted by name. It decodes as
+// many entries as it can and, if any file is unreadable/corrupt, returns the
+// successfully decoded characters ALONGSIDE a non-nil error naming the failures,
+// so a caller can surface an incomplete roster rather than silently dropping
+// entries (Heimdallm review).
 func (s *Storage) ListCharacters() ([]*domain.Character, error) {
+	s.rosterMu.Lock()
+	defer s.rosterMu.Unlock()
 	entries, err := os.ReadDir(s.charactersDir())
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -123,24 +150,32 @@ func (s *Storage) ListCharacters() ([]*domain.Character, error) {
 		return nil, fmt.Errorf("failed to read characters directory: %w", err)
 	}
 	var out []*domain.Character
+	var failed []string
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		c, err := s.LoadCharacter(strings.TrimSuffix(entry.Name(), ".json"))
+		id := strings.TrimSuffix(entry.Name(), ".json")
+		c, err := s.loadCharacterLocked(id)
 		if err != nil {
-			continue // skip unreadable entries rather than failing the whole list
+			failed = append(failed, id)
+			continue
 		}
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
+	if len(failed) > 0 {
+		return out, fmt.Errorf("%d roster file(s) could not be read: %s", len(failed), strings.Join(failed, ", "))
+	}
 	return out, nil
 }
 
 // DeleteCharacter removes a roster character by id.
 func (s *Storage) DeleteCharacter(id string) error {
+	s.rosterMu.Lock()
+	defer s.rosterMu.Unlock()
 	if !validRosterID(id) {
 		return fmt.Errorf("invalid character id: %q", id)
 	}
@@ -154,17 +189,20 @@ func (s *Storage) DeleteCharacter(id string) error {
 }
 
 // SyncPartyToRoster writes the progression of roster-linked party members (those
-// with a non-empty ID that still exists in the roster) back to the roster. Ad-hoc
-// members (no ID) and members whose roster entry was deleted are left untouched,
-// so a session never silently creates or resurrects roster entries. Returns the
-// number of entries updated.
+// with a non-empty ID that still exists in the roster) back to the roster. The
+// existence check and write happen under the same lock, so a concurrent delete
+// can't be raced into resurrecting an entry. Ad-hoc members (no ID) and members
+// whose roster entry was deleted are left untouched, so a session never silently
+// creates or resurrects roster entries. Returns the number of entries updated.
 func (s *Storage) SyncPartyToRoster(party []*domain.Character) (int, error) {
+	s.rosterMu.Lock()
+	defer s.rosterMu.Unlock()
 	updated := 0
 	for _, c := range party {
 		if c == nil || c.ID == "" || !s.characterExists(c.ID) {
 			continue
 		}
-		if _, err := s.SaveCharacter(c); err != nil {
+		if _, err := s.saveCharacterLocked(c); err != nil {
 			return updated, err
 		}
 		updated++

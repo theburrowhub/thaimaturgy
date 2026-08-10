@@ -598,14 +598,19 @@ func (b *Bot) runDM(m *tgbotapi.Message) {
 // consult from the chat. Creating/choosing characters is done host-side in the
 // app; this is the read-only Telegram view.
 func (b *Bot) rosterText() string {
+	// ListCharacters may return decoded characters AND an error (some files
+	// unreadable); surface the warning but still list what loaded.
 	chars, err := b.store.ListCharacters()
-	if err != nil {
-		return "⚠ Couldn't read the roster: " + err.Error()
-	}
 	if len(chars) == 0 {
+		if err != nil {
+			return "⚠ Couldn't read the roster: " + err.Error()
+		}
 		return "The campaign roster is empty. Save characters from the app (Edit party → Roster…)."
 	}
 	var sb strings.Builder
+	if err != nil {
+		sb.WriteString("⚠ Some roster entries could not be read: " + err.Error() + "\n")
+	}
 	sb.WriteString("🧑‍🤝‍🧑 Campaign roster:\n")
 	for _, c := range chars {
 		sb.WriteString(fmt.Sprintf("• %s — Lvl %d %s %s\n", c.Name, c.Level, c.Race, c.Class))

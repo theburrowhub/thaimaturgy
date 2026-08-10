@@ -6,9 +6,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -40,6 +42,10 @@ type gui struct {
 	config  *domain.Config
 	prov    providers.Provider
 	authMsg string
+
+	// autosaveMu serializes autosave goroutines so concurrent saves can't
+	// interleave and clobber each other's session/roster writes (#33).
+	autosaveMu sync.Mutex
 
 	// Editor view (nil until first opened); shares this window.
 	editor *editor
@@ -832,16 +838,26 @@ func (g *gui) rollTable(id string) {
 }
 
 func (g *gui) autosave() {
-	if g.config.AutoSave && g.session != nil {
-		state := g.session.State
-		go func() {
-			_ = g.store.SaveSession(state)
-			// Write progression back to any roster-linked party members (#33).
-			// PartySnapshot is race-safe; SyncPartyToRoster only touches members
-			// whose ID still exists in the roster.
-			_, _ = g.store.SyncPartyToRoster(rosterLinkedParty(state))
-		}()
+	if !g.config.AutoSave || g.session == nil {
+		return
 	}
+	state := g.session.State
+	go func() {
+		// Serialize autosaves so two of them can't interleave their writes (one
+		// finishing with a stale snapshot after another wrote a newer one). Each
+		// holder reads current state (SaveSession/PartySnapshot are race-safe) at
+		// write time, so the last writer commits the latest state.
+		g.autosaveMu.Lock()
+		defer g.autosaveMu.Unlock()
+		_ = g.store.SaveSession(state)
+		// Write progression back to roster-linked party members (#33). Surface a
+		// failure durably (session timeline + log) instead of discarding it, so the
+		// user isn't misled into thinking progression was saved.
+		if _, err := g.store.SyncPartyToRoster(rosterLinkedParty(state)); err != nil {
+			log.Printf("roster sync failed: %v", err)
+			state.AddNote("⚠ Roster progression could not be saved: " + err.Error())
+		}
+	}()
 }
 
 // rosterLinkedParty returns pointer copies of the party members that are linked

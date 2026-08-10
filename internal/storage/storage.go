@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
@@ -22,6 +23,8 @@ const (
 type Storage struct {
 	basePath   string // data: adventures, sessions, .env
 	configPath string // the YAML config file
+
+	rosterMu sync.Mutex // serializes campaign-roster reads/writes/deletes (#33)
 }
 
 func New() (*Storage, error) {

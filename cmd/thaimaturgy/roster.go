@@ -41,10 +41,22 @@ func (g *gui) showRoster() {
 			}
 		}
 		party = append(party, c)
+		// SetParty runs EnsureUniqueNames, so if a member with the same name is
+		// already in the party the newcomer is renamed (e.g. "Bob 2") — party
+		// members stay uniquely addressable by name (/pick, MutateCharacter).
 		g.session.State.SetParty(party)
 		g.refreshPCPanel()
 		g.autosave()
-		status.SetText("Added " + c.Name + " to the party.")
+		msg := "Added " + c.Name + " to the party."
+		if c.Name != "" {
+			for _, m := range g.session.State.PartySnapshot() {
+				if m.ID == c.ID && m.Name != c.Name {
+					msg = "Added " + c.Name + " as “" + m.Name + "” (renamed to keep party names unique)."
+					break
+				}
+			}
+		}
+		status.SetText(msg)
 	}
 
 	deleteChar := func(id, name string) {
@@ -57,21 +69,23 @@ func (g *gui) showRoster() {
 	}
 
 	refresh = func() {
+		// ListCharacters may return decoded characters AND an error (some files
+		// unreadable); surface the warning but still show what loaded.
 		chars, err := g.store.ListCharacters()
 		objs := []fyne.CanvasObject{}
 		if err != nil {
 			objs = append(objs, wrapLabel("⚠ "+err.Error()))
-		} else if len(chars) == 0 {
+		}
+		if len(chars) == 0 && err == nil {
 			objs = append(objs, widget.NewLabelWithStyle("The roster is empty.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
 				wrapLabel("Use “Save current party → roster” to add the current characters."))
-		} else {
-			for _, c := range chars {
-				id, name := c.ID, c.Name
-				label := widget.NewLabel(fmt.Sprintf("%s — Lvl %d %s %s", c.Name, c.Level, c.Race, c.Class))
-				add := widget.NewButtonWithIcon("Add to party", theme.ContentAddIcon(), func() { addToParty(id) })
-				del := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() { deleteChar(id, name) })
-				objs = append(objs, container.NewBorder(nil, nil, nil, container.NewHBox(add, del), label))
-			}
+		}
+		for _, c := range chars {
+			id, name := c.ID, c.Name
+			label := widget.NewLabel(fmt.Sprintf("%s — Lvl %d %s %s", c.Name, c.Level, c.Race, c.Class))
+			add := widget.NewButtonWithIcon("Add to party", theme.ContentAddIcon(), func() { addToParty(id) })
+			del := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() { deleteChar(id, name) })
+			objs = append(objs, container.NewBorder(nil, nil, nil, container.NewHBox(add, del), label))
 		}
 		list.Objects = objs
 		list.Refresh()

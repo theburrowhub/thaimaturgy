@@ -1,6 +1,9 @@
 package storage
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -23,8 +26,8 @@ func TestRosterSaveLoadListDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveCharacter: %v", err)
 	}
-	if id != "alice" {
-		t.Errorf("id = %q; want alice", id)
+	if !strings.HasPrefix(id, "alice-") {
+		t.Errorf("id = %q; want an 'alice-' prefixed id", id)
 	}
 	if c.ID != id {
 		t.Errorf("SaveCharacter should set c.ID (got %q)", c.ID)
@@ -60,11 +63,39 @@ func TestRosterUniqueIDs(t *testing.T) {
 	if idA == idB {
 		t.Errorf("two 'Bob's must get distinct ids, both %q", idA)
 	}
-	if idA != "bob" || idB != "bob-2" {
-		t.Errorf("ids = %q, %q; want bob, bob-2", idA, idB)
+	if !strings.HasPrefix(idA, "bob-") || !strings.HasPrefix(idB, "bob-") {
+		t.Errorf("ids should keep a readable 'bob-' prefix: %q, %q", idA, idB)
 	}
 	if list, _ := s.ListCharacters(); len(list) != 2 {
 		t.Errorf("expected 2 distinct roster entries, got %d", len(list))
+	}
+}
+
+func TestRosterIDsNonReusableAfterDelete(t *testing.T) {
+	s := newTestStorage(t)
+	first := domain.NewCharacter("Alice", "Elf", "Wizard")
+	id1, _ := s.SaveCharacter(first)
+	if err := s.DeleteCharacter(id1); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	replacement := domain.NewCharacter("Alice", "Human", "Rogue")
+	id2, _ := s.SaveCharacter(replacement)
+	if id1 == id2 {
+		t.Fatalf("a recreated 'Alice' must get a NEW id, not reuse %q", id1)
+	}
+	// A stale session link to the deleted id must not overwrite the replacement.
+	stale := domain.NewCharacter("Alice", "Elf", "Wizard")
+	stale.ID = id1
+	stale.XP = 9999
+	n, err := s.SyncPartyToRoster([]*domain.Character{stale})
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("stale-id member must not be written back, synced %d", n)
+	}
+	if repl, _ := s.LoadCharacter(id2); repl.XP == 9999 {
+		t.Error("stale link corrupted the replacement character")
 	}
 }
 
@@ -92,23 +123,41 @@ func TestSyncPartyToRosterOnlyLinked(t *testing.T) {
 	linked.XP = 1000
 
 	adhoc := domain.NewCharacter("Random NPC", "Human", "Bard") // no ID → not roster-linked
-	deleted := domain.NewCharacter("Ghost", "Human", "Wizard")
-	delID, _ := s.SaveCharacter(deleted)
-	_ = s.DeleteCharacter(delID) // roster entry gone; must not be resurrected
-	deleted.XP = 42
 
-	n, err := s.SyncPartyToRoster([]*domain.Character{linked, adhoc, deleted})
+	n, err := s.SyncPartyToRoster([]*domain.Character{linked, adhoc})
 	if err != nil {
 		t.Fatalf("SyncPartyToRoster: %v", err)
 	}
 	if n != 1 {
-		t.Errorf("synced %d; want only the 1 linked+existing member", n)
+		t.Errorf("synced %d; want only the 1 linked member", n)
 	}
 	if loaded, _ := s.LoadCharacter(id); loaded.XP != 1000 {
 		t.Errorf("linked progression not written back: XP=%d", loaded.XP)
 	}
 	if list, _ := s.ListCharacters(); len(list) != 1 {
-		t.Errorf("ad-hoc/deleted members must not create roster entries, got %d", len(list))
+		t.Errorf("ad-hoc member must not create a roster entry, got %d", len(list))
+	}
+}
+
+func TestListCharactersReportsUnreadable(t *testing.T) {
+	s := newTestStorage(t)
+	good := domain.NewCharacter("Good", "Human", "Fighter")
+	if _, err := s.SaveCharacter(good); err != nil {
+		t.Fatalf("save good: %v", err)
+	}
+	// Drop a corrupt file directly into the roster dir.
+	if err := os.WriteFile(filepath.Join(s.charactersDir(), "broken.json"), []byte("{not json"), 0644); err != nil {
+		t.Fatalf("write corrupt: %v", err)
+	}
+	list, err := s.ListCharacters()
+	if err == nil {
+		t.Error("ListCharacters should report the unreadable entry")
+	}
+	if len(list) != 1 || list[0].Name != "Good" {
+		t.Errorf("decoded characters should still be returned alongside the error, got %+v", list)
+	}
+	if err != nil && !strings.Contains(err.Error(), "broken") {
+		t.Errorf("error should name the failing entry, got %v", err)
 	}
 }
 
