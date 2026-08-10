@@ -161,6 +161,24 @@ func TestListCharactersReportsUnreadable(t *testing.T) {
 	}
 }
 
+func TestSaveCharacterAtomicNoTempLeftover(t *testing.T) {
+	s := newTestStorage(t)
+	c := domain.NewCharacter("Eve", "Human", "Bard")
+	if _, err := s.SaveCharacter(c); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	entries, _ := os.ReadDir(s.charactersDir())
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), ".tmp-") {
+			t.Errorf("atomic write left an unexpected file: %s", e.Name())
+		}
+	}
+	// The list must still see exactly the one character.
+	if list, _ := s.ListCharacters(); len(list) != 1 {
+		t.Errorf("expected 1 character, got %d", len(list))
+	}
+}
+
 func TestRosterRejectsUnsafeID(t *testing.T) {
 	s := newTestStorage(t)
 	if _, err := s.LoadCharacter("../secret"); err == nil {

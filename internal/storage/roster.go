@@ -100,15 +100,12 @@ func (s *Storage) saveCharacterLocked(c *domain.Character) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal character: %w", err)
 	}
-	if err := os.WriteFile(s.characterPath(c.ID), data, 0644); err != nil {
+	// Atomic write: a partial/failed write (disk full, interruption) must not
+	// destroy the existing character file.
+	if err := atomicWriteFile(s.characterPath(c.ID), data, 0644); err != nil {
 		return "", fmt.Errorf("failed to write character file: %w", err)
 	}
 	return c.ID, nil
-}
-
-func (s *Storage) characterExists(id string) bool {
-	_, err := os.Stat(s.characterPath(id))
-	return err == nil
 }
 
 // LoadCharacter reads a roster character by id (ensuring its ID field is set).
@@ -199,8 +196,17 @@ func (s *Storage) SyncPartyToRoster(party []*domain.Character) (int, error) {
 	defer s.rosterMu.Unlock()
 	updated := 0
 	for _, c := range party {
-		if c == nil || c.ID == "" || !s.characterExists(c.ID) {
+		if c == nil || c.ID == "" || !validRosterID(c.ID) {
 			continue
+		}
+		// Only skip a member whose roster entry genuinely doesn't exist (deleted).
+		// A permission/I/O error must be propagated, not silently treated as
+		// "deleted" — otherwise progression is lost with no signal.
+		if _, err := os.Stat(s.characterPath(c.ID)); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return updated, fmt.Errorf("failed to check roster entry %s: %w", c.ID, err)
 		}
 		if _, err := s.saveCharacterLocked(c); err != nil {
 			return updated, err
