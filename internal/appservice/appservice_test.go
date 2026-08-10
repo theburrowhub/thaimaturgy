@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -114,6 +115,68 @@ func TestExecuteCommandAndAutosave(t *testing.T) {
 	}
 	if !found {
 		t.Error("the note did not persist through the facade")
+	}
+}
+
+func TestNewSessionConcurrentUniqueNames(t *testing.T) {
+	svc, _ := newService(t)
+	const n = 8
+	names := make(chan string, n)
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			name, err := svc.NewSession("crypt")
+			if err != nil {
+				errs <- err
+				return
+			}
+			names <- name
+		}()
+	}
+	wg.Wait()
+	close(names)
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent NewSession: %v", err)
+	}
+	seen := map[string]bool{}
+	count := 0
+	for name := range names {
+		if seen[name] {
+			t.Errorf("duplicate session name handed out: %q", name)
+		}
+		seen[name] = true
+		count++
+	}
+	if count != n {
+		t.Errorf("expected %d sessions, got %d", n, count)
+	}
+}
+
+func TestCloseSessionSaveFailureKeepsLive(t *testing.T) {
+	svc, store := newService(t)
+	name, err := svc.NewSession("crypt")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	// Make the sessions directory unwritable so the final save fails.
+	sessDir := filepath.Join(store.BasePath(), storage.SessionsDir)
+	if err := os.Chmod(sessDir, 0o555); err != nil {
+		t.Skipf("cannot chmod sessions dir (skipping): %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sessDir, 0o755) })
+
+	if err := svc.CloseSession(name); err == nil {
+		t.Error("CloseSession should error when the final save fails")
+	}
+	if _, ok := svc.Get(name); !ok {
+		t.Error("a session whose final save failed must stay live (retryable), not be discarded")
+	}
+	if svc.AutosaveError(name) == nil {
+		t.Error("the save failure should be recorded and surfaced via AutosaveError")
 	}
 }
 
