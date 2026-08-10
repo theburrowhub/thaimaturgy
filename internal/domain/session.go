@@ -288,6 +288,8 @@ func (s *SessionState) ensureInitialized() {
 	if s.Conversation == nil {
 		s.Conversation = &Conversation{Messages: []Message{}, MaxSize: 0}
 	}
+	// Upgrade legacy single-character player slots to the multi-character model (#29).
+	s.migratePlayerSlots()
 }
 
 // SetLogHook registers a callback invoked for every timeline entry the moment it

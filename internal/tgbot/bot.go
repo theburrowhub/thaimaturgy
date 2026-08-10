@@ -222,29 +222,51 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		}
 		b.save()
 		b.event(fmt.Sprintf("%s picked %s", display, name))
-		b.reply(m, fmt.Sprintf("%s now plays %s. Declare actions with /do.", display, name))
+		controlled := b.session.State.PlayerCharacterNames(playerID)
+		if len(controlled) > 1 {
+			b.reply(m, fmt.Sprintf("%s now also plays %s (active). You control: %s. Use /as <name> to switch, or “/do <name>: …”.", display, name, strings.Join(controlled, ", ")))
+		} else {
+			b.reply(m, fmt.Sprintf("%s now plays %s. Declare actions with /do.", display, name))
+		}
+	case "as", "switch":
+		if arg == "" {
+			b.reply(m, "Usage: /as <character> — choose which of your characters is active.")
+			return
+		}
+		name, err := b.session.State.SetActiveCharacter(playerID, arg)
+		if err != nil {
+			b.reply(m, "⚠ "+err.Error())
+			return
+		}
+		b.save()
+		b.reply(m, "You are now acting as "+name+".")
 	case "chat", "say":
 		if !b.session.State.GameStarted() {
 			b.reply(m, notStartedMsg)
 			return
 		}
 		if arg == "" {
-			b.reply(m, "Usage: /chat <what your character says>")
+			b.reply(m, "Usage: /chat [<character>:] <what your character says>")
 			return
 		}
-		char := b.session.State.PlayerCharacterName(playerID)
-		if char == "" {
-			b.reply(m, "Pick a character first with /pick, then /chat.")
+		actor, text := splitActor(arg, b.session.State.PlayerCharacterNames(playerID))
+		char, err := b.session.State.ResolvePlayerCharacter(playerID, actor)
+		if err != nil {
+			b.reply(m, "⚠ "+err.Error())
+			return
+		}
+		if strings.TrimSpace(text) == "" {
+			b.reply(m, "Usage: /chat [<character>:] <what your character says>")
 			return
 		}
 		if b.isResolving() {
 			b.reply(m, "The DM is resolving the round — try again in a moment.")
 			return
 		}
-		b.session.State.AddChat(char, arg)
+		b.session.State.AddChat(char, text)
 		b.save()
-		b.event(fmt.Sprintf("%s (in character): %s", char, arg))
-		b.reply(m, fmt.Sprintf("💬 %s: %s", char, arg))
+		b.event(fmt.Sprintf("%s (in character): %s", char, text))
+		b.reply(m, fmt.Sprintf("💬 %s: %s", char, text))
 	case "meta", "ooc":
 		if arg == "" {
 			b.reply(m, "Usage: /meta <question or correction for the DM>")
@@ -254,22 +276,28 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 	case "assign":
 		b.assign(m)
 	case "me":
-		b.reply(m, b.sheetText(playerID))
+		b.reply(m, b.sheetText(playerID, arg))
 	case "do":
 		if !b.session.State.GameStarted() {
 			b.reply(m, notStartedMsg)
 			return
 		}
 		if arg == "" {
-			b.reply(m, "Usage: /do <what your character does>")
+			b.reply(m, "Usage: /do [<character>:] <what your character does>")
 			return
 		}
-		if _, err := b.session.State.SubmitAction(playerID, arg); err != nil {
+		actor, text := splitActor(arg, b.session.State.PlayerCharacterNames(playerID))
+		if strings.TrimSpace(text) == "" {
+			b.reply(m, "Usage: /do [<character>:] <what your character does>")
+			return
+		}
+		act, err := b.session.State.SubmitAction(playerID, actor, text)
+		if err != nil {
 			b.reply(m, "⚠ "+err.Error())
 			return
 		}
 		b.save()
-		b.event(fmt.Sprintf("%s: %s", display, arg))
+		b.event(fmt.Sprintf("%s: %s", act.CharacterName, text))
 		b.reply(m, b.roundStatus())
 	case "dm", "narrate":
 		if !b.session.State.GameStarted() {
@@ -654,17 +682,66 @@ func (b *Bot) partyText() string {
 	return sb.String()
 }
 
-func (b *Bot) sheetText(playerID string) string {
-	name := b.session.State.PlayerCharacterName(playerID)
-	if name == "" {
-		return "You haven't picked a character yet. See /party then /pick <name>."
+// splitActor separates an optional "<character>: rest" prefix from an argument,
+// but ONLY when the part before the colon names one of the player's controlled
+// characters — so a mid-sentence colon ("open the chest: it's locked") isn't
+// mistaken for a character selector. Returns ("", arg) when no actor prefix
+// applies.
+func splitActor(arg string, controlled []string) (actor, rest string) {
+	i := strings.Index(arg, ":")
+	if i <= 0 {
+		return "", arg
 	}
-	for _, c := range b.session.State.PartySnapshot() {
-		if strings.EqualFold(c.Name, name) {
-			return engine.FormatCharacter(&c)
+	cand := strings.TrimSpace(arg[:i])
+	for _, c := range controlled {
+		if strings.EqualFold(c, cand) {
+			return c, strings.TrimSpace(arg[i+1:])
 		}
 	}
-	return "Character not found: " + name
+	return "", arg
+}
+
+// sheetText shows a player's character sheet. With no argument it shows the
+// active character (and, when the player controls several, lists them all with
+// the active one starred); "/me <name>" shows a specific controlled character.
+func (b *Bot) sheetText(playerID, arg string) string {
+	names := b.session.State.PlayerCharacterNames(playerID)
+	if len(names) == 0 {
+		return "You haven't picked a character yet. See /party then /pick <name>."
+	}
+	active := b.session.State.PlayerCharacterName(playerID)
+	target := strings.TrimSpace(arg)
+	if target == "" {
+		target = active
+	} else {
+		ok := false
+		for _, n := range names {
+			if strings.EqualFold(n, target) {
+				target, ok = n, true
+				break
+			}
+		}
+		if !ok {
+			return "You don't control “" + target + "”. You play: " + strings.Join(names, ", ")
+		}
+	}
+	header := ""
+	if len(names) > 1 {
+		labeled := make([]string, len(names))
+		for i, n := range names {
+			if strings.EqualFold(n, active) {
+				n = "⭐ " + n
+			}
+			labeled[i] = n
+		}
+		header = "You control: " + strings.Join(labeled, ", ") + "\n(/me <name> for another · /as <name> to switch active)\n\n"
+	}
+	for _, c := range b.session.State.PartySnapshot() {
+		if strings.EqualFold(c.Name, target) {
+			return header + engine.FormatCharacter(&c)
+		}
+	}
+	return "Character not found: " + target
 }
 
 func (b *Bot) roundStatus() string {
@@ -831,13 +908,14 @@ const notStartedMsg = "The game hasn't started yet. Pick characters with /pick, 
 const helpText = `thAImaturgy — multiplayer DM bot
 /party — list characters and who plays them
 /roster — list the persistent campaign roster
-/pick <name> — claim a character to play
+/pick <name> — claim a character to play (repeat to control several)
+/as <name> — choose which of your characters is active
 /assign @user <name> — assign a character to a player (or reply to them with /assign <name>)
-/me — show your character sheet
+/me [name] — show your character sheet (or one of your characters)
 /begin — start the game (the DM sets the opening scene)
-/chat <line> — say something in character (context for the DM, not an action)
+/chat [name:] <line> — say something in character (context for the DM, not an action)
 /meta <text> — ask the DM a question or note a correction (out of character)
-/do <action> — declare your character's action this round (after /begin)
+/do [name:] <action> — declare an action this round (name: picks which of your characters)
 /dm — let the AI Dungeon Master resolve the round and narrate (after /begin)
 /roll <dice> — roll dice (e.g. 2d6+3)
 /save — save the current session
