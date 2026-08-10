@@ -107,12 +107,14 @@ func enc(name string) string { return url.PathEscape(name) }
 
 func (c *Client) ListAdventures(ctx context.Context) ([]storage.AdventureInfo, error) {
 	var out []storage.AdventureInfo
-	return out, c.do(ctx, "GET", "/api/adventures", nil, &out)
+	err := c.do(ctx, "GET", "/api/adventures", nil, &out)
+	return out, err
 }
 
 func (c *Client) ListSessions(ctx context.Context) ([]storage.SessionInfo, error) {
 	var out []storage.SessionInfo
-	return out, c.do(ctx, "GET", "/api/sessions", nil, &out)
+	err := c.do(ctx, "GET", "/api/sessions", nil, &out)
+	return out, err
 }
 
 // NewSession creates a session for an adventure and returns its name.
@@ -149,20 +151,23 @@ func (c *Client) RenameSession(ctx context.Context, name, newName string) error 
 // Command runs a shared engine command (the parity path) against a session.
 func (c *Client) Command(ctx context.Context, name, input string) (CommandResult, error) {
 	var out CommandResult
-	return out, c.do(ctx, "POST", "/api/sessions/"+enc(name)+"/command", map[string]string{"input": input}, &out)
+	err := c.do(ctx, "POST", "/api/sessions/"+enc(name)+"/command", map[string]string{"input": input}, &out)
+	return out, err
 }
 
 // Oracle runs one oracle/DM turn against a session.
 func (c *Client) Oracle(ctx context.Context, name, input string) (OracleResult, error) {
 	var out OracleResult
-	return out, c.do(ctx, "POST", "/api/sessions/"+enc(name)+"/oracle", map[string]string{"input": input}, &out)
+	err := c.do(ctx, "POST", "/api/sessions/"+enc(name)+"/oracle", map[string]string{"input": input}, &out)
+	return out, err
 }
 
 // --- Roster & config -----------------------------------------------------
 
 func (c *Client) ListCharacters(ctx context.Context) ([]*domain.Character, error) {
 	var out []*domain.Character
-	return out, c.do(ctx, "GET", "/api/roster", nil, &out)
+	err := c.do(ctx, "GET", "/api/roster", nil, &out)
+	return out, err
 }
 
 // SaveCharacter persists a roster character and returns its id.
