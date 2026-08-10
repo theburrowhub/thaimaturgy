@@ -5,6 +5,7 @@
 package apiclient
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -35,6 +36,9 @@ func New(baseURL, token string) *Client {
 		hc:    &http.Client{Timeout: 0}, // no global timeout: an oracle turn is long
 	}
 }
+
+// BaseURL returns the server's base URL (for display).
+func (c *Client) BaseURL() string { return c.base }
 
 // CommandResult mirrors the server's /command response.
 type CommandResult struct {
@@ -202,6 +206,53 @@ func (c *Client) SSETicket(ctx context.Context) (string, error) {
 	}
 	err := c.do(ctx, "POST", "/api/sse-ticket", nil, &out)
 	return out.Ticket, err
+}
+
+// StreamEvents opens the session's SSE stream and calls onLog for each timeline
+// entry until ctx is cancelled or the stream ends. When the server requires a
+// token it first mints an SSE ticket. Blocks; run it in a goroutine.
+func (c *Client) StreamEvents(ctx context.Context, name string, onLog func(domain.LogEntry)) error {
+	u := c.base + "/api/sessions/" + enc(name) + "/events"
+	if c.token != "" {
+		ticket, err := c.SSETicket(ctx)
+		if err != nil {
+			return err
+		}
+		u += "?ticket=" + url.QueryEscape(ticket)
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		return fmt.Errorf("events stream: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	var event string
+	for sc.Scan() {
+		line := sc.Text()
+		switch {
+		case strings.HasPrefix(line, "event:"):
+			event = strings.TrimSpace(line[len("event:"):])
+		case strings.HasPrefix(line, "data:"):
+			if event == "log" {
+				var e domain.LogEntry
+				if json.Unmarshal([]byte(strings.TrimSpace(line[len("data:"):])), &e) == nil {
+					onLog(e)
+				}
+			}
+		case line == "":
+			event = "" // end of one SSE event
+		}
+	}
+	return sc.Err()
 }
 
 // Health pings the server, returning an error if it isn't reachable/healthy.

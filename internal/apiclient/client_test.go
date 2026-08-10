@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -139,6 +140,39 @@ func TestClientHandlesLargeResponse(t *testing.T) {
 	}
 	if len(got[len(got)-1].Notes) != len(pad) {
 		t.Error("last character's notes were truncated")
+	}
+}
+
+func TestClientStreamEvents(t *testing.T) {
+	c := liveServer(t, "")
+	ctx := context.Background()
+	name, err := c.NewSession(ctx, "crypt")
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+	// Produce a timeline entry the stream should deliver.
+	if _, err := c.Command(ctx, name, "/note a bell tolls"); err != nil {
+		t.Fatalf("command: %v", err)
+	}
+
+	sctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	got := make(chan string, 8)
+	go func() {
+		_ = c.StreamEvents(sctx, name, func(e domain.LogEntry) {
+			if strings.Contains(e.Message, "a bell tolls") {
+				select {
+				case got <- e.Message:
+				default:
+				}
+			}
+		})
+	}()
+	select {
+	case <-got:
+		// delivered
+	case <-time.After(3 * time.Second):
+		t.Error("StreamEvents did not deliver the log entry")
 	}
 }
 

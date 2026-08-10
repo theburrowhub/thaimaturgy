@@ -66,9 +66,17 @@ endpoint.
 ## Clients
 
 - **Web UI** — served at `/` by the server (Phase C); a full decoupled client.
-- **Go client** — `internal/apiclient` is a typed client for the API (used by
-  tests and available for a remote desktop-GUI mode / CLI).
+- **Desktop app (remote mode)** — launch the desktop GUI as a client of a server:
 
-The Telegram bot and the desktop app continue to run locally against the core; a
-desktop-GUI "remote server" mode (talking to this server via `apiclient`) is the
-remaining follow-up for #36.
+  ```bash
+  bin/thaimaturgy --server http://127.0.0.1:8765 --token <token>
+  # or THAIM_SERVER=… THAIM_SERVER_TOKEN=… bin/thaimaturgy
+  ```
+
+  In remote mode the library, sessions, oracle/commands, party, and the live log
+  (over SSE) come from the server via `internal/apiclient`. Without `--server`
+  the app runs locally against the in-process core exactly as before.
+- **Go client** — `internal/apiclient` is a typed client for the API (used by the
+  remote desktop mode and available for a CLI).
+
+The Telegram bot continues to run locally against the core.
