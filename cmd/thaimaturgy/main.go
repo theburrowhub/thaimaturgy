@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/theburrowhub/thaimaturgy/internal/apiclient"
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/bookpdf"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -105,6 +107,13 @@ type gui struct {
 	centerRight *container.Split
 	centerCard  fyne.CanvasObject
 	rightCard   fyne.CanvasObject
+
+	// Remote mode (#60): when set (via --server), the GUI operates as a thin
+	// client against a thaimaturgy-server over the HTTP API instead of the
+	// in-process core. nil in the default local mode.
+	remote       *apiclient.Client
+	remoteName   string             // the open remote session, if any
+	remoteCancel context.CancelFunc // cancels the open session's SSE stream
 }
 
 func main() {
@@ -116,6 +125,24 @@ func main() {
 			os.Exit(1)
 		}
 		return
+	}
+
+	// Remote mode: point the desktop app at a running server (#60). The token is
+	// NOT a value-bearing flag (that would leak it into shell history / argv /
+	// --help): it comes from THAIM_SERVER_TOKEN or, to keep it off the environment
+	// too, a file named by --token-file.
+	serverURL := flag.String("server", os.Getenv("THAIM_SERVER"), "run as a client against a thaimaturgy-server at this URL (remote mode)")
+	tokenFile := flag.String("token-file", "", "read the server bearer token from this file (keeps it out of argv)")
+	flag.Parse()
+
+	serverToken := os.Getenv("THAIM_SERVER_TOKEN")
+	if *tokenFile != "" {
+		b, ferr := os.ReadFile(*tokenFile)
+		if ferr != nil {
+			fmt.Fprintf(os.Stderr, "token-file: %v\n", ferr)
+			os.Exit(1)
+		}
+		serverToken = strings.TrimSpace(string(b))
 	}
 
 	store, err := storage.New()
@@ -147,7 +174,12 @@ func main() {
 	g.app.Settings().SetTheme(guitheme.New())
 	g.win = g.app.NewWindow("thAImaturgy — DM Oracle")
 	g.win.Resize(fyne.NewSize(1200, 780))
-	g.showLibrary()
+	if url := strings.TrimSpace(*serverURL); url != "" {
+		g.remote = apiclient.New(url, serverToken)
+		g.showRemoteLibrary()
+	} else {
+		g.showLibrary()
+	}
 	g.win.ShowAndRun()
 }
 
