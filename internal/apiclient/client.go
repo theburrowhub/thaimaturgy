@@ -80,8 +80,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		return err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode/100 != 2 {
+		// Read a bounded slice of the error body just to surface the message.
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		var e struct {
 			Error string `json:"error"`
 		}
@@ -91,7 +92,11 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	if out != nil {
-		return json.Unmarshal(data, out)
+		// Decode the success body as a stream so a large-but-valid response (a big
+		// session state or collection) is never truncated.
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			return fmt.Errorf("decoding response: %w", err)
+		}
 	}
 	return nil
 }

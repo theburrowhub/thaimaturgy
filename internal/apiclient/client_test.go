@@ -3,9 +3,11 @@ package apiclient
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/appservice"
@@ -103,6 +105,40 @@ func TestClientErrorSurface(t *testing.T) {
 	// An unknown session → the server's error message should surface.
 	if _, err := c.Session(ctx, "does-not-exist"); err == nil {
 		t.Error("expected an error for an unknown session")
+	}
+}
+
+// TestClientHandlesLargeResponse ensures a valid response bigger than the old
+// 8 MiB read cap decodes fully (Heimdallm review) rather than being truncated.
+func TestClientHandlesLargeResponse(t *testing.T) {
+	// A bare server that returns a large roster payload (~10 MiB).
+	big := make([]*domain.Character, 0, 100)
+	pad := strings.Repeat("x", 100*1024) // 100 KiB notes each → ~10 MiB total
+	for i := 0; i < 100; i++ {
+		c := domain.NewCharacter("Char", "Human", "Fighter")
+		c.Notes = pad
+		big = append(big, c)
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/roster" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(big)
+			return
+		}
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	c := New(ts.URL, "")
+	got, err := c.ListCharacters(context.Background())
+	if err != nil {
+		t.Fatalf("large ListCharacters: %v", err)
+	}
+	if len(got) != len(big) {
+		t.Fatalf("got %d characters; want %d (response was truncated)", len(got), len(big))
+	}
+	if len(got[len(got)-1].Notes) != len(pad) {
+		t.Error("last character's notes were truncated")
 	}
 }
 

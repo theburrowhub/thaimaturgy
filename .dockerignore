@@ -5,3 +5,7 @@ dist/
 *.log
 # Local data must never leak into the image.
 .thaimaturgy/
+# Secrets (tokens, provider API keys) — never copy into the build context/cache.
+.env
+.env.*
+!.env.example
