@@ -144,6 +144,77 @@ func TestAuthToken(t *testing.T) {
 	r2.Body.Close()
 }
 
+func TestSSETicketAuth(t *testing.T) {
+	ts := newTestServer(t, "s3cret")
+	_, out := func() (*http.Response, map[string]any) {
+		req, _ := http.NewRequest("POST", ts.URL+"/api/sessions", bytes.NewReader([]byte(`{"adventure_id":"crypt"}`)))
+		req.Header.Set("Authorization", "Bearer s3cret")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("new session: %v", err)
+		}
+		var m map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&m)
+		resp.Body.Close()
+		return resp, m
+	}()
+	name := out["name"].(string)
+
+	// SSE without a ticket → 401.
+	r0, _ := http.Get(ts.URL + "/api/sessions/" + name + "/events")
+	if r0.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("SSE without ticket = %d; want 401", r0.StatusCode)
+	}
+	r0.Body.Close()
+
+	// A ticket can't be minted without the bearer header.
+	rNo, _ := http.Post(ts.URL+"/api/sse-ticket", "application/json", nil)
+	if rNo.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("sse-ticket without auth = %d; want 401", rNo.StatusCode)
+	}
+	rNo.Body.Close()
+
+	// Mint a ticket with the header, then open SSE with it.
+	treq, _ := http.NewRequest("POST", ts.URL+"/api/sse-ticket", nil)
+	treq.Header.Set("Authorization", "Bearer s3cret")
+	tr, err := http.DefaultClient.Do(treq)
+	if err != nil {
+		t.Fatalf("sse-ticket: %v", err)
+	}
+	var tk map[string]string
+	_ = json.NewDecoder(tr.Body).Decode(&tk)
+	tr.Body.Close()
+	if tk["ticket"] == "" {
+		t.Fatal("no ticket issued")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", ts.URL+"/api/sessions/"+name+"/events?ticket="+tk["ticket"], nil)
+	r1, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("SSE with ticket: %v", err)
+	}
+	defer r1.Body.Close()
+	if r1.StatusCode != 200 || !strings.HasPrefix(r1.Header.Get("Content-Type"), "text/event-stream") {
+		t.Fatalf("SSE with ticket = %d / %q", r1.StatusCode, r1.Header.Get("Content-Type"))
+	}
+	// A ticket is single-use: reusing it fails.
+	r2, _ := http.Get(ts.URL + "/api/sessions/" + name + "/events?ticket=" + tk["ticket"])
+	if r2.StatusCode != http.StatusUnauthorized {
+		t.Errorf("reused ticket = %d; want 401", r2.StatusCode)
+	}
+	r2.Body.Close()
+}
+
+func TestBodyTooLarge(t *testing.T) {
+	ts := newTestServer(t, "")
+	big := `{"adventure_id":"` + strings.Repeat("a", (1<<20)+16) + `"}`
+	resp, _ := doJSON(t, "POST", ts.URL+"/api/sessions", big)
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Errorf("oversized body = %d; want 413", resp.StatusCode)
+	}
+}
+
 func TestSSEStreamsLog(t *testing.T) {
 	ts := newTestServer(t, "")
 	_, out := doJSON(t, "POST", ts.URL+"/api/sessions", `{"adventure_id":"crypt"}`)

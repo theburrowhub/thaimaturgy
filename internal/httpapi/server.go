@@ -11,26 +11,43 @@
 package httpapi
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
 
+// maxBodyBytes bounds a JSON request body so a client can't exhaust memory.
+const maxBodyBytes = 1 << 20 // 1 MiB
+
+// sseTicketTTL bounds how long an issued SSE ticket is valid.
+const sseTicketTTL = 30 * time.Second
+
 // Server adapts an appservice.Service to HTTP. token, when non-empty, is required
-// as a Bearer header (or ?token= for SSE) on every /api/ request.
+// as an Authorization: Bearer header on every /api/ request (except the SSE
+// stream, which EventSource can't add headers to — it uses a short-lived,
+// single-use ticket instead, so the long-lived master token never travels in a
+// URL where it could be logged).
 type Server struct {
 	svc   *appservice.Service
 	token string
+
+	ticketMu sync.Mutex
+	tickets  map[string]time.Time // single-use SSE tickets → expiry
 }
 
 // New builds an HTTP server over the service. token may be empty (no auth — only
 // safe when bound to loopback).
 func New(svc *appservice.Service, token string) *Server {
-	return &Server{svc: svc, token: token}
+	return &Server{svc: svc, token: token, tickets: make(map[string]time.Time)}
 }
 
 // Handler returns the routed, auth-wrapped http.Handler.
@@ -51,6 +68,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/sessions/{name}/command", s.command)
 	mux.HandleFunc("POST /api/sessions/{name}/oracle", s.oracle)
 	mux.HandleFunc("GET /api/sessions/{name}/events", s.sessionEvents)
+	mux.HandleFunc("POST /api/sse-ticket", s.sseTicket)
 	mux.HandleFunc("GET /api/roster", s.listRoster)
 	mux.HandleFunc("POST /api/roster", s.saveRosterCharacter)
 	mux.HandleFunc("DELETE /api/roster/{id}", s.deleteRosterCharacter)
@@ -61,11 +79,14 @@ func (s *Server) Handler() http.Handler {
 	return s.withAuth(mux)
 }
 
-// withAuth enforces the bearer token on /api/ routes when one is configured.
+// withAuth enforces the bearer token on /api/ routes when one is configured. The
+// SSE stream is exempt here — EventSource can't set an Authorization header — and
+// validates a single-use ticket inside its own handler instead, so the master
+// token is never accepted from a URL.
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.token != "" && len(r.URL.Path) >= 4 && r.URL.Path[:4] == "/api" {
-			if !s.authorized(r) {
+		if s.token != "" && strings.HasPrefix(r.URL.Path, "/api") && !strings.HasSuffix(r.URL.Path, "/events") {
+			if r.Header.Get("Authorization") != "Bearer "+s.token {
 				httpError(w, http.StatusUnauthorized, "missing or invalid token")
 				return
 			}
@@ -74,12 +95,51 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) authorized(r *http.Request) bool {
-	if h := r.Header.Get("Authorization"); h == "Bearer "+s.token {
+// sseTicket issues a short-lived, single-use ticket for opening the SSE stream,
+// so the long-lived master token stays out of URLs. Requires header auth (via
+// withAuth). When no token is configured it still returns a (harmless) ticket.
+func (s *Server) sseTicket(w http.ResponseWriter, r *http.Request) {
+	var b [18]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		httpError(w, http.StatusInternalServerError, "could not mint ticket")
+		return
+	}
+	t := base64.RawURLEncoding.EncodeToString(b[:])
+	s.ticketMu.Lock()
+	// Opportunistically drop expired tickets, then record the new one.
+	now := time.Now()
+	for k, exp := range s.tickets {
+		if now.After(exp) {
+			delete(s.tickets, k)
+		}
+	}
+	s.tickets[t] = now.Add(sseTicketTTL)
+	s.ticketMu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ticket": t})
+}
+
+// consumeTicket validates and single-use-consumes an SSE ticket.
+func (s *Server) consumeTicket(t string) bool {
+	if t == "" {
+		return false
+	}
+	s.ticketMu.Lock()
+	defer s.ticketMu.Unlock()
+	exp, ok := s.tickets[t]
+	if !ok {
+		return false
+	}
+	delete(s.tickets, t)
+	return time.Now().Before(exp)
+}
+
+// sseAuthorized reports whether an SSE request may proceed: always when no token
+// is configured, otherwise it must present a valid ticket.
+func (s *Server) sseAuthorized(r *http.Request) bool {
+	if s.token == "" {
 		return true
 	}
-	// EventSource can't set headers, so allow the token as a query param for SSE.
-	return r.URL.Query().Get("token") == s.token
+	return s.consumeTicket(r.URL.Query().Get("ticket"))
 }
 
 // --- handlers ------------------------------------------------------------
@@ -217,6 +277,10 @@ func (s *Server) oracle(w http.ResponseWriter, r *http.Request) {
 // resuming the session if needed. It sends the current log first, then tails for
 // new entries until the client disconnects.
 func (s *Server) sessionEvents(w http.ResponseWriter, r *http.Request) {
+	if !s.sseAuthorized(r) {
+		httpError(w, http.StatusUnauthorized, "missing or invalid SSE ticket (POST /api/sse-ticket)")
+		return
+	}
 	name := r.PathValue("name")
 	os, ok := s.svc.Get(name)
 	if !ok {
@@ -331,10 +395,17 @@ func httpError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// readJSON decodes the request body into v, writing a 400 and returning false on
-// failure.
+// readJSON decodes the request body into v under a size cap (maxBodyBytes),
+// writing 413 when the body is too large and 400 on other decode failures, and
+// returning false in both cases.
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			httpError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return false
+		}
 		httpError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return false
 	}

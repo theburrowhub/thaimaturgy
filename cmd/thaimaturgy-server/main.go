@@ -12,10 +12,12 @@ import (
 	"errors"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/appservice"
@@ -24,6 +26,10 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
+
+// shutdownSignals are the signals that trigger a graceful shutdown. SIGTERM is
+// included because Docker/Kubernetes/systemd stop services with it.
+var shutdownSignals = []os.Signal{os.Interrupt, syscall.SIGTERM}
 
 func main() {
 	addr := flag.String("addr", envOr("THAIM_ADDR", "127.0.0.1:8765"), "listen address (host:port)")
@@ -48,19 +54,26 @@ func main() {
 	}
 	svc := appservice.New(store, config, providers.New(config))
 
-	srv := &http.Server{
-		Addr:              *addr,
-		Handler:           httpapi.New(svc, strings.TrimSpace(*token)).Handler(),
-		ReadHeaderTimeout: 10 * time.Second,
+	tok := strings.TrimSpace(*token)
+	loopback, err := isLoopbackAddr(*addr)
+	if err != nil {
+		log.Fatalf("invalid --addr %q: %v", *addr, err)
+	}
+	// Fail closed: never expose the API beyond loopback without a token — it would
+	// hand session commands, deletion, config, and billed oracle calls to anyone.
+	if !loopback && tok == "" {
+		log.Fatalf("refusing to bind %q beyond loopback without a token: set THAIM_SERVER_TOKEN (or bind 127.0.0.1)", *addr)
 	}
 
-	if !isLoopback(*addr) && strings.TrimSpace(*token) == "" {
-		log.Printf("WARNING: binding %s beyond loopback WITHOUT a token — anyone who can reach it controls your games and data. Set THAIM_SERVER_TOKEN.", *addr)
+	srv := &http.Server{
+		Addr:              *addr,
+		Handler:           httpapi.New(svc, tok).Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("thaimaturgy-server on http://%s — %s", *addr, msg)
 
 	// Graceful shutdown on SIGINT/SIGTERM.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), shutdownSignals...)
 	defer stop()
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -81,12 +94,23 @@ func envOr(key, def string) string {
 	return def
 }
 
-// isLoopback reports whether a host:port binds only to loopback.
-func isLoopback(addr string) bool {
-	host := addr
-	if i := strings.LastIndex(addr, ":"); i >= 0 {
-		host = addr[:i]
+// isLoopbackAddr reports whether a host:port binds ONLY to loopback. An empty
+// host (e.g. ":8765") is a wildcard bind to every interface, so it is NOT
+// loopback. A non-IP hostname is treated conservatively as non-loopback.
+func isLoopbackAddr(addr string) (bool, error) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false, err
 	}
-	host = strings.Trim(host, "[]")
-	return host == "" || host == "127.0.0.1" || host == "::1" || host == "localhost"
+	if host == "" {
+		return false, nil // wildcard → all interfaces
+	}
+	if host == "localhost" {
+		return true, nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false, nil // a hostname we can't classify → assume exposed
+	}
+	return ip.IsLoopback(), nil
 }
