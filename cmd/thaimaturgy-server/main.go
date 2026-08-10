@@ -36,7 +36,15 @@ func main() {
 	token := flag.String("token", os.Getenv("THAIM_SERVER_TOKEN"), "require this bearer token on /api/ (recommended when not on loopback)")
 	flag.Parse()
 
-	store, err := storage.New()
+	// A data dir can be pinned (THAIM_DATA_DIR) so a container can mount a volume
+	// for adventures/sessions/config; otherwise the default ~/.thaimaturgy is used.
+	var store *storage.Storage
+	var err error
+	if dataDir := strings.TrimSpace(os.Getenv("THAIM_DATA_DIR")); dataDir != "" {
+		store, err = storage.NewWithPath(dataDir)
+	} else {
+		store, err = storage.New()
+	}
 	if err != nil {
 		log.Fatalf("storage: %v", err)
 	}

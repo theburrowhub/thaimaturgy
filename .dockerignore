@@ -1,0 +1,7 @@
+.git
+bin/
+dist/
+*.tar.gz
+*.log
+# Local data must never leak into the image.
+.thaimaturgy/
