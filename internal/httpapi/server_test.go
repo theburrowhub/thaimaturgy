@@ -149,6 +149,7 @@ func TestSSETicketAuth(t *testing.T) {
 	_, out := func() (*http.Response, map[string]any) {
 		req, _ := http.NewRequest("POST", ts.URL+"/api/sessions", bytes.NewReader([]byte(`{"adventure_id":"crypt"}`)))
 		req.Header.Set("Authorization", "Bearer s3cret")
+		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("new session: %v", err)
@@ -198,12 +199,55 @@ func TestSSETicketAuth(t *testing.T) {
 	if r1.StatusCode != 200 || !strings.HasPrefix(r1.Header.Get("Content-Type"), "text/event-stream") {
 		t.Fatalf("SSE with ticket = %d / %q", r1.StatusCode, r1.Header.Get("Content-Type"))
 	}
-	// A ticket is single-use: reusing it fails.
-	r2, _ := http.Get(ts.URL + "/api/sessions/" + name + "/events?ticket=" + tk["ticket"])
-	if r2.StatusCode != http.StatusUnauthorized {
-		t.Errorf("reused ticket = %d; want 401", r2.StatusCode)
+	// The ticket stays valid within its window so EventSource can reconnect.
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel2()
+	req2, _ := http.NewRequestWithContext(ctx2, "GET", ts.URL+"/api/sessions/"+name+"/events?ticket="+tk["ticket"], nil)
+	r2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("SSE reconnect: %v", err)
+	}
+	if r2.StatusCode != 200 {
+		t.Errorf("reconnect with same ticket = %d; want 200 (bounded window)", r2.StatusCode)
 	}
 	r2.Body.Close()
+	// A bogus ticket is rejected.
+	r3, _ := http.Get(ts.URL + "/api/sessions/" + name + "/events?ticket=nope")
+	if r3.StatusCode != http.StatusUnauthorized {
+		t.Errorf("bogus ticket = %d; want 401", r3.StatusCode)
+	}
+	r3.Body.Close()
+}
+
+func TestCSRFGuardOnLoopbackNoToken(t *testing.T) {
+	ts := newTestServer(t, "") // no token → loopback CSRF guard active
+	base := ts.URL + "/api/adventures"
+
+	// A cross-origin Origin is blocked.
+	req, _ := http.NewRequest("GET", base, nil)
+	req.Header.Set("Origin", "http://evil.example.com")
+	resp, _ := http.DefaultClient.Do(req)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("cross-origin request = %d; want 403", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// A spoofed (rebinding) Host is blocked.
+	req2, _ := http.NewRequest("GET", base, nil)
+	req2.Host = "attacker.com"
+	resp2, _ := http.DefaultClient.Do(req2)
+	if resp2.StatusCode != http.StatusForbidden {
+		t.Errorf("rebinding Host = %d; want 403", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+
+	// A text/plain body to a mutating endpoint is rejected (415), so a simple
+	// cross-origin POST can't reach the JSON handler.
+	tp, _ := http.Post(ts.URL+"/api/sessions", "text/plain", bytes.NewReader([]byte(`{"adventure_id":"crypt"}`)))
+	if tp.StatusCode != http.StatusUnsupportedMediaType {
+		t.Errorf("text/plain body = %d; want 415", tp.StatusCode)
+	}
+	tp.Body.Close()
 }
 
 func TestBodyTooLarge(t *testing.T) {

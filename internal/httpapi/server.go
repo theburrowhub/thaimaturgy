@@ -16,7 +16,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -28,8 +31,10 @@ import (
 // maxBodyBytes bounds a JSON request body so a client can't exhaust memory.
 const maxBodyBytes = 1 << 20 // 1 MiB
 
-// sseTicketTTL bounds how long an issued SSE ticket is valid.
-const sseTicketTTL = 30 * time.Second
+// sseTicketTTL bounds how long an issued SSE ticket stays valid. It is a
+// reconnection WINDOW (not single-use), so native EventSource can reconnect with
+// the same ticket after a transient drop without a 401.
+const sseTicketTTL = 2 * time.Minute
 
 // Server adapts an appservice.Service to HTTP. token, when non-empty, is required
 // as an Authorization: Bearer header on every /api/ request (except the SSE
@@ -79,20 +84,67 @@ func (s *Server) Handler() http.Handler {
 	return s.withAuth(mux)
 }
 
-// withAuth enforces the bearer token on /api/ routes when one is configured. The
-// SSE stream is exempt here — EventSource can't set an Authorization header — and
-// validates a single-use ticket inside its own handler instead, so the master
-// token is never accepted from a URL.
+// withAuth protects /api/ routes. When a token is configured, the Authorization:
+// Bearer header is required (a cross-origin "simple" request can't set it, so
+// this is also the CSRF defense); the SSE stream is exempt and uses a ticket
+// instead. When NO token is configured the server is loopback-only, so instead we
+// apply an anti-CSRF / anti-DNS-rebinding guard: the Host must be a loopback name
+// and any Origin must be same-origin, blocking a malicious web page from driving
+// the local API.
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.token != "" && strings.HasPrefix(r.URL.Path, "/api") && !strings.HasSuffix(r.URL.Path, "/events") {
-			if r.Header.Get("Authorization") != "Bearer "+s.token {
-				httpError(w, http.StatusUnauthorized, "missing or invalid token")
+		if strings.HasPrefix(r.URL.Path, "/api") {
+			if s.token != "" {
+				if !strings.HasSuffix(r.URL.Path, "/events") && r.Header.Get("Authorization") != "Bearer "+s.token {
+					httpError(w, http.StatusUnauthorized, "missing or invalid token")
+					return
+				}
+			} else if code, msg := csrfGuard(r); code != 0 {
+				httpError(w, code, msg)
 				return
 			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// csrfGuard rejects requests that a browser on another origin could use to drive
+// the token-less loopback API: the Host header must be a loopback name (defeats
+// DNS-rebinding, where attacker.com resolves to 127.0.0.1), and any Origin must
+// itself be loopback (defeats cross-origin fetch/EventSource). Returns (0,"") to
+// allow.
+func csrfGuard(r *http.Request) (int, string) {
+	if !isLoopbackHost(r.Host) {
+		return http.StatusForbidden, "unexpected Host header"
+	}
+	if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o) {
+		return http.StatusForbidden, "cross-origin request blocked"
+	}
+	return 0, ""
+}
+
+func hostOnly(hostport string) string {
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		return h
+	}
+	return hostport
+}
+
+func isLoopbackHost(hostport string) bool {
+	h := hostOnly(hostport)
+	if h == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
+}
+
+func isLoopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return isLoopbackHost(u.Host)
 }
 
 // sseTicket issues a short-lived, single-use ticket for opening the SSE stream,
@@ -118,8 +170,10 @@ func (s *Server) sseTicket(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"ticket": t})
 }
 
-// consumeTicket validates and single-use-consumes an SSE ticket.
-func (s *Server) consumeTicket(t string) bool {
+// validTicket reports whether an SSE ticket is still valid. It is NOT single-use:
+// the ticket stays valid for its TTL so EventSource can reconnect after a
+// transient drop; expired tickets are dropped on read.
+func (s *Server) validTicket(t string) bool {
 	if t == "" {
 		return false
 	}
@@ -129,17 +183,21 @@ func (s *Server) consumeTicket(t string) bool {
 	if !ok {
 		return false
 	}
-	delete(s.tickets, t)
-	return time.Now().Before(exp)
+	if time.Now().After(exp) {
+		delete(s.tickets, t)
+		return false
+	}
+	return true
 }
 
 // sseAuthorized reports whether an SSE request may proceed: always when no token
-// is configured, otherwise it must present a valid ticket.
+// is configured (the loopback CSRF guard already ran in withAuth), otherwise it
+// must present a valid, unexpired ticket.
 func (s *Server) sseAuthorized(r *http.Request) bool {
 	if s.token == "" {
 		return true
 	}
-	return s.consumeTicket(r.URL.Query().Get("ticket"))
+	return s.validTicket(r.URL.Query().Get("ticket"))
 }
 
 // --- handlers ------------------------------------------------------------
@@ -395,18 +453,29 @@ func httpError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// readJSON decodes the request body into v under a size cap (maxBodyBytes),
-// writing 413 when the body is too large and 400 on other decode failures, and
-// returning false in both cases.
+// readJSON decodes a single JSON value from the request body into v under a size
+// cap. It requires an application/json Content-Type (so a cross-origin "simple"
+// request with a text/plain body can't reach a mutating endpoint), rejects a
+// body larger than maxBodyBytes (413) or with trailing data, and 400s other
+// decode failures. Returns false (having written the response) on any failure.
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != "application/json" {
+		httpError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return false
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(v); err != nil {
 		var mbe *http.MaxBytesError
 		if errors.As(err, &mbe) {
 			httpError(w, http.StatusRequestEntityTooLarge, "request body too large")
 			return false
 		}
 		httpError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return false
+	}
+	if dec.More() {
+		httpError(w, http.StatusBadRequest, "unexpected trailing data after JSON body")
 		return false
 	}
 	return true
