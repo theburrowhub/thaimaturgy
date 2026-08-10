@@ -32,7 +32,7 @@ func TestSessionStateConcurrentAccess(t *testing.T) {
 				st.SetVariable("k", "v")
 				st.MutateCharacter("Hero", func(c *Character) { c.AwardXP(1); c.SetHP(5); c.SetGold(3) })
 				st.MutateCharacter("", func(c *Character) { c.Heal(1) }) // empty name → sole member
-				_, _ = st.SubmitAction("p1", "swing")
+				_, _ = st.SubmitAction("p1", "", "swing")
 				st.ResetRound()
 				st.StartGame()
 				st.SetNPCDisposition("n", "friendly")

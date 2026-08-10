@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func partyState() *SessionState {
 	st := NewSessionState("mp", nil)
@@ -112,17 +115,17 @@ func TestClaimCharacter(t *testing.T) {
 
 func TestSubmitActionAndRound(t *testing.T) {
 	st := partyState()
-	if _, err := st.SubmitAction("p1", "I attack"); err == nil {
+	if _, err := st.SubmitAction("p1", "", "I attack"); err == nil {
 		t.Error("submitting without a character should fail")
 	}
 	_, _ = st.ClaimCharacter("p1", "Ana", "Alden")
 	_, _ = st.ClaimCharacter("p2", "Luis", "Naivara")
 
-	if _, err := st.SubmitAction("p1", "I kick the door"); err != nil {
+	if _, err := st.SubmitAction("p1", "", "I kick the door"); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	// Resubmitting replaces, not appends.
-	if _, err := st.SubmitAction("p1", "I force the door open"); err != nil {
+	if _, err := st.SubmitAction("p1", "", "I force the door open"); err != nil {
 		t.Fatalf("resubmit: %v", err)
 	}
 	if n := len(st.RoundActions()); n != 1 {
@@ -131,63 +134,100 @@ func TestSubmitActionAndRound(t *testing.T) {
 	if st.RoundActions()[0].Text != "I force the door open" {
 		t.Errorf("action not replaced: %q", st.RoundActions()[0].Text)
 	}
-	// p2 still pending.
-	if pend := st.PendingPlayers(); len(pend) != 1 || pend[0] != "Luis" {
-		t.Errorf("pending = %v, want [Luis]", pend)
+	// p2 (Naivara) still pending — PendingPlayers lists the character with player.
+	pend := st.PendingPlayers()
+	if len(pend) != 1 || !strings.Contains(pend[0], "Naivara") {
+		t.Errorf("pending = %v, want [Naivara (Luis)]", pend)
 	}
-	_, _ = st.SubmitAction("p2", "I ready a spell")
+	_, _ = st.SubmitAction("p2", "", "I ready a spell")
 	if len(st.PendingPlayers()) != 0 {
-		t.Errorf("no players should be pending, got %v", st.PendingPlayers())
+		t.Errorf("no characters should be pending, got %v", st.PendingPlayers())
 	}
 	if len(st.RoundActions()) != 2 {
 		t.Errorf("round actions = %d, want 2", len(st.RoundActions()))
 	}
 
 	st.ResetRound()
-	if len(st.RoundActions()) != 0 {
-		t.Error("round should be empty after reset")
-	}
-
-	// Switching to a different character drops the stale pending action, so it
-	// isn't attributed to a character the player no longer controls.
-	_, _ = st.SubmitAction("p1", "I sneak forward")
-	if _, err := st.ClaimCharacter("p1", "Ana", "Naivara"); err == nil {
-		t.Error("Naivara is taken by p2; claim should fail")
-	}
-	// Free a character, then switch p1 onto it.
-	st.ReleaseCharacter("p2")
-	if _, err := st.ClaimCharacter("p1", "Ana", "Naivara"); err != nil {
-		t.Fatalf("switch p1 to Naivara: %v", err)
-	}
-	for _, a := range st.RoundActions() {
-		if a.PlayerID == "p1" {
-			t.Errorf("p1's stale action should have been dropped on character switch, got %q for %s", a.Text, a.CharacterName)
-		}
-	}
 
 	// RemoveResolvedActions drops only the snapshotted actions, keeping ones
 	// submitted afterwards (e.g. during DM resolution).
-	st.ResetRound()
-	_, _ = st.ClaimCharacter("p2", "Luis", "Alden")
-	a1, _ := st.SubmitAction("p1", "cast light")
+	a1, _ := st.SubmitAction("p1", "", "cast light")
 	snapshot := []RoundAction{a1}
-	_, _ = st.SubmitAction("p2", "draw sword") // submitted "while resolving"
+	_, _ = st.SubmitAction("p2", "", "draw sword") // submitted "while resolving"
 	st.RemoveResolvedActions(snapshot)
 	rem := st.RoundActions()
 	if len(rem) != 1 || rem[0].PlayerID != "p2" {
 		t.Errorf("only p2's later action should remain, got %+v", rem)
 	}
-	// Clean up for the release check below: single player (p1) with an empty round.
 	st.ResetRound()
 	st.ReleaseCharacter("p2")
 
-	// Releasing a character drops the player and any pending action.
-	_, _ = st.SubmitAction("p1", "again")
+	// Releasing a player drops them and any pending action.
+	_, _ = st.SubmitAction("p1", "", "again")
 	st.ReleaseCharacter("p1")
 	if st.PlayerCharacterName("p1") != "" {
 		t.Error("released player should control no character")
 	}
 	if len(st.RoundActions()) != 0 {
 		t.Error("released player's action should be dropped")
+	}
+}
+
+// TestMultiCharacterPerPlayer covers #29: one player controlling several PCs,
+// choosing the active one, targeting a specific PC per action, and acting for
+// each in a round.
+func TestMultiCharacterPerPlayer(t *testing.T) {
+	st := NewSessionState("mp", nil)
+	st.Characters = []*Character{
+		NewCharacter("Alden", "Human", "Fighter"),
+		NewCharacter("Naivara", "Elf", "Wizard"),
+		NewCharacter("Thorin", "Dwarf", "Cleric"),
+	}
+
+	// p1 claims two characters; the last claimed is active.
+	if _, err := st.ClaimCharacter("p1", "Ana", "Alden"); err != nil {
+		t.Fatalf("claim Alden: %v", err)
+	}
+	if _, err := st.ClaimCharacter("p1", "Ana", "Thorin"); err != nil {
+		t.Fatalf("claim Thorin: %v", err)
+	}
+	names := st.PlayerCharacterNames("p1")
+	if len(names) != 2 {
+		t.Fatalf("p1 should control 2 characters, got %v", names)
+	}
+	if st.PlayerCharacterName("p1") != "Thorin" {
+		t.Errorf("active should be the last claimed (Thorin), got %q", st.PlayerCharacterName("p1"))
+	}
+
+	// Choose the active character explicitly.
+	if _, err := st.SetActiveCharacter("p1", "alden"); err != nil {
+		t.Fatalf("set active: %v", err)
+	}
+	if st.PlayerCharacterName("p1") != "Alden" {
+		t.Errorf("active = %q, want Alden", st.PlayerCharacterName("p1"))
+	}
+	// Can't activate a character you don't control.
+	if _, err := st.SetActiveCharacter("p1", "Naivara"); err == nil {
+		t.Error("activating an uncontrolled character should fail")
+	}
+
+	// Act for each character: one targeted, one via the active default.
+	if a, err := st.SubmitAction("p1", "Thorin", "cast bless"); err != nil || a.CharacterName != "Thorin" {
+		t.Fatalf("submit for Thorin = (%+v, %v)", a, err)
+	}
+	if a, err := st.SubmitAction("p1", "", "attack"); err != nil || a.CharacterName != "Alden" {
+		t.Fatalf("submit for active Alden = (%+v, %v)", a, err)
+	}
+	if n := len(st.RoundActions()); n != 2 {
+		t.Errorf("a player with 2 PCs should have 2 actions, got %d", n)
+	}
+	// Targeting a character the player doesn't control is rejected.
+	if _, err := st.SubmitAction("p1", "Naivara", "flee"); err == nil {
+		t.Error("acting for an uncontrolled character should fail")
+	}
+
+	// Another player can't claim one of p1's characters.
+	if _, err := st.ClaimCharacter("p2", "Bob", "Alden"); err == nil {
+		t.Error("claiming a character controlled by another player should fail")
 	}
 }

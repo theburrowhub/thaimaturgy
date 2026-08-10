@@ -42,8 +42,8 @@ func TestRunGroupTurn(t *testing.T) {
 		t.Error("expected error when no actions are declared")
 	}
 
-	_, _ = session.State.SubmitAction("p1", "I kick the door")
-	_, _ = session.State.SubmitAction("p2", "I ready a shield spell")
+	_, _ = session.State.SubmitAction("p1", "", "I kick the door")
+	_, _ = session.State.SubmitAction("p2", "", "I ready a shield spell")
 
 	resp := o.RunGroupTurn(context.Background())
 	if resp.Error != nil {
