@@ -33,6 +33,9 @@ type Service struct {
 
 	configMu   sync.Mutex  // serializes SaveConfig's persist+adopt as one op
 	autosaveCh chan string // session names queued for background save
+
+	nameMu    sync.Mutex             // guards nameLocks
+	nameLocks map[string]*sync.Mutex // per-session-name lifecycle locks
 }
 
 // OpenSession is a live, registered play session with its engine bindings.
@@ -76,6 +79,7 @@ func New(store *storage.Storage, config *domain.Config, provider providers.Provi
 		config:     config,
 		sessions:   make(map[string]*OpenSession),
 		autosaveCh: make(chan string, 128),
+		nameLocks:  make(map[string]*sync.Mutex),
 	}
 	go s.autosaveLoop()
 	return s
@@ -104,26 +108,48 @@ func (s *Service) SetProvider(p providers.Provider) {
 	}
 }
 
-// Config returns the active configuration.
+// Config returns a DETACHED copy of the active configuration, so a caller
+// mutating it (the usual "read, tweak a field, SaveConfig" pattern) doesn't
+// change the running service before persistence succeeds, and concurrent callers
+// don't share a mutable object outside the service's locks.
 func (s *Service) Config() *domain.Config {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.config
+	cp := *s.config
+	return &cp
 }
 
-// SaveConfig persists the configuration and adopts it as one serialized
-// operation, so two concurrent calls can't leave the running service and the disk
-// disagreeing about which config won.
+// SaveConfig persists the configuration and only then adopts a copy of it, as one
+// serialized operation — so two concurrent calls can't leave the running service
+// and the disk disagreeing, and a failed persist leaves the active config
+// unchanged.
 func (s *Service) SaveConfig(cfg *domain.Config) error {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	if err := s.store.SaveConfig(cfg); err != nil {
 		return err
 	}
+	cp := *cfg
 	s.mu.Lock()
-	s.config = cfg
+	s.config = &cp
 	s.mu.Unlock()
 	return nil
+}
+
+// lockName returns a per-session-name lock (creating it on first use) and locks
+// it, returning the unlock func. Lifecycle operations on a session name (resume,
+// rename, delete) hold it so they can't interleave — e.g. a resume can't register
+// a session that a concurrent delete is removing. Acquire this BEFORE s.mu.
+func (s *Service) lockName(name string) func() {
+	s.nameMu.Lock()
+	lk := s.nameLocks[name]
+	if lk == nil {
+		lk = &sync.Mutex{}
+		s.nameLocks[name] = lk
+	}
+	s.nameMu.Unlock()
+	lk.Lock()
+	return lk.Unlock
 }
 
 // --- Adventures ----------------------------------------------------------
@@ -176,12 +202,11 @@ func (s *Service) NewSession(adventureID string) (string, error) {
 // live. Returns the OpenSession. Re-resuming an already-open session returns the
 // existing one.
 func (s *Service) ResumeSession(name string) (*OpenSession, error) {
-	s.mu.Lock()
-	if os, ok := s.sessions[name]; ok {
-		s.mu.Unlock()
+	unlock := s.lockName(name) // serialize with rename/delete of this name
+	defer unlock()
+	if os, ok := s.Get(name); ok {
 		return os, nil
 	}
-	s.mu.Unlock()
 	state, err := s.store.LoadSession(name)
 	if err != nil {
 		return nil, err
@@ -266,6 +291,8 @@ func (s *Service) AutosaveError(name string) error {
 // progression is written back here too, so a queued-but-dropped autosave can't
 // leave the roster stale.
 func (s *Service) CloseSession(name string) error {
+	unlock := s.lockName(name) // serialize with resume/rename/delete of this name
+	defer unlock()
 	os, ok := s.Get(name)
 	if !ok {
 		return nil
@@ -288,16 +315,23 @@ func (s *Service) CloseSession(name string) error {
 	return nil
 }
 
-// RenameSession renames a session on disk; it must not be open.
+// RenameSession renames a session on disk; it must not be open. Serialized on the
+// old name so it can't race a concurrent resume of it.
 func (s *Service) RenameSession(oldName, newName string) error {
+	unlock := s.lockName(oldName)
+	defer unlock()
 	if _, ok := s.Get(oldName); ok {
 		return fmt.Errorf("close session %q before renaming it", oldName)
 	}
 	return s.store.RenameSession(oldName, newName)
 }
 
-// DeleteSession removes a session; it must not be open.
+// DeleteSession removes a session; it must not be open. Serialized on the name so
+// it can't race a concurrent resume that would otherwise re-register the loaded
+// state and recreate the deleted session.
 func (s *Service) DeleteSession(name string) error {
+	unlock := s.lockName(name)
+	defer unlock()
 	if _, ok := s.Get(name); ok {
 		return fmt.Errorf("close session %q before deleting it", name)
 	}

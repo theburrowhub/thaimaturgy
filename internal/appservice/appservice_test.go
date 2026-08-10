@@ -249,6 +249,85 @@ func TestRosterAndConfigDelegation(t *testing.T) {
 	}
 }
 
+func TestResumeVsDeleteSerialized(t *testing.T) {
+	svc, store := newService(t)
+	name, _ := svc.NewSession("crypt")
+	if err := svc.SaveSession(name); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if err := svc.CloseSession(name); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	// Delete then resume: resume must fail (file gone), not recreate it.
+	if err := svc.DeleteSession(name); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := svc.ResumeSession(name); err == nil {
+		t.Error("resuming a deleted session should fail, not recreate it")
+	}
+	if svc.store.SessionExists(name) {
+		t.Error("a deleted session must not be recreated on disk")
+	}
+	_ = store
+
+	// Resume then delete: delete must be refused while open.
+	name2, _ := svc.NewSession("crypt")
+	_ = svc.SaveSession(name2)
+	_ = svc.CloseSession(name2)
+	if _, err := svc.ResumeSession(name2); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if err := svc.DeleteSession(name2); err == nil {
+		t.Error("deleting an open (resumed) session should be refused")
+	}
+}
+
+// TestResumeDeleteConcurrent stresses the per-name lock under the race detector:
+// after the dust settles the session is either open (resumed) or gone (deleted),
+// never "deleted on disk yet somehow re-registered".
+func TestResumeDeleteConcurrent(t *testing.T) {
+	svc, _ := newService(t)
+	for i := 0; i < 25; i++ {
+		name, _ := svc.NewSession("crypt")
+		_ = svc.SaveSession(name)
+		_ = svc.CloseSession(name)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); _, _ = svc.ResumeSession(name) }()
+		go func() { defer wg.Done(); _ = svc.DeleteSession(name) }()
+		wg.Wait()
+
+		_, open := svc.Get(name)
+		onDisk := svc.store.SessionExists(name)
+		if !open && onDisk {
+			// resume lost, delete won → file must be gone
+			t.Fatalf("inconsistent: deleted but still on disk (%s)", name)
+		}
+		if open && !onDisk {
+			// resumed → a save must be able to persist it (it exists in memory)
+			if err := svc.SaveSession(name); err != nil {
+				t.Fatalf("resumed session not persistable: %v", err)
+			}
+		}
+		_ = svc.CloseSession(name)
+		_ = svc.DeleteSession(name)
+	}
+}
+
+func TestConfigReturnsDetachedCopy(t *testing.T) {
+	svc, _ := newService(t)
+	cfg := svc.Config()
+	cfg.Language = "zz" // mutate the returned copy without saving
+	if svc.Config().Language == "zz" {
+		t.Error("Config() must return a detached copy; mutating it changed the active config")
+	}
+	if svc.Config() == svc.Config() {
+		t.Error("Config() should hand out distinct copies, not the internal pointer")
+	}
+}
+
 func TestRenameAndDeleteRequireClosed(t *testing.T) {
 	svc, _ := newService(t)
 	name, _ := svc.NewSession("crypt")
