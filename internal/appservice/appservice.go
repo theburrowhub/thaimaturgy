@@ -185,17 +185,30 @@ func (s *Service) NewSession(adventureID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	name := adventureID
-	for i := 1; s.takenLocked(name); i++ {
-		name = fmt.Sprintf("%s-%d", adventureID, i)
+	// Try candidate names in sequence; hold that name's lifecycle lock while
+	// checking availability and registering, so a concurrent create/resume/rename
+	// targeting the same name can't collide (lock order is always name → s.mu).
+	for i := 0; ; i++ {
+		name := adventureID
+		if i > 0 {
+			name = fmt.Sprintf("%s-%d", adventureID, i)
+		}
+		unlock := s.lockName(name)
+		s.mu.Lock()
+		if s.takenLocked(name) {
+			s.mu.Unlock()
+			unlock()
+			continue
+		}
+		state := domain.NewSessionState(name, adv)
+		_, regErr := s.registerLocked(state, adv)
+		s.mu.Unlock()
+		unlock()
+		if regErr != nil {
+			return "", regErr
+		}
+		return name, nil
 	}
-	state := domain.NewSessionState(name, adv)
-	if _, err := s.registerLocked(state, adv); err != nil {
-		return "", err
-	}
-	return name, nil
 }
 
 // ResumeSession loads a persisted session (and its adventure) and registers it
@@ -315,14 +328,30 @@ func (s *Service) CloseSession(name string) error {
 	return nil
 }
 
-// RenameSession renames a session on disk; it must not be open. Serialized on the
-// old name so it can't race a concurrent resume of it.
+// RenameSession renames a session on disk. It serializes on BOTH names (locked in
+// a deterministic order to avoid deadlock) and rejects the rename if the source
+// is open or the destination is open or already exists — so a rename can't
+// collide with a concurrent resume/create/rename of either name, and can never
+// overwrite another session (including a not-yet-saved open one, which has no
+// file yet but is registered).
 func (s *Service) RenameSession(oldName, newName string) error {
-	unlock := s.lockName(oldName)
-	defer unlock()
+	first, second := oldName, newName
+	if first > second {
+		first, second = second, first
+	}
+	u1 := s.lockName(first)
+	defer u1()
+	if first != second {
+		u2 := s.lockName(second)
+		defer u2()
+	}
 	if _, ok := s.Get(oldName); ok {
 		return fmt.Errorf("close session %q before renaming it", oldName)
 	}
+	if _, ok := s.Get(newName); ok {
+		return fmt.Errorf("a session named %q is open; close it before renaming onto it", newName)
+	}
+	// store.RenameSession additionally rejects a destination that exists on disk.
 	return s.store.RenameSession(oldName, newName)
 }
 

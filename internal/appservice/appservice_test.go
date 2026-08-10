@@ -316,6 +316,27 @@ func TestResumeDeleteConcurrent(t *testing.T) {
 	}
 }
 
+func TestRenameRejectsOpenDestination(t *testing.T) {
+	svc, _ := newService(t)
+	// name1 persisted and closed.
+	name1, _ := svc.NewSession("crypt")
+	_ = svc.SaveSession(name1)
+	_ = svc.CloseSession(name1)
+	// name2 open but not yet saved (no file on disk).
+	name2, _ := svc.NewSession("crypt")
+	if _, ok := svc.Get(name2); !ok {
+		t.Fatalf("name2 %q should be open", name2)
+	}
+	// Renaming name1 onto the open name2 must be refused, not silently overwrite.
+	if err := svc.RenameSession(name1, name2); err == nil {
+		t.Error("renaming onto an open (not-yet-saved) destination must be refused")
+	}
+	// name1's data must still be intact under its original name.
+	if !svc.store.SessionExists(name1) {
+		t.Error("the source session must not have been moved/lost")
+	}
+}
+
 func TestConfigReturnsDetachedCopy(t *testing.T) {
 	svc, _ := newService(t)
 	cfg := svc.Config()
