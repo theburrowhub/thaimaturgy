@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>thAImaturgy</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>thAImaturgy</h1>
+    <nav>
+      <button data-view="library" class="nav active">Library</button>
+      <button data-view="roster" class="nav">Roster</button>
+      <button data-view="settings" class="nav">Settings</button>
+    </nav>
+    <div class="token">
+      <input id="token" type="password" placeholder="server token (if required)" autocomplete="off">
+    </div>
+  </header>
+
+  <main>
+    <!-- Library -->
+    <section id="view-library" class="view">
+      <h2>Adventures</h2>
+      <div id="adventures" class="list"></div>
+      <h2>Sessions</h2>
+      <div id="sessions" class="list"></div>
+    </section>
+
+    <!-- Session -->
+    <section id="view-session" class="view hidden">
+      <div class="session-head">
+        <button id="back">← Library</button>
+        <span id="session-name" class="pill"></span>
+        <span id="session-loc" class="muted"></span>
+        <span class="spacer"></span>
+        <button id="save">Save</button>
+        <button id="close">Close</button>
+      </div>
+      <div class="session-body">
+        <div class="col">
+          <h3>Party</h3>
+          <div id="party" class="list small"></div>
+        </div>
+        <div class="col grow">
+          <h3>Transcript &amp; log</h3>
+          <div id="transcript" class="transcript"></div>
+          <form id="ask">
+            <input id="ask-input" placeholder="Ask the oracle, or type a /command (e.g. /note …)" autocomplete="off">
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Roster -->
+    <section id="view-roster" class="view hidden">
+      <h2>Campaign roster</h2>
+      <form id="roster-add" class="row">
+        <input id="rc-name" placeholder="Name" required>
+        <input id="rc-race" placeholder="Race" value="Human">
+        <input id="rc-class" placeholder="Class" value="Fighter">
+        <button type="submit">Add</button>
+      </form>
+      <div id="roster" class="list"></div>
+    </section>
+
+    <!-- Settings -->
+    <section id="view-settings" class="view hidden">
+      <h2>Settings</h2>
+      <form id="settings-form" class="settings">
+        <label>Provider <input id="cfg-provider"></label>
+        <label>Model <input id="cfg-model"></label>
+        <label>UI language <input id="cfg-language"></label>
+        <button type="submit">Save settings</button>
+      </form>
+      <p class="muted">Secrets (API keys, Telegram token) are managed server-side and not shown here.</p>
+    </section>
+  </main>
+
+  <div id="status" class="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

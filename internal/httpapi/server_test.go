@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -248,6 +249,39 @@ func TestCSRFGuardOnLoopbackNoToken(t *testing.T) {
 		t.Errorf("text/plain body = %d; want 415", tp.StatusCode)
 	}
 	tp.Body.Close()
+}
+
+func TestServesEmbeddedWebUI(t *testing.T) {
+	ts := newTestServer(t, "")
+	// Index at /.
+	r, err := http.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	body, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if r.StatusCode != 200 || !strings.Contains(string(body), "thAImaturgy") {
+		t.Fatalf("index = %d, body has app marker? %v", r.StatusCode, strings.Contains(string(body), "thAImaturgy"))
+	}
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "text/html") {
+		t.Errorf("index content-type = %q", r.Header.Get("Content-Type"))
+	}
+	// The JS asset is served with a JS content-type.
+	rj, err := http.Get(ts.URL + "/app.js")
+	if err != nil {
+		t.Fatalf("GET /app.js: %v", err)
+	}
+	defer rj.Body.Close()
+	if rj.StatusCode != 200 || !strings.Contains(rj.Header.Get("Content-Type"), "javascript") {
+		t.Errorf("app.js = %d / %q", rj.StatusCode, rj.Header.Get("Content-Type"))
+	}
+	// An unknown path falls back to index.html (SPA routing).
+	rf, _ := http.Get(ts.URL + "/some/spa/route")
+	fb, _ := io.ReadAll(rf.Body)
+	rf.Body.Close()
+	if !strings.Contains(string(fb), "thAImaturgy") {
+		t.Error("unknown path should fall back to index.html")
+	}
 }
 
 func TestBodyTooLarge(t *testing.T) {
