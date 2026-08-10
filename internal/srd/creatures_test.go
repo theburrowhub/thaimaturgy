@@ -30,12 +30,25 @@ func TestLookupIsCaseAndPluralInsensitive(t *testing.T) {
 	}
 }
 
-func TestLookupReturnsCopy(t *testing.T) {
+func TestLookupReturnsDeepCopy(t *testing.T) {
 	sb, _ := Lookup("orc")
-	sb.MaxHP = 999 // mutating the returned copy must not affect the table
+	sb.MaxHP = 999 // scalar copy
+	// Mutate slice ELEMENTS — the deep copy must not alias the shared table.
+	if len(sb.Actions) > 0 {
+		sb.Actions[0].Name = "MUTATED"
+	}
+	if len(sb.Languages) > 0 {
+		sb.Languages[0] = "MUTATED"
+	}
 	again, _ := Lookup("orc")
 	if again.MaxHP == 999 {
-		t.Error("Lookup must return a copy, not a reference into the table")
+		t.Error("Lookup must return a scalar copy")
+	}
+	if len(again.Actions) > 0 && again.Actions[0].Name == "MUTATED" {
+		t.Error("Lookup must deep-copy Actions — table entry was corrupted")
+	}
+	if len(again.Languages) > 0 && again.Languages[0] == "MUTATED" {
+		t.Error("Lookup must deep-copy Languages — table entry was corrupted")
 	}
 }
 

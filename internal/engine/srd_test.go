@@ -70,11 +70,26 @@ func TestFormatStatBlockRendersFullFields(t *testing.T) {
 		Source:                "SRD 5.1",
 	}
 	out := formatStatBlock(sb)
-	for _, want := range []string{"Medium Undead, Lawful Evil", "HP 13 (2d8+4)", "CR 1/4 (50 XP)",
+	for _, want := range []string{"Medium Undead, Lawful Evil", "HP 13 (2d8+4)", "CR 1/4", "50 XP",
 		"Damage vulnerabilities: bludgeoning", "Condition immunities: exhaustion, poisoned",
 		"Saving throws: DEX +4", "Senses: darkvision 60 ft.", "Reaction: Parry", "[source: SRD 5.1]"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("formatStatBlock missing %q in:\n%s", want, out)
 		}
+	}
+}
+
+// TestFormatStatBlockOptionalFieldsIndependent checks each optional field renders
+// without its former companion (Heimdallm review): ProfBonus alone, HitDice
+// without MaxHP, and XP without CR.
+func TestFormatStatBlockOptionalFieldsIndependent(t *testing.T) {
+	if out := formatStatBlock(&domain.StatBlock{ProfBonus: 3}); !strings.Contains(out, "Prof +3") {
+		t.Errorf("ProfBonus not rendered on its own:\n%s", out)
+	}
+	if out := formatStatBlock(&domain.StatBlock{HitDice: "2d6"}); !strings.Contains(out, "HP (2d6)") {
+		t.Errorf("HitDice not rendered without MaxHP:\n%s", out)
+	}
+	if out := formatStatBlock(&domain.StatBlock{XP: 200}); !strings.Contains(out, "200 XP") {
+		t.Errorf("XP not rendered without CR:\n%s", out)
 	}
 }

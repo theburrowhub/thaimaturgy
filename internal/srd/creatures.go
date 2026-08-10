@@ -148,8 +148,8 @@ var creatures = map[string]domain.StatBlock{
 			"Surprise Attack: +7 (2d6) damage if it surprises a creature and hits it in the first round.",
 		},
 		Actions: []domain.Action{
-			{Name: "Morningstar", ToHit: "+4", Damage: "2d8+2 piercing"},
-			{Name: "Javelin", ToHit: "+4", Damage: "1d6+2 piercing", Description: "range 30/120 ft."},
+			{Name: "Morningstar", ToHit: "+4", Damage: "2d8+2 piercing (Brute die included)"},
+			{Name: "Javelin", ToHit: "+4", Damage: "2d6+2 piercing in melee, 1d6+2 at range", Description: "range 30/120 ft.; the extra melee die is the Brute trait."},
 		},
 		Source: sourceSRD,
 	},
@@ -201,7 +201,7 @@ var creatures = map[string]domain.StatBlock{
 		},
 		Actions: []domain.Action{
 			{Name: "Bite", ToHit: "+5", Damage: "1d8+3 piercing plus 2d8 poison", Description: "DC 11 CON save; half poison damage on a success, and if reduced to 0 HP the target is stable but poisoned and paralyzed for 1 hour."},
-			{Name: "Web (Recharge 5-6)", ToHit: "+5", Description: "ranged 30/60 ft.; DC 12 DEX save or restrained by webbing (escape DC 12; the webbing has AC 10, 5 HP, immune to bludgeoning/poison/psychic)."},
+			{Name: "Web (Recharge 5-6)", ToHit: "+5", Description: "ranged 30/60 ft., one creature; on a hit the target is restrained by webbing. The restrained target can use its action for a DC 12 Strength check to break free. The webbing can also be attacked and destroyed (AC 10; 5 HP; vulnerable to fire; immune to bludgeoning, poison, and psychic)."},
 		},
 		Source: sourceSRD,
 	},
@@ -222,18 +222,38 @@ func normalize(name string) string {
 
 // Lookup returns the SRD stat block for a creature by name (case-insensitive),
 // trying an exact match first and then a singular form (trailing "s" removed), so
-// "goblins" resolves to "goblin". The returned block is a copy safe to mutate.
+// "goblins" resolves to "goblin". The returned block is a DEEP copy — every slice
+// is cloned — so the caller may freely mutate it without corrupting the shared,
+// process-wide table or racing another lookup.
 func Lookup(name string) (domain.StatBlock, bool) {
 	key := normalize(name)
-	if sb, ok := creatures[key]; ok {
-		return sb, true
+	sb, ok := creatures[key]
+	if !ok && strings.HasSuffix(key, "s") {
+		sb, ok = creatures[strings.TrimSuffix(key, "s")]
 	}
-	if strings.HasSuffix(key, "s") {
-		if sb, ok := creatures[strings.TrimSuffix(key, "s")]; ok {
-			return sb, true
-		}
+	if !ok {
+		return domain.StatBlock{}, false
 	}
-	return domain.StatBlock{}, false
+	return deepCopy(sb), true
+}
+
+// deepCopy clones every slice in a stat block so the returned value shares no
+// backing arrays with the table entry.
+func deepCopy(sb domain.StatBlock) domain.StatBlock {
+	cp := sb
+	cp.SavingThrows = append([]string(nil), sb.SavingThrows...)
+	cp.Skills = append([]string(nil), sb.Skills...)
+	cp.Senses = append([]string(nil), sb.Senses...)
+	cp.Languages = append([]string(nil), sb.Languages...)
+	cp.DamageResistances = append([]string(nil), sb.DamageResistances...)
+	cp.DamageImmunities = append([]string(nil), sb.DamageImmunities...)
+	cp.DamageVulnerabilities = append([]string(nil), sb.DamageVulnerabilities...)
+	cp.ConditionImmunities = append([]string(nil), sb.ConditionImmunities...)
+	cp.Traits = append([]string(nil), sb.Traits...)
+	cp.Actions = append([]domain.Action(nil), sb.Actions...)
+	cp.Reactions = append([]domain.Action(nil), sb.Reactions...)
+	cp.LegendaryActions = append([]domain.Action(nil), sb.LegendaryActions...)
+	return cp
 }
 
 // Names returns the sorted list of creature names available in the embedded SRD

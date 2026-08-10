@@ -154,8 +154,12 @@ func formatStatBlock(sb2 *domain.StatBlock) string {
 	if sb2.AC > 0 {
 		parts = append(parts, fmt.Sprintf("AC %d", sb2.AC))
 	}
-	if sb2.MaxHP > 0 {
-		hp := fmt.Sprintf("HP %d", sb2.MaxHP)
+	// HP and hit dice render independently (either may be set alone).
+	if sb2.MaxHP > 0 || sb2.HitDice != "" {
+		hp := "HP"
+		if sb2.MaxHP > 0 {
+			hp += fmt.Sprintf(" %d", sb2.MaxHP)
+		}
 		if sb2.HitDice != "" {
 			hp += " (" + sb2.HitDice + ")"
 		}
@@ -165,11 +169,13 @@ func formatStatBlock(sb2 *domain.StatBlock) string {
 		parts = append(parts, "Speed "+sb2.Speed)
 	}
 	if sb2.CR != "" {
-		cr := "CR " + sb2.CR
-		if sb2.XP > 0 {
-			cr += fmt.Sprintf(" (%d XP)", sb2.XP)
-		}
-		parts = append(parts, cr)
+		parts = append(parts, "CR "+sb2.CR)
+	}
+	if sb2.XP > 0 {
+		parts = append(parts, fmt.Sprintf("%d XP", sb2.XP))
+	}
+	if sb2.ProfBonus > 0 {
+		parts = append(parts, fmt.Sprintf("Prof +%d", sb2.ProfBonus))
 	}
 	sb.WriteString(strings.Join(parts, ", ") + "\n")
 	a := sb2.Abilities
