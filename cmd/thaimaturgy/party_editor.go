@@ -104,6 +104,11 @@ func (g *gui) showPartyEditor() {
 		status.SetText("Default heterogeneous level-1 party created.")
 	})
 
+	rosterBtn := widget.NewButton("Roster…", func() {
+		pop.Hide()
+		g.showRoster()
+	})
+
 	closeBtn = widget.NewButton("Close", func() { pop.Hide() })
 
 	content := container.NewVBox(
@@ -114,7 +119,7 @@ func (g *gui) showPartyEditor() {
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle("Adjust with AI", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		prompt,
-		container.NewHBox(aiBtn, defBtn),
+		container.NewHBox(aiBtn, defBtn, rosterBtn),
 		status,
 		widget.NewSeparator(),
 		closeBtn,

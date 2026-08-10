@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
@@ -22,6 +23,8 @@ const (
 type Storage struct {
 	basePath   string // data: adventures, sessions, .env
 	configPath string // the YAML config file
+
+	rosterMu sync.Mutex // serializes campaign-roster reads/writes/deletes (#33)
 }
 
 func New() (*Storage, error) {
@@ -57,6 +60,7 @@ func (s *Storage) ensureDirectories() error {
 	dirs := []string{
 		s.basePath,
 		filepath.Join(s.basePath, SessionsDir),
+		filepath.Join(s.basePath, CharactersDir),
 		filepath.Dir(s.configPath),
 	}
 
@@ -67,6 +71,32 @@ func (s *Storage) ensureDirectories() error {
 	}
 
 	return nil
+}
+
+// atomicWriteFile writes data to a temporary file in the destination's directory
+// and renames it over path, so a partial or failed write (disk full, crash) can
+// never truncate/destroy an existing file — the old contents survive until the
+// new file is complete.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".tmp-"+filepath.Base(path)+"-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op once the rename succeeds
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func (s *Storage) BasePath() string { return s.basePath }

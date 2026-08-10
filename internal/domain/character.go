@@ -202,6 +202,11 @@ type Spellcasting struct {
 func (sc *Spellcasting) RestoreAllSlots() { sc.Slots.Used = [9]int{} }
 
 type Character struct {
+	// ID links a character to a persistent roster entry (issue #33). Empty for an
+	// ad-hoc party member; set when the character is saved to / loaded from the
+	// campaign roster so progression can be written back to the right entry.
+	ID string `json:"id,omitempty"`
+
 	Name       string `json:"name"`
 	Race       string `json:"race"`
 	Class      string `json:"class"`

@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strings"
@@ -40,6 +41,11 @@ type gui struct {
 	config  *domain.Config
 	prov    providers.Provider
 	authMsg string
+
+	// autosaveCh feeds a single FIFO autosave worker (startAutosave), so saves
+	// commit strictly in the order autosave() was called — a superseded save can
+	// never overwrite a newer one (#33).
+	autosaveCh chan *domain.SessionState
 
 	// Editor view (nil until first opened); shares this window.
 	editor *editor
@@ -137,6 +143,7 @@ func main() {
 		_ = store.SaveConfig(config) // generate config.yaml on first run
 	}
 	g.prov = providers.New(config)
+	g.startAutosave()
 	g.app.Settings().SetTheme(guitheme.New())
 	g.win = g.app.NewWindow("thAImaturgy — DM Oracle")
 	g.win.Resize(fyne.NewSize(1200, 780))
@@ -831,10 +838,49 @@ func (g *gui) rollTable(id string) {
 	g.autosave()
 }
 
+// startAutosave launches the single FIFO autosave worker. Requests are processed
+// strictly in enqueue order, so a superseded save can never commit after a newer
+// one (which independently-scheduled goroutines could not guarantee). Failures
+// are surfaced durably (log + a session-timeline note, which the append-only
+// journal persists independently of the session write) rather than discarded.
+func (g *gui) startAutosave() {
+	g.autosaveCh = make(chan *domain.SessionState, 128)
+	go func() {
+		for state := range g.autosaveCh {
+			if err := g.store.SaveSession(state); err != nil {
+				log.Printf("autosave: session save failed: %v", err)
+				state.AddNote("⚠ Session autosave failed: " + err.Error())
+			}
+			if _, err := g.store.SyncPartyToRoster(rosterLinkedParty(state)); err != nil {
+				log.Printf("autosave: roster sync failed: %v", err)
+				state.AddNote("⚠ Roster progression could not be saved: " + err.Error())
+			}
+		}
+	}()
+}
+
 func (g *gui) autosave() {
-	if g.config.AutoSave && g.session != nil {
-		go func() { _ = g.store.SaveSession(g.session.State) }()
+	if !g.config.AutoSave || g.session == nil || g.autosaveCh == nil {
+		return
 	}
+	// Sent synchronously from the (single) UI goroutine, so enqueue order == call
+	// order == commit order. The large buffer makes blocking effectively never
+	// happen; if it ever did, blocking briefly is preferable to losing ordering.
+	g.autosaveCh <- g.session.State
+}
+
+// rosterLinkedParty returns pointer copies of the party members that are linked
+// to a roster entry (non-empty ID), taken from a race-safe snapshot.
+func rosterLinkedParty(st *domain.SessionState) []*domain.Character {
+	snap := st.PartySnapshot()
+	out := make([]*domain.Character, 0, len(snap))
+	for i := range snap {
+		if snap[i].ID != "" {
+			c := snap[i]
+			out = append(out, &c)
+		}
+	}
+	return out
 }
 
 func splitRoomUID(uid string) (zoneID, roomID string) {
