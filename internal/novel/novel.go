@@ -13,6 +13,7 @@ package novel
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -124,7 +125,57 @@ func GenerateWithOptions(ctx context.Context, prov providers.Provider, model str
 		}
 	}
 
-	return cleanMarkdown(book.String()), nil
+	return NormalizeChapters(cleanMarkdown(book.String())), nil
+}
+
+// chapterEnumRe matches a leading chapter enumerator the model may have emitted
+// (an optional "Capítulo"/"Chapter" word plus a roman or arabic number and its
+// separator), so it can be stripped before we renumber consistently. The number
+// must be followed by a boundary — punctuation, whitespace or end — so a title
+// that merely starts with roman-looking letters ("La escalera", "Ivan") is kept.
+var chapterEnumRe = regexp.MustCompile(`(?i)^(?:cap[íi]tulo|chapter)?\s*([ivxlcdm]+|\d+)(?:\s*[.\-—:]+\s*|\s+|$)`)
+
+// multiBlankRe collapses runs of blank lines left behind when a spurious empty
+// heading is dropped.
+var multiBlankRe = regexp.MustCompile(`\n{3,}`)
+
+// NormalizeChapters renumbers "## " chapter headings sequentially (1, 2, 3…),
+// stripping whatever inconsistent enumeration the model produced across passes
+// (roman, arabic, "Capítulo N", or none) while preserving any descriptive title,
+// and drops empty "## " headings. The book title ("# ") and subheadings ("### ")
+// are left untouched. It is applied automatically at the end of generation and is
+// exported so an already-generated Markdown file can be normalized in place.
+func NormalizeChapters(md string) string {
+	lines := strings.Split(md, "\n")
+	out := make([]string, 0, len(lines))
+	n := 0
+	for _, ln := range lines {
+		if strings.HasPrefix(ln, "## ") && !strings.HasPrefix(ln, "### ") {
+			body := strings.TrimSpace(ln[3:])
+			if body == "" {
+				continue // spurious empty heading → drop it
+			}
+			title := stripChapterEnumerator(body)
+			n++
+			if title != "" {
+				out = append(out, fmt.Sprintf("## %d. %s", n, title))
+			} else {
+				out = append(out, fmt.Sprintf("## %d", n))
+			}
+			continue
+		}
+		out = append(out, ln)
+	}
+	return multiBlankRe.ReplaceAllString(strings.Join(out, "\n"), "\n\n")
+}
+
+// stripChapterEnumerator removes a leading chapter enumerator, returning the
+// remaining title (empty if the heading was only a number).
+func stripChapterEnumerator(body string) string {
+	if loc := chapterEnumRe.FindStringIndex(body); loc != nil {
+		return strings.TrimSpace(body[loc[1]:])
+	}
+	return strings.TrimSpace(body)
 }
 
 // segParams bundles the inputs for one segment generation pass.
