@@ -1,55 +1,356 @@
 // Package novel turns a played session into a prose novelization of the
 // adventure — a book to print, bind and read — and renders it to Markdown or PDF.
+//
+// A whole adventure does not fit in a single model call (neither its play log as
+// input nor the finished book as output), so Generate works in a loop: it merges
+// the play log and the table narration into one time-ordered timeline, splits it
+// into scene-aligned segments, and writes the book one segment at a time. Each
+// pass carries a compact rolling synopsis of the story so far plus the tail of the
+// previous prose, so the narrative stays continuous while total input and output
+// scale with the number of segments — not with a single context window.
 package novel
 
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 )
 
-const maxDigestChars = 60000
+const (
+	// defaultSegmentChars is the target size (digest characters) of one generation
+	// segment. Each segment becomes one loop pass, so this trades call count for
+	// context size: smaller → more passes, larger → fewer but heavier passes.
+	defaultSegmentChars = 40000
+	// maxSegmentTokens caps each segment's generated length (a chapter or two).
+	maxSegmentTokens = 20000
+	// summaryMaxTokens caps the rolling synopsis kept between passes.
+	summaryMaxTokens = 1500
+	// tailChars is how much of the previous prose is echoed to the next pass so it
+	// can pick up mid-scene tone and voice.
+	tailChars = 1600
+)
+
+// Options tunes the segmented generation. The zero value uses sane defaults.
+type Options struct {
+	// SegmentChars overrides the per-segment digest budget (0 → default).
+	SegmentChars int
+	// MaxSegmentTokens overrides the per-segment output cap (0 → default).
+	MaxSegmentTokens int
+	// Progress, if set, is called once before each segment with (n, total),
+	// n being 1-based. Useful for a console progress line.
+	Progress func(n, total int)
+}
 
 // Generate writes a prose novelization (GitHub-flavored Markdown) of what
 // happened in the session, grounded in the adventure's authored text. It uses the
 // provider's plain text generation (no tools), so it works on every backend.
 func Generate(ctx context.Context, prov providers.Provider, model string, adv *domain.Adventure, st *domain.SessionState) (string, error) {
+	return GenerateWithOptions(ctx, prov, model, adv, st, Options{})
+}
+
+// GenerateWithOptions is Generate with tunable segmentation and a progress hook.
+func GenerateWithOptions(ctx context.Context, prov providers.Provider, model string, adv *domain.Adventure, st *domain.SessionState, opt Options) (string, error) {
 	if prov == nil {
 		return "", fmt.Errorf("no AI provider configured")
 	}
-	lang := languageName(adv.Language)
-	digest := buildDigest(adv, st)
+	budget := opt.SegmentChars
+	if budget <= 0 {
+		budget = defaultSegmentChars
+	}
+	maxTokens := opt.MaxSegmentTokens
+	if maxTokens <= 0 {
+		maxTokens = maxSegmentTokens
+	}
 
-	sys := fmt.Sprintf(`You are a skilled novelist. Turn the following tabletop RPG (D&D) play session into an immersive prose NOVEL a reader could print, bind and enjoy — not a game log.
+	lang := languageName(adv.Language)
+	context0 := storyContext(adv, st)
+
+	beats := collectBeats(adv, st)
+	if len(beats) == 0 {
+		return "", fmt.Errorf("session has no narratable content yet")
+	}
+	segments := segmentBeats(beats, budget)
+
+	var book strings.Builder
+	var synopsis string // rolling "story so far"
+	var tail string     // last chars of the previous prose
+
+	for i, seg := range segments {
+		if opt.Progress != nil {
+			opt.Progress(i+1, len(segments))
+		}
+		first := i == 0
+		last := i == len(segments)-1
+		prose, err := generateSegment(ctx, prov, model, segParams{
+			lang:       lang,
+			context0:   context0,
+			digest:     segmentDigest(seg),
+			synopsis:   synopsis,
+			tail:       tail,
+			first:      first,
+			last:       last,
+			chaptersSo: strings.Count(book.String(), "\n## ") + boolToInt(strings.HasPrefix(book.String(), "## ")),
+			maxTokens:  maxTokens,
+		})
+		if err != nil {
+			return "", fmt.Errorf("segment %d/%d: %w", i+1, len(segments), err)
+		}
+		prose = cleanMarkdown(prose)
+		if !first {
+			prose = stripBookTitle(prose)
+		}
+		if book.Len() > 0 {
+			book.WriteString("\n\n")
+		}
+		book.WriteString(prose)
+
+		// Prepare continuity for the next pass (skip the extra call after the last).
+		if !last {
+			tail = lastChars(prose, tailChars)
+			if s, err := updateSynopsis(ctx, prov, model, lang, synopsis, prose); err != nil {
+				// A synopsis hiccup shouldn't sink the whole book; the prose tail
+				// still carries local continuity. But honor cancellation/timeout.
+				if ctx.Err() != nil {
+					return "", ctx.Err()
+				}
+			} else {
+				synopsis = s
+			}
+		}
+	}
+
+	return cleanMarkdown(book.String()), nil
+}
+
+// segParams bundles the inputs for one segment generation pass.
+type segParams struct {
+	lang       string
+	context0   string
+	digest     string
+	synopsis   string
+	tail       string
+	first      bool
+	last       bool
+	chaptersSo int
+	maxTokens  int
+}
+
+func generateSegment(ctx context.Context, prov providers.Provider, model string, p segParams) (string, error) {
+	sys := fmt.Sprintf(`You are a skilled novelist writing ONE continuous immersive prose NOVEL from a tabletop RPG (D&D) play session — a book a reader could print, bind and enjoy, not a game log.
+
+You write the book in successive passes. Each pass you receive the story so far (a synopsis and the tail of your previous prose) and the NEXT beats to dramatize. Continue the SAME novel: consistent characters, names, places, tone and continuity. Never restart the story and never recap what you already wrote.
 
 Rules:
 - Write entirely in %s.
 - Third person, past tense, literary but readable. Show, don't tell.
-- Follow the ACTUAL sequence of events and the party's real choices from the session beats below; stay faithful to the adventure's atmosphere and the scene descriptions.
-- Dramatize scenes: dialogue, sensory detail, tension. Turn the DM's notes and the oracle exchanges into narrative; NEVER include game mechanics, stat blocks, dice rolls, DCs, flags, or DM meta-commentary.
-- Structure it as a book: a single "# " title line, then chapters as "## " headings. Aim for coherent chapters that follow the journey.
-- Output ONLY Markdown (no code fences, no commentary before or after).`, lang)
+- Follow the ACTUAL sequence of events and the party's real choices from the beats; stay faithful to the adventure's atmosphere and scene descriptions.
+- Dramatize scenes: dialogue, sensory detail, tension. Turn DM notes and oracle exchanges into narrative; NEVER include game mechanics, stat blocks, dice rolls, DCs, flags, or DM meta-commentary.
+- Use "## " for chapter headings. %s
+- Output ONLY Markdown prose (no code fences, no commentary before or after).`,
+		p.lang, titleRule(p.first))
+
+	var user strings.Builder
+	user.WriteString(p.context0)
+	user.WriteString("\n")
+	if p.first {
+		user.WriteString("\nThis is the OPENING of the novel.\n")
+	} else {
+		fmt.Fprintf(&user, "\nThis is a CONTINUATION (you have written about %d chapter(s) so far). Do NOT add a title; continue seamlessly.\n", p.chaptersSo)
+		if strings.TrimSpace(p.synopsis) != "" {
+			user.WriteString("\nSTORY SO FAR (already narrated — do NOT repeat, continue from here):\n")
+			user.WriteString(strings.TrimSpace(p.synopsis))
+			user.WriteString("\n")
+		}
+		if strings.TrimSpace(p.tail) != "" {
+			user.WriteString("\nLAST LINES OF YOUR PREVIOUS TEXT (continue seamlessly from this moment and tone):\n")
+			user.WriteString(strings.TrimSpace(p.tail))
+			user.WriteString("\n")
+		}
+	}
+	user.WriteString("\n=== NEXT SESSION BEATS TO DRAMATIZE (in order) ===\n")
+	user.WriteString(p.digest)
+	if p.last {
+		user.WriteString("\nThis is the FINAL part — bring the story to a satisfying close.\n")
+	}
+	user.WriteString("\nNow write the next part of the novel.")
 
 	resp, err := prov.Chat(ctx, providers.ChatRequest{
 		Model:     model,
-		MaxTokens: 64000,
+		MaxTokens: p.maxTokens,
 		Messages: []providers.Message{
 			{Role: providers.RoleSystem, Content: sys},
-			{Role: providers.RoleUser, Content: digest},
+			{Role: providers.RoleUser, Content: user.String()},
 		},
 	})
 	if err != nil {
 		return "", err
 	}
-	return cleanMarkdown(resp.Content), nil
+	return resp.Content, nil
 }
 
-// buildDigest reconstructs the session as an ordered list of beats, enriching each
-// timeline entry with the relevant authored text, followed by the oracle dialogue.
-func buildDigest(adv *domain.Adventure, st *domain.SessionState) string {
+// updateSynopsis folds the newly written prose into a compact running synopsis
+// that keeps the next pass coherent without re-sending the whole book.
+func updateSynopsis(ctx context.Context, prov providers.Provider, model, lang, prev, newProse string) (string, error) {
+	sys := fmt.Sprintf(`You maintain a running synopsis of a novel written in %s. Given the previous synopsis and the newly written chapters, output an UPDATED concise synopsis (about 250-400 words) that captures: the plot so far, characters introduced and their current state, unresolved threads, and the party's current location and mood. Write it as plain prose. Output ONLY the synopsis.`, lang)
+	prevText := strings.TrimSpace(prev)
+	if prevText == "" {
+		prevText = "(none yet — this is the beginning)"
+	}
+	user := "PREVIOUS SYNOPSIS:\n" + prevText + "\n\nNEWLY WRITTEN CHAPTERS:\n" + newProse + "\n\nUpdated synopsis:"
+	resp, err := prov.Chat(ctx, providers.ChatRequest{
+		Model:     model,
+		MaxTokens: summaryMaxTokens,
+		Messages: []providers.Message{
+			{Role: providers.RoleSystem, Content: sys},
+			{Role: providers.RoleUser, Content: user},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(resp.Content), nil
+}
+
+func titleRule(first bool) string {
+	if first {
+		return `Begin the book with a single "# " title line, then chapters.`
+	}
+	return `Do NOT output any "# " (single-hash) title line; only "## " chapter headings.`
+}
+
+// beat is one atomic story moment on the merged timeline.
+type beat struct {
+	ts    time.Time
+	text  string
+	scene bool // a location change — the natural place to start a new segment
+}
+
+// collectBeats merges the play log and the table narration into a single
+// time-ordered list, dropping pure game mechanics (rolls, party bookkeeping, flags).
+func collectBeats(adv *domain.Adventure, st *domain.SessionState) []beat {
+	var beats []beat
+	if st.Log != nil {
+		for _, e := range st.Log.Entries {
+			if txt, scene, ok := renderLogBeat(adv, e); ok {
+				beats = append(beats, beat{ts: e.Timestamp, text: txt, scene: scene})
+			}
+		}
+	}
+	if st.Conversation != nil {
+		for _, m := range st.Conversation.Messages {
+			switch m.Role {
+			case domain.RoleUser:
+				if c := oneLine(m.Content); c != "" {
+					beats = append(beats, beat{ts: m.Timestamp, text: "- DM: " + c})
+				}
+			case domain.RoleAssistant:
+				if c := oneLine(m.Content); c != "" {
+					beats = append(beats, beat{ts: m.Timestamp, text: "- Narration: " + c})
+				}
+			}
+		}
+	}
+	sort.SliceStable(beats, func(i, j int) bool { return beats[i].ts.Before(beats[j].ts) })
+	return beats
+}
+
+// renderLogBeat turns one authored-content log entry into a digest block. The
+// bool return reports whether it's a scene boundary; ok is false for mechanics.
+func renderLogBeat(adv *domain.Adventure, e domain.LogEntry) (text string, scene bool, ok bool) {
+	switch e.Type {
+	case domain.LogLocation:
+		id, _ := e.Data["room"].(string)
+		if r, _ := adv.Room(id); r != nil {
+			var b strings.Builder
+			fmt.Fprintf(&b, "• SCENE — %s", r.Name)
+			if r.ReadAloud != "" {
+				fmt.Fprintf(&b, "\n  Scene text: %s", oneLine(r.ReadAloud))
+			}
+			if r.DMNotes != "" {
+				fmt.Fprintf(&b, "\n  What happens here: %s", oneLine(r.DMNotes))
+			}
+			return b.String(), true, true
+		}
+		return "• " + e.Message, true, e.Message != ""
+	case domain.LogNPC:
+		id, _ := e.Data["npc"].(string)
+		if n := adv.NPC(id); n != nil {
+			var b strings.Builder
+			fmt.Fprintf(&b, "• CHARACTER — %s", n.Name)
+			if n.Role != "" {
+				fmt.Fprintf(&b, " (%s)", n.Role)
+			}
+			if n.Appearance != "" {
+				fmt.Fprintf(&b, "\n  Appearance: %s", oneLine(n.Appearance))
+			}
+			if n.Personality != "" {
+				fmt.Fprintf(&b, "\n  Personality: %s", oneLine(n.Personality))
+			}
+			return b.String(), false, true
+		}
+		return "• " + e.Message, false, e.Message != ""
+	case domain.LogEvent:
+		id, _ := e.Data["event"].(string)
+		if ev := adv.Event(id); ev != nil {
+			text := ev.ReadAloud
+			if text == "" {
+				text = ev.Description
+			}
+			out := "• EVENT — " + ev.Name
+			if text != "" {
+				out += "\n  " + oneLine(text)
+			}
+			return out, false, true
+		}
+		return "• " + e.Message, false, e.Message != ""
+	case domain.LogNote:
+		return "• DM NOTE: " + oneLine(e.Message), false, e.Message != ""
+	case domain.LogQuest:
+		return "• " + e.Message, false, e.Message != ""
+	}
+	return "", false, false
+}
+
+// segmentBeats splits the timeline into passes of roughly budget characters,
+// preferring to break at a scene boundary once a segment is past ~60% full so
+// chapters align with location changes.
+func segmentBeats(beats []beat, budget int) [][]beat {
+	soft := budget * 6 / 10
+	var segs [][]beat
+	var cur []beat
+	curLen := 0
+	for _, b := range beats {
+		bl := len(b.text) + 1
+		if len(cur) > 0 && (curLen+bl > budget || (b.scene && curLen >= soft)) {
+			segs = append(segs, cur)
+			cur = nil
+			curLen = 0
+		}
+		cur = append(cur, b)
+		curLen += bl
+	}
+	if len(cur) > 0 {
+		segs = append(segs, cur)
+	}
+	return segs
+}
+
+func segmentDigest(seg []beat) string {
+	var sb strings.Builder
+	for _, b := range seg {
+		sb.WriteString(b.text)
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+// storyContext is the grounding header (title, premise, party) sent with every pass.
+func storyContext(adv *domain.Adventure, st *domain.SessionState) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "ADVENTURE: %s\n", adv.Title)
 	if adv.Summary != "" {
@@ -66,87 +367,34 @@ func buildDigest(adv *domain.Adventure, st *domain.SessionState) string {
 		}
 		fmt.Fprintf(&sb, "PARTY: %s\n", strings.Join(names, ", "))
 	}
-
-	sb.WriteString("\n=== SESSION BEATS (in order) ===\n")
-	if st.Log != nil {
-		for _, e := range st.Log.Entries {
-			writeBeat(&sb, adv, e)
-		}
-	}
-
-	if st.Conversation != nil && len(st.Conversation.Messages) > 0 {
-		sb.WriteString("\n=== TABLE NARRATION (DM ↔ oracle; source material, not to quote verbatim) ===\n")
-		for _, m := range st.Conversation.Messages {
-			switch m.Role {
-			case domain.RoleUser:
-				fmt.Fprintf(&sb, "- DM: %s\n", oneLine(m.Content))
-			case domain.RoleAssistant:
-				if strings.TrimSpace(m.Content) != "" {
-					fmt.Fprintf(&sb, "- Narration: %s\n", oneLine(m.Content))
-				}
-			}
-		}
-	}
-
-	sb.WriteString("\nNow write the novel.")
-	return truncate(sb.String(), maxDigestChars)
-}
-
-func writeBeat(sb *strings.Builder, adv *domain.Adventure, e domain.LogEntry) {
-	switch e.Type {
-	case domain.LogLocation:
-		id, _ := e.Data["room"].(string)
-		if r, _ := adv.Room(id); r != nil {
-			fmt.Fprintf(sb, "\n• SCENE — %s\n", r.Name)
-			if r.ReadAloud != "" {
-				fmt.Fprintf(sb, "  Scene text: %s\n", oneLine(r.ReadAloud))
-			}
-			if r.DMNotes != "" {
-				fmt.Fprintf(sb, "  What happens here: %s\n", oneLine(r.DMNotes))
-			}
-			return
-		}
-		fmt.Fprintf(sb, "\n• %s\n", e.Message)
-	case domain.LogNPC:
-		id, _ := e.Data["npc"].(string)
-		if n := adv.NPC(id); n != nil {
-			fmt.Fprintf(sb, "• CHARACTER — %s", n.Name)
-			if n.Role != "" {
-				fmt.Fprintf(sb, " (%s)", n.Role)
-			}
-			sb.WriteString("\n")
-			if n.Appearance != "" {
-				fmt.Fprintf(sb, "  Appearance: %s\n", oneLine(n.Appearance))
-			}
-			if n.Personality != "" {
-				fmt.Fprintf(sb, "  Personality: %s\n", oneLine(n.Personality))
-			}
-			return
-		}
-		fmt.Fprintf(sb, "• %s\n", e.Message)
-	case domain.LogEvent:
-		id, _ := e.Data["event"].(string)
-		if ev := adv.Event(id); ev != nil {
-			fmt.Fprintf(sb, "• EVENT — %s\n", ev.Name)
-			text := ev.ReadAloud
-			if text == "" {
-				text = ev.Description
-			}
-			if text != "" {
-				fmt.Fprintf(sb, "  %s\n", oneLine(text))
-			}
-			return
-		}
-		fmt.Fprintf(sb, "• %s\n", e.Message)
-	case domain.LogNote:
-		fmt.Fprintf(sb, "• DM NOTE: %s\n", oneLine(e.Message))
-	case domain.LogQuest:
-		fmt.Fprintf(sb, "• %s\n", e.Message)
-	}
+	return sb.String()
 }
 
 func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
+}
+
+func lastChars(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	// Cut on a rune boundary so we don't split a multibyte character.
+	cut := s[len(s)-n:]
+	for i := 0; i < len(cut) && i < 4; i++ {
+		if cut[0]&0xC0 != 0x80 { // not a UTF-8 continuation byte
+			break
+		}
+		cut = cut[1:]
+	}
+	return cut
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func languageName(code string) string {
@@ -171,9 +419,19 @@ func cleanMarkdown(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
+// stripBookTitle removes a leading "# " book-title line from a continuation
+// segment, so the finished book keeps a single title from the opening pass.
+func stripBookTitle(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		t := strings.TrimSpace(ln)
+		if t == "" {
+			continue
+		}
+		if strings.HasPrefix(ln, "# ") {
+			return strings.TrimSpace(strings.Join(lines[i+1:], "\n"))
+		}
+		break // first non-blank line isn't a title → nothing to strip
 	}
-	return s[:max] + "\n…(session truncated)…"
+	return s
 }

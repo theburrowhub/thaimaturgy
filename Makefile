@@ -9,6 +9,8 @@ BOT_BINARY_NAME := thaimaturgy-bot
 BOT_CMD_DIR := ./cmd/thaimaturgy-bot
 SERVER_BINARY_NAME := thaimaturgy-server
 SERVER_CMD_DIR := ./cmd/thaimaturgy-server
+NOVEL_BINARY_NAME := thaimaturgy-novel
+NOVEL_CMD_DIR := ./cmd/thaimaturgy-novel
 PKG := github.com/theburrowhub/thaimaturgy
 
 # Go parameters
@@ -76,6 +78,12 @@ build-server: ## Build the HTTP server binary (#36)
 	@mkdir -p $(BINARY_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_DIR)/$(SERVER_BINARY_NAME) $(SERVER_CMD_DIR)
 	@echo "$(GREEN)Built: $(BINARY_DIR)/$(SERVER_BINARY_NAME)$(RESET)"
+
+build-novel: ## Build the session-novelization console binary
+	@echo "$(CYAN)Building $(NOVEL_BINARY_NAME)...$(RESET)"
+	@mkdir -p $(BINARY_DIR)
+	$(GOBUILD) $(LDFLAGS) -o $(BINARY_DIR)/$(NOVEL_BINARY_NAME) $(NOVEL_CMD_DIR)
+	@echo "$(GREEN)Built: $(BINARY_DIR)/$(NOVEL_BINARY_NAME)$(RESET)"
 
 dev: ## Run with go run (faster iteration)
 	@echo "$(CYAN)Running in dev mode...$(RESET)"

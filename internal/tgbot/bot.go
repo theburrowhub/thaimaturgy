@@ -529,7 +529,7 @@ func (b *Bot) startGame(m *tgbotapi.Message) {
 		b.session.State.StartGame()
 		b.save()
 		b.event("DM: " + resp.Answer)
-		b.send(m.Chat.ID, resp.Answer)
+		b.sendNarration(m.Chat.ID, resp.Answer)
 	}()
 }
 
@@ -632,7 +632,7 @@ func (b *Bot) runDM(m *tgbotapi.Message) {
 		}
 		b.save()
 		b.event("DM: " + resp.Answer)
-		b.send(m.Chat.ID, resp.Answer)
+		b.sendNarration(m.Chat.ID, resp.Answer)
 	}()
 }
 
@@ -863,6 +863,58 @@ func (b *Bot) send(chatID int64, text string) {
 			return
 		}
 	}
+}
+
+// sendNarration sends a virtual-DM narration, hiding the trailing "suggested
+// actions" list behind a Telegram spoiler so players aren't spoiled by options
+// they haven't discovered yet (#63). The narrative is sent as plain text (no
+// parse mode, so nothing to escape/break); the actions, when present, follow in
+// a separate HTML message wrapped in <tg-spoiler>.
+func (b *Bot) sendNarration(chatID int64, text string) {
+	narr, heading, actions := domain.SplitActions(text)
+	if actions == "" {
+		b.send(chatID, text) // no actions section detected → send verbatim
+		return
+	}
+	if narr != "" {
+		b.send(chatID, narr)
+	}
+	for _, msg := range spoilerMessages(heading, actions, 3500) {
+		m := tgbotapi.NewMessage(chatID, msg)
+		m.ParseMode = tgbotapi.ModeHTML
+		if _, err := b.api.Send(m); err != nil {
+			log.Printf("send spoiler: %v", err)
+			return
+		}
+	}
+}
+
+// spoilerMessages builds the HTML message(s) for a heading + spoiler-wrapped
+// body: the heading (bold) on the first message only, and each body chunk wrapped
+// in its own <tg-spoiler> so a spoiler tag is never split across the message
+// limit. Content is HTML-escaped.
+func spoilerMessages(heading, body string, limit int) []string {
+	label := ""
+	if heading != "" {
+		label = "<b>" + htmlEscape(heading) + "</b>\n"
+	}
+	var out []string
+	for i, chunk := range splitMessage(body, limit) {
+		head := ""
+		if i == 0 {
+			head = label
+		}
+		out = append(out, head+"<tg-spoiler>"+htmlEscape(chunk)+"</tg-spoiler>")
+	}
+	return out
+}
+
+// htmlEscape escapes the characters significant to Telegram's HTML parse mode.
+func htmlEscape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
 }
 
 func splitMessage(text string, limit int) []string {
