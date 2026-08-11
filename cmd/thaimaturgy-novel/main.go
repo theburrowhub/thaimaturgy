@@ -43,7 +43,8 @@ func run() error {
 		format  = flag.String("format", "md", "output format: md | pdf")
 		model   = flag.String("model", "", "override the model id (default: from config)")
 		list    = flag.Bool("list", false, "list resumable sessions and exit")
-		timeout = flag.Duration("timeout", 15*time.Minute, "max time to wait for the LLM")
+		timeout = flag.Duration("timeout", 30*time.Minute, "max time to wait for the whole (multi-pass) generation")
+		segment = flag.Int("segment-chars", 0, "characters of play log per generation pass (0 = default); smaller = more passes")
 	)
 	flag.Parse()
 
@@ -101,7 +102,12 @@ func run() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	md, err := novel.Generate(ctx, prov, config.Model, adv, st)
+	md, err := novel.GenerateWithOptions(ctx, prov, config.Model, adv, st, novel.Options{
+		SegmentChars: *segment,
+		Progress: func(n, total int) {
+			fmt.Fprintf(os.Stderr, "  pass %d/%d…\n", n, total)
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("novel generation failed: %w", err)
 	}
