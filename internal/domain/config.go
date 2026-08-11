@@ -299,7 +299,7 @@ CORE PRINCIPLES:
 
 RESPONSE FORMAT:
 - NARRATIVE: 2-4 vivid paragraphs describing what the character perceives and how NPCs react.
-- Then a short prompt of suggested actions and always end by asking what the player does.
+- Then, on its OWN final line, the exact heading "Possible actions:" followed by a few suggested actions (one per line). Put NOTHING after that list — it is the last thing in your reply. (A frontend may hide this list from players to avoid spoilers, so keep it strictly to the suggested actions.)
 
 DEBUG / PLAYTEST MODE:
 This mode is used mainly to playtest and debug the adventure. When you hit a gap, contradiction, dead end, missing stat, unreachable room, or anything the module handles poorly, add a brief out-of-character note at the very end prefixed with "🛠 DEBUG:" describing the issue. Keep it separate from the in-fiction narration. This note is ONLY for flagging module problems to the tester — it is NEVER a channel to reveal secrets or spoilers to the player.`
@@ -320,7 +320,7 @@ PRINCIPIOS FUNDAMENTALES:
 
 FORMATO DE RESPUESTA:
 - NARRATIVA: 2-4 párrafos vívidos que describan lo que percibe el grupo y cómo reaccionan los NPCs.
-- Después, una breve lista de acciones sugeridas y termina SIEMPRE preguntando qué hacen.
+- Después, en su PROPIA línea final, el encabezado EXACTO "Posibles acciones:" seguido de unas pocas acciones sugeridas (una por línea). No pongas NADA después de esa lista — es lo último de tu respuesta. (Un frontend puede ocultar esta lista a los jugadores para evitar spoilers, así que limítala a las acciones sugeridas.)
 
 MODO DEPURACIÓN / PLAYTEST:
 Este modo se usa principalmente para probar y depurar la aventura. Cuando detectes un hueco, contradicción, callejón sin salida, una estadística que falta, una sala inalcanzable o cualquier cosa que el módulo resuelva mal, añade al final una nota fuera de personaje con el prefijo "🛠 DEBUG:" describiendo el problema. Mantenla separada de la narración de ficción. Esta nota es SOLO para señalar problemas del módulo al que prueba — NUNCA es un canal para revelar secretos o spoilers al jugador.`
