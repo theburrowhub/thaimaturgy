@@ -36,6 +36,9 @@ func TestPlanPartyConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	// Close the session at the end so background autosaves are flushed and stop
+	// before the temp dir is torn down (avoids a cleanup race on the roster dir).
+	defer func() { _ = svc.CloseSession(name) }()
 	if err := svc.SetParty(name, []*domain.Character{domain.NewCharacter("Alden", "Human", "Fighter")}); err != nil {
 		t.Fatalf("SetParty: %v", err)
 	}
@@ -69,6 +72,7 @@ func TestSavePartyToRosterLinksByIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	defer func() { _ = svc.CloseSession(name) }()
 	if err := svc.SetParty(name, []*domain.Character{
 		domain.NewCharacter("Alden", "Human", "Fighter"),
 		domain.NewCharacter("Naivara", "Elf", "Wizard"),

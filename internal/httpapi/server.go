@@ -17,10 +17,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"mime"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -38,6 +41,10 @@ var webFS embed.FS
 
 // maxBodyBytes bounds a JSON request body so a client can't exhaust memory.
 const maxBodyBytes = 1 << 20 // 1 MiB
+
+// maxImportBytes bounds an uploaded adventure module (.tar.gz). Modules ship
+// their images, so this is generous, but still caps a runaway upload.
+const maxImportBytes = 256 << 20 // 256 MiB
 
 // sseTicketTTL bounds how long an issued SSE ticket stays valid. It is a
 // reconnection WINDOW (not single-use), so native EventSource can reconnect with
@@ -71,7 +78,9 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /api/adventures", s.listAdventures)
+	mux.HandleFunc("POST /api/adventures/import", s.importAdventure)
 	mux.HandleFunc("GET /api/adventures/{id}", s.getAdventure)
+	mux.HandleFunc("DELETE /api/adventures/{id}", s.deleteAdventure)
 	mux.HandleFunc("GET /api/adventures/{id}/asset", s.adventureAsset)
 	mux.HandleFunc("GET /api/sessions", s.listSessions)
 	mux.HandleFunc("POST /api/sessions", s.newSession)
@@ -227,6 +236,77 @@ func (s *Server) listAdventures(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, advs)
+}
+
+// importAdventure accepts a multipart upload of an adventure module (.tar.gz)
+// under the form field "module", stores it to a temp file, and imports it. The
+// upload is size-capped; extraction is path-traversal/zip-slip safe in storage.
+func (s *Server) importAdventure(w http.ResponseWriter, r *http.Request) {
+	// CSRF hardening for a browser-safelisted content type: multipart/form-data
+	// triggers no CORS preflight, so (unlike the JSON endpoints, whose
+	// application/json body forces one) a token-less loopback server could be
+	// driven cross-origin by a hostile page. Requiring a non-safelisted custom
+	// header forces a preflight the attacker's origin can't satisfy; our own
+	// same-origin frontend sends it freely.
+	if r.Header.Get("X-Thaim-CSRF") == "" {
+		httpError(w, http.StatusForbidden, "missing X-Thaim-CSRF header")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxImportBytes)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid or too-large upload")
+		return
+	}
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
+	file, _, err := r.FormFile("module")
+	if err != nil {
+		httpError(w, http.StatusBadRequest, "missing 'module' file field")
+		return
+	}
+	defer file.Close()
+
+	tmp, err := os.CreateTemp("", "thaim-import-*.tar.gz")
+	if err != nil {
+		log.Printf("httpapi: stage import upload: %v", err)
+		httpError(w, http.StatusInternalServerError, "could not stage the upload")
+		return
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := io.Copy(tmp, file); err != nil {
+		tmp.Close()
+		httpError(w, http.StatusBadRequest, "could not read the upload")
+		return
+	}
+	tmp.Close()
+
+	adv, err := s.svc.ImportAdventure(tmpPath)
+	if err != nil {
+		// Import failures are dominated by a bad/unreadable archive (client error);
+		// return a generic message and keep the detail (which may include internal
+		// paths) in the server log rather than the response body.
+		log.Printf("httpapi: import module: %v", err)
+		httpError(w, http.StatusBadRequest, "the uploaded file is not a valid adventure module")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"id": adv.ID, "title": adv.Title})
+}
+
+// deleteAdventure removes an imported adventure and its assets. A missing
+// adventure is a 404; an actual removal failure is an operational 5xx (with the
+// detail logged, not returned).
+func (s *Server) deleteAdventure(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !s.svc.AdventureExists(id) {
+		httpError(w, http.StatusNotFound, "adventure not found")
+		return
+	}
+	if err := s.svc.DeleteAdventure(id); err != nil {
+		log.Printf("httpapi: delete adventure %q: %v", id, err)
+		httpError(w, http.StatusInternalServerError, "could not delete the adventure")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 // getAdventure returns a single imported adventure's full content, so the web UI

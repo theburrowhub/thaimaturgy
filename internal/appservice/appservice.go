@@ -180,6 +180,11 @@ func (s *Service) ImportAdventure(path string) (*domain.Adventure, error) {
 }
 func (s *Service) DeleteAdventure(id string) error { return s.store.DeleteAdventure(id) }
 
+// AdventureExists reports whether an adventure with the given ID is imported, so
+// a transport can tell "not found" (404) apart from an operational delete failure
+// (5xx).
+func (s *Service) AdventureExists(id string) bool { return s.store.AdventureExists(id) }
+
 // AdventureAsset resolves a module-relative image path to its absolute on-disk
 // path, verifying it stays within the adventure's directory (path-traversal
 // safe). It lets a transport serve module images without reaching into storage.

@@ -94,7 +94,13 @@ async function loadLibrary() {
         try { const r = await api("POST", "/sessions", { adventure_id: a.id }); openSession(r.name); }
         catch (e) { status(e.message, true); }
       };
-      c.append(play);
+      const del = el("button", "ghost", "Delete");
+      del.onclick = async () => {
+        if (!confirm("Delete adventure “" + (a.title || a.id) + "” and its assets?")) return;
+        try { await api("DELETE", "/adventures/" + encodeURIComponent(a.id)); loadLibrary(); status("Adventure deleted."); }
+        catch (e) { status(e.message, true); }
+      };
+      c.append(play, del);
       advs.append(c);
     }
     for (const s of (await api("GET", "/sessions")) || []) {
@@ -123,6 +129,28 @@ async function loadLibrary() {
     }
   } catch (e) { status(e.message, true); }
 }
+
+// Import a module (.tar.gz) via multipart upload. FormData sets its own
+// Content-Type boundary, so we only add the bearer header when a token is set.
+$("#import-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = $("#import-file").files[0];
+  if (!f) { status("Choose a .tar.gz module first.", true); return; }
+  const fd = new FormData();
+  fd.append("module", f);
+  // X-Thaim-CSRF makes this a non-simple request, forcing a CORS preflight that a
+  // cross-origin page can't satisfy — CSRF protection for the safelisted upload.
+  const headers = { "X-Thaim-CSRF": "1" };
+  if (token()) headers["Authorization"] = "Bearer " + token();
+  try {
+    const resp = await fetch("/api/adventures/import", { method: "POST", headers, body: fd });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok) throw new Error((data && data.error) || ("HTTP " + resp.status));
+    $("#import-file").value = "";
+    status("Imported “" + (data.title || data.id) + "”.");
+    loadLibrary();
+  } catch (err) { status(err.message, true); }
+});
 
 function fmtTime(iso) {
   if (!iso) return "";
