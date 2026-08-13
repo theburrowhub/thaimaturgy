@@ -27,15 +27,20 @@ func newTestServer(t *testing.T, token string) *httptest.Server {
 	}
 	adv := &domain.Adventure{
 		SchemaVersion: domain.SchemaVersion, ID: "crypt", Title: "The Crypt",
-		Zones: []domain.Zone{{ID: "z1", Name: "Entrance", Rooms: []domain.Room{{ID: "r1", Name: "Gate"}}}},
+		Zones: []domain.Zone{{ID: "z1", Name: "Entrance", MapImage: "assets/map.png",
+			Rooms: []domain.Room{{ID: "r1", Name: "Gate", Image: "assets/map.png"}}}},
 	}
 	dir := store.AdventureDir("crypt")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "assets"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	data, _ := json.MarshalIndent(adv, "", "  ")
 	if err := os.WriteFile(filepath.Join(dir, storage.AdventureFile), data, 0o644); err != nil {
 		t.Fatalf("write adventure: %v", err)
+	}
+	// A tiny image asset so the asset route has something to serve.
+	if err := os.WriteFile(filepath.Join(dir, "assets", "map.png"), []byte("\x89PNG\r\n\x1a\nfake"), 0o644); err != nil {
+		t.Fatalf("write asset: %v", err)
 	}
 	svc := appservice.New(store, domain.DefaultConfig(), nil)
 	ts := httptest.NewServer(New(svc, token).Handler())
@@ -121,6 +126,45 @@ func TestRESTFlow(t *testing.T) {
 	if _, cfg := doJSON(t, "GET", ts.URL+"/api/config", ""); cfg["language"] != "es" {
 		t.Errorf("config not adopted: %v", cfg["language"])
 	}
+}
+
+func TestAdventureContentAndAsset(t *testing.T) {
+	ts := newTestServer(t, "")
+
+	// Full adventure content for the module browser.
+	resp, out := doJSON(t, "GET", ts.URL+"/api/adventures/crypt", "")
+	if resp.StatusCode != 200 || out["title"] != "The Crypt" {
+		t.Fatalf("get adventure = %d (%v)", resp.StatusCode, out)
+	}
+	// Unknown adventure → 404.
+	if resp, _ := doJSON(t, "GET", ts.URL+"/api/adventures/nope", ""); resp.StatusCode != 404 {
+		t.Errorf("unknown adventure = %d; want 404", resp.StatusCode)
+	}
+
+	// Asset streams the image bytes.
+	ar, err := http.Get(ts.URL + "/api/adventures/crypt/asset?path=assets/map.png")
+	if err != nil || ar.StatusCode != 200 {
+		t.Fatalf("asset = %v / %d", err, ar.StatusCode)
+	}
+	b, _ := io.ReadAll(ar.Body)
+	ar.Body.Close()
+	if len(b) == 0 {
+		t.Error("asset body should not be empty")
+	}
+
+	// Path traversal is rejected (resolved inside the module dir).
+	tr, _ := http.Get(ts.URL + "/api/adventures/crypt/asset?path=../../../../etc/passwd")
+	if tr.StatusCode == 200 {
+		t.Error("path traversal should be rejected")
+	}
+	tr.Body.Close()
+
+	// Missing path parameter → 400.
+	mr, _ := http.Get(ts.URL + "/api/adventures/crypt/asset")
+	if mr.StatusCode != 400 {
+		t.Errorf("missing path = %d; want 400", mr.StatusCode)
+	}
+	mr.Body.Close()
 }
 
 func TestAuthToken(t *testing.T) {

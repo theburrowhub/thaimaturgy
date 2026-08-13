@@ -35,21 +35,42 @@
         <span id="session-name" class="pill"></span>
         <span id="session-loc" class="muted"></span>
         <span class="spacer"></span>
+        <button id="mode-toggle" class="ghost" title="Toggle Oracle ↔ Virtual DM">Mode: Oracle</button>
+        <button id="begin" class="hidden" title="Start the game — the DM narrates the opening">Begin</button>
+        <button id="rest" class="hidden" title="Short or long rest for the party">Rest</button>
+        <button id="dice" class="ghost" title="Roll dice">🎲 Dice</button>
         <button id="save">Save</button>
         <button id="close">Close</button>
       </div>
-      <div class="session-body">
-        <div class="col">
-          <h3>Party</h3>
-          <div id="party" class="list small"></div>
+      <div class="session-body three">
+        <!-- Left: adventure browser (oracle) / party (DM) + session log -->
+        <div class="col side">
+          <div id="browser-wrap">
+            <h3 id="browser-title">Adventure</h3>
+            <div id="browser" class="tree"></div>
+          </div>
+          <div id="party-wrap" class="hidden">
+            <h3>Party</h3>
+            <div id="party" class="list small"></div>
+          </div>
+          <h3 class="logtitle">Session log</h3>
+          <div id="log" class="log"></div>
         </div>
+
+        <!-- Center: transcript + input -->
         <div class="col grow">
-          <h3>Transcript &amp; log</h3>
+          <h3 id="transcript-title">Oracle</h3>
           <div id="transcript" class="transcript"></div>
           <form id="ask">
-            <input id="ask-input" placeholder="Ask the oracle, or type a /command (e.g. /note …)" autocomplete="off">
+            <textarea id="ask-input" rows="3" placeholder="Ask the oracle, or type a /command. Enter sends · Shift/Ctrl+Enter = newline" autocomplete="off"></textarea>
             <button type="submit">Send</button>
           </form>
+        </div>
+
+        <!-- Right: detail pane -->
+        <div id="detail-wrap" class="col detail">
+          <h3 id="detail-title">Detail</h3>
+          <div id="detail" class="detail-body"><p class="muted">Select something in the browser.</p></div>
         </div>
       </div>
     </section>
@@ -78,6 +99,19 @@
       <p class="muted">Secrets (API keys, Telegram token) are managed server-side and not shown here.</p>
     </section>
   </main>
+
+  <!-- Dice roller modal -->
+  <div id="dice-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head"><span>Dice roller</span><button id="dice-close" class="ghost">✕</button></div>
+      <div id="dice-quick" class="dice-quick"></div>
+      <form id="dice-form" class="row">
+        <input id="dice-notation" placeholder="e.g. 2d6+3" autocomplete="off">
+        <button type="submit">Roll</button>
+      </form>
+      <div id="dice-result" class="dice-result muted"></div>
+    </div>
+  </div>
 
   <div id="status" class="status"></div>
   <script src="/app.js"></script>

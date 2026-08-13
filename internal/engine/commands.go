@@ -34,11 +34,15 @@ const (
 	CmdRoll
 	CmdSearch
 	CmdStatus
-	CmdChat   // in-character dialogue added as context (no round action)
-	CmdMeta   // out-of-character question/correction the DM answers immediately
-	CmdRest   // short/long rest for the party
-	CmdMode   // switch between oracle (assistant) and virtual-DM mode
-	CmdOracle // free-form query to the oracle (no slash prefix)
+	CmdChat    // in-character dialogue added as context (no round action)
+	CmdMeta    // out-of-character question/correction the DM answers immediately
+	CmdRest    // short/long rest for the party
+	CmdMode    // switch between oracle (assistant) and virtual-DM mode
+	CmdMet     // mark an NPC as met (known) in the session state
+	CmdTrigger // mark a scripted event as triggered
+	CmdTable   // roll on a random table
+	CmdBegin   // (virtual-DM) start the game: the DM narrates the opening scene
+	CmdOracle  // free-form query to the oracle (no slash prefix)
 )
 
 // Command is a parsed DM instruction.
@@ -122,6 +126,14 @@ func ParseCommand(input string) *Command {
 		cmd.Type = CmdStatus
 	case "mode", "dm", "dj", "gm":
 		cmd.Type = CmdMode
+	case "met", "meet":
+		cmd.Type = CmdMet
+	case "trigger", "fire":
+		cmd.Type = CmdTrigger
+	case "table", "roll-table", "rolltable":
+		cmd.Type = CmdTable
+	case "begin", "start":
+		cmd.Type = CmdBegin
 	default:
 		cmd.Type = CmdUnknown
 	}
@@ -223,6 +235,14 @@ func (h *CommandHandler) Execute(cmd *Command) *CommandResult {
 		h.handleMeta(cmd, r)
 	case CmdMode:
 		h.handleMode(cmd, r)
+	case CmdMet:
+		h.handleMet(cmd, r)
+	case CmdTrigger:
+		h.handleTrigger(cmd, r)
+	case CmdTable:
+		h.handleTable(cmd, r)
+	case CmdBegin:
+		h.handleBegin(cmd, r)
 	case CmdUnknown:
 		r.Success = false
 		r.Message = "Unknown command: " + cmd.Raw + ". Type /help."
@@ -522,6 +542,85 @@ func (h *CommandHandler) handleMode(cmd *Command, r *CommandResult) {
 	r.NeedsUI, r.UIAction, r.UIArg = true, "mode", string(target)
 }
 
+// handleMet marks an NPC as met (known) in the session state, the same mutation
+// the desktop detail pane and the oracle's mark_npc_met tool perform. Shared so
+// the web and Telegram frontends can do it without a bespoke endpoint.
+func (h *CommandHandler) handleMet(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /met <npc_id>"
+		return
+	}
+	id := cmd.Args[0]
+	n := h.adv().NPC(id)
+	if n == nil {
+		r.Success, r.Message = false, "No NPC with id "+id
+		return
+	}
+	h.state().MeetNPC(n.ID, n.Name)
+	h.session.MarkModified()
+	r.Message = "Marked " + n.Name + " as met."
+}
+
+// handleTrigger marks a scripted event as triggered in the session state.
+func (h *CommandHandler) handleTrigger(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /trigger <event_id>"
+		return
+	}
+	id := cmd.Args[0]
+	e := h.adv().Event(id)
+	if e == nil {
+		r.Success, r.Message = false, "No event with id "+id
+		return
+	}
+	h.state().TriggerEvent(e.ID, e.Name)
+	h.session.MarkModified()
+	r.Message = "Marked event '" + e.Name + "' as triggered."
+}
+
+// handleTable rolls on a random table and records the result on the timeline,
+// mirroring the desktop "Roll on table" action.
+func (h *CommandHandler) handleTable(cmd *Command, r *CommandResult) {
+	if len(cmd.Args) == 0 {
+		r.Success, r.Message = false, "Usage: /table <table_id>"
+		return
+	}
+	id := cmd.Args[0]
+	t := h.adv().Table(id)
+	if t == nil {
+		r.Success, r.Message = false, "No table with id "+id
+		return
+	}
+	roll, row := RollTable(t)
+	if row == nil {
+		r.Success, r.Message = false, "Table '"+t.Name+"' has no rows to roll on."
+		return
+	}
+	msg := fmt.Sprintf("Rolled %d on %s: %s", roll, t.Name, RowText(row))
+	h.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: msg})
+	h.session.MarkModified()
+	r.Message = msg
+}
+
+// handleBegin starts a virtual-DM game: it marks the game started and signals the
+// frontend to run the DM's opening narration through the oracle. It only applies
+// in virtual-DM mode, and is a no-op (with a message) if already started, so the
+// web/CLI can begin a game the same way the desktop Begin button does.
+func (h *CommandHandler) handleBegin(_ *Command, r *CommandResult) {
+	st := h.state()
+	if st.EffectiveMode() != domain.ModeVirtualDM {
+		r.Success, r.Message = false, "Switch to Virtual DM mode first (/mode dm)."
+		return
+	}
+	if !st.StartGame() {
+		r.Message = "The game has already begun."
+		return
+	}
+	h.session.MarkModified()
+	r.Message = "The game begins — the DM sets the scene…"
+	r.NeedsUI, r.UIAction, r.UIArg = true, "oracle", domain.DMKickoffPrompt(h.session.Config.Language)
+}
+
 func (h *CommandHandler) presentNPCsText() string {
 	room, _ := h.adv().Room(h.state().CurrentRoom)
 	if room == nil || len(room.NPCIDs) == 0 {
@@ -595,15 +694,19 @@ NAVIGATION & CONTENT:
   /search <query>      Search the whole module
   /map [zone_id]       Open a zone map image (external viewer)
   /art <id|path>       Open art for an NPC/room/item/image
+  /table <id>          Roll on a random table
 
 SESSION STATE:
   /note <text>         Add a free-form note to the timeline
   /flag key=true|false Set a story flag
+  /met <npc_id>        Mark an NPC as met (known)
+  /trigger <event_id>  Mark a scripted event as triggered
   /quests              Show tracked quests
   /party               Show tracked player characters
   /roll <dice>         Roll dice (e.g. /roll 2d6+3)
   /status              Session status
   /mode [oracle|dm]    Toggle Oracle ↔ Virtual DM (AI runs the game; you play)
+  /begin               (Virtual DM) Start the game — the DM narrates the opening
 
 Type any text without '/' to ask the oracle about the adventure.
 In Virtual DM mode, type what your character does instead.`

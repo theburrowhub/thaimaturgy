@@ -3,7 +3,8 @@ package domain
 import "testing"
 
 // graph:  entrance --east--> hall --north--> library
-//                              hall --down(locked)--> crypt
+//
+//	hall --down(locked)--> crypt
 func topoAdventure() *Adventure {
 	return &Adventure{
 		ID: "m", Title: "M",
