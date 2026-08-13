@@ -260,6 +260,9 @@ func TestPartyAndCharacterEndpoints(t *testing.T) {
 	if resp, _ := doJSON(t, "POST", base+"/party/plan", `{"prompt":"a balanced trio"}`); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("plan without provider = %d; want 400", resp.StatusCode)
 	}
+
+	// Close the session so background autosaves stop before temp-dir teardown.
+	doJSON(t, "POST", base+"/close", "")
 }
 
 func TestImportAndDeleteAdventure(t *testing.T) {
