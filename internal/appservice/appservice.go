@@ -34,6 +34,11 @@ var ErrCharacterConflict = errors.New("character changed since it was loaded")
 // plan was in flight, so applying the plan would overwrite newer edits.
 var ErrPartyConflict = errors.New("party changed while the plan was being generated")
 
+// ErrNameConflict is returned by UpdateCharacter when the edit would rename a
+// member onto another member's name, which would make name-based addressing of
+// the two ambiguous.
+var ErrNameConflict = errors.New("another party member already uses that name")
+
 // Service is the facade. It is safe for concurrent use.
 type Service struct {
 	store    *storage.Storage
@@ -509,7 +514,21 @@ func (s *Service) PlanParty(ctx context.Context, name, prompt string) ([]domain.
 func (s *Service) UpdateCharacter(name, charName string, base, edited *domain.Character) error {
 	conflict := false
 	found := false
+	nameConflict := false
 	err := s.withOpenSession(name, func(os *OpenSession) (bool, error) {
+		// Reject a rename that collides with a DIFFERENT member's name, so that
+		// name-based addressing stays unambiguous. The whole op runs under opMu, so
+		// the snapshot can't race the mutation below.
+		newName := strings.TrimSpace(edited.Name)
+		for _, m := range os.Session.State.PartySnapshot() {
+			if strings.EqualFold(m.Name, charName) {
+				continue // the member being edited
+			}
+			if strings.EqualFold(m.Name, newName) {
+				nameConflict = true
+				return false, nil
+			}
+		}
 		baseJSON, _ := json.Marshal(base)
 		_, ok := os.Session.State.MutateCharacter(charName, func(c *domain.Character) {
 			if cur, _ := json.Marshal(c); !bytes.Equal(cur, baseJSON) {
@@ -526,6 +545,9 @@ func (s *Service) UpdateCharacter(name, charName string, base, edited *domain.Ch
 	})
 	if err != nil {
 		return err
+	}
+	if nameConflict {
+		return ErrNameConflict
 	}
 	if !found {
 		return fmt.Errorf("no character named %q in session %q", charName, name)

@@ -224,6 +224,21 @@ func TestPartyAndCharacterEndpoints(t *testing.T) {
 		t.Errorf("stale update = %d; want 409", resp.StatusCode)
 	}
 
+	// Renaming a member onto another member's name is rejected (409), so
+	// name-based addressing stays unambiguous.
+	cur2 := getArray(t, base+"/party")
+	fresh, _ := json.Marshal(cur2[0]) // current Alden
+	rename := map[string]any{}
+	for k, v := range cur2[0] {
+		rename[k] = v
+	}
+	rename["name"] = "Naivara" // collides with the other member
+	renameJSON, _ := json.Marshal(rename)
+	collide := `{"base":` + string(fresh) + `,"edited":` + string(renameJSON) + `}`
+	if resp, _ := doJSON(t, "PUT", base+"/characters/Alden", collide); resp.StatusCode != http.StatusConflict {
+		t.Errorf("colliding rename = %d; want 409", resp.StatusCode)
+	}
+
 	// Default party replaces the roster with the sample party.
 	if resp, _ := doJSON(t, "POST", base+"/party/default", ""); resp.StatusCode != 200 {
 		t.Fatalf("default party = %d", resp.StatusCode)

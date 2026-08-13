@@ -453,6 +453,8 @@ func (s *Server) updateCharacter(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, appservice.ErrCharacterConflict):
 		httpError(w, http.StatusConflict, "this character changed since you loaded it; reload and re-apply")
+	case errors.Is(err, appservice.ErrNameConflict):
+		httpError(w, http.StatusConflict, "another party member already uses that name; pick a different name")
 	case err != nil:
 		httpError(w, http.StatusBadRequest, err.Error())
 	default:
