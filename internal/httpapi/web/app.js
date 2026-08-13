@@ -717,22 +717,81 @@ $("#roster-add").addEventListener("submit", async (e) => {
 // --- Settings ------------------------------------------------------------
 
 let cfgCache = null;
+let settingsRefs = null;
+
+function checkbox(value) { const c = el("input"); c.type = "checkbox"; c.checked = !!value; return c; }
+function passwordInput() { return input("", { type: "password", autocomplete: "new-password", placeholder: "leave blank to keep current" }); }
+
 async function loadSettings() {
-  try {
-    cfgCache = await api("GET", "/config");
-    $("#cfg-provider").value = cfgCache.provider || "";
-    $("#cfg-model").value = cfgCache.model || "";
-    $("#cfg-language").value = cfgCache.language || "";
-  } catch (e) { status(e.message, true); }
+  try { cfgCache = await api("GET", "/config"); } catch (e) { status(e.message, true); return; }
+  const c = cfgCache || {};
+  const f = $("#settings-form"); f.innerHTML = "";
+  const g = (label, node) => { f.append(field(label, node)); return node; };
+  const sec = (t) => f.append(el("div", "label", t));
+
+  sec("Provider & models");
+  const provider = g("Provider", selectFrom(["openai", "anthropic", "gemini", "claude-cli"], c.provider || "openai"));
+  const model = g("Model", input(c.model || ""));
+  const runModel = g("Run model (oracle)", input(c.run_model || ""));
+  const editModel = g("Edit model (import)", input(c.edit_model || ""));
+
+  sec("Language");
+  const lang = g("UI language", selectFrom(["en", "es"], c.language || "en"));
+  const importLang = g("Import language", input(c.import_language || ""));
+
+  sec("Tunables");
+  const temp = g("Temperature", numInput(c.temperature ?? 0.7)); temp.step = "0.1";
+  const maxTokens = g("Max tokens", numInput(c.max_tokens || 0));
+  const importMax = g("Import max output tokens", numInput(c.import_max_output_tokens || 0));
+  const oracleIters = g("Oracle max tool iterations", numInput(c.oracle_max_tool_iterations || 0));
+  const timeout = g("Request timeout (s)", numInput(c.request_timeout_seconds || 0));
+  const autosave = g("Auto-save sessions", checkbox(c.auto_save));
+  const autosaveInt = g("Auto-save interval (s)", numInput(c.auto_save_interval || 0));
+
+  sec("Text-to-speech");
+  const ttsEnabled = g("TTS enabled", checkbox(c.tts && c.tts.enabled));
+  const ttsVoice = g("TTS voice", selectFrom(["alloy", "echo", "fable", "onyx", "nova", "shimmer"], (c.tts && c.tts.voice) || "alloy"));
+
+  sec("API keys (write-only)");
+  const kOpenAI = g("OpenAI API key", passwordInput());
+  const kAnthropic = g("Anthropic API key", passwordInput());
+  const kGemini = g("Gemini API key", passwordInput());
+
+  sec("Telegram");
+  const tgToken = g("Bot token (write-only)", passwordInput());
+  const tgChat = g("Chat id", numInput(c.telegram_chat_id || 0));
+  const tgUsers = g("Allowed users (one numeric id per line)", textarea((c.telegram_allowed_users || []).join("\n"), 3));
+
+  const save = el("button", null, "Save settings"); save.type = "submit"; f.append(save);
+  settingsRefs = { provider, model, runModel, editModel, lang, importLang, temp, maxTokens, importMax, oracleIters, timeout, autosave, autosaveInt, ttsEnabled, ttsVoice, kOpenAI, kAnthropic, kGemini, tgToken, tgChat, tgUsers };
 }
+
 $("#settings-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const cfg = Object.assign({}, cfgCache || {}, {
-    provider: $("#cfg-provider").value.trim(),
-    model: $("#cfg-model").value.trim(),
-    language: $("#cfg-language").value.trim(),
-  });
-  try { await api("PUT", "/config", cfg); status("Settings saved."); }
+  const r = settingsRefs; if (!r) return;
+  const cfg = Object.assign({}, cfgCache || {});
+  cfg.provider = r.provider.value;
+  cfg.model = r.model.value.trim();
+  cfg.run_model = r.runModel.value.trim();
+  cfg.edit_model = r.editModel.value.trim();
+  cfg.language = r.lang.value;
+  cfg.import_language = r.importLang.value.trim();
+  cfg.temperature = parseFloat(r.temp.value) || 0;
+  cfg.max_tokens = parseInt(r.maxTokens.value, 10) || 0;
+  cfg.import_max_output_tokens = parseInt(r.importMax.value, 10) || 0;
+  cfg.oracle_max_tool_iterations = parseInt(r.oracleIters.value, 10) || 0;
+  cfg.request_timeout_seconds = parseInt(r.timeout.value, 10) || 0;
+  cfg.auto_save = r.autosave.checked;
+  cfg.auto_save_interval = parseInt(r.autosaveInt.value, 10) || 0;
+  cfg.tts = Object.assign({}, cfgCache.tts || {}, { enabled: r.ttsEnabled.checked, voice: r.ttsVoice.value });
+  cfg.telegram_chat_id = parseInt(r.tgChat.value, 10) || 0;
+  cfg.telegram_allowed_users = r.tgUsers.value.split("\n").map((s) => s.trim()).filter(Boolean);
+  // Secrets are write-only: send what was typed (empty = keep current, per the server).
+  cfg.openai_api_key = r.kOpenAI.value.trim();
+  cfg.anthropic_api_key = r.kAnthropic.value.trim();
+  cfg.gemini_api_key = r.kGemini.value.trim();
+  cfg.telegram_token = r.tgToken.value.trim();
+  try { await api("PUT", "/config", cfg); status("Settings saved."); loadSettings(); }
   catch (err) { status(err.message, true); }
 });
 

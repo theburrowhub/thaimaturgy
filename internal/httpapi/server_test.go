@@ -337,6 +337,50 @@ func TestImportAndDeleteAdventure(t *testing.T) {
 	}
 }
 
+func TestConfigSecretsWriteOnly(t *testing.T) {
+	store, err := storage.NewWithPath(t.TempDir())
+	if err != nil {
+		t.Fatalf("storage: %v", err)
+	}
+	svc := appservice.New(store, domain.DefaultConfig(), nil)
+	var rebuilt int
+	ts := httptest.NewServer(New(svc, "").OnConfigSaved(func(*domain.Config) { rebuilt++ }).Handler())
+	t.Cleanup(ts.Close)
+
+	// Set a provider + a secret.
+	if resp, _ := doJSON(t, "PUT", ts.URL+"/api/config", `{"provider":"openai","telegram_token":"tok-123"}`); resp.StatusCode != 200 {
+		t.Fatalf("put config = %d", resp.StatusCode)
+	}
+	if svc.Config().TelegramToken != "tok-123" {
+		t.Fatalf("token not saved: %q", svc.Config().TelegramToken)
+	}
+	// GET must NOT leak the secret.
+	if _, got := doJSON(t, "GET", ts.URL+"/api/config", ""); got["telegram_token"] != nil && got["telegram_token"] != "" {
+		t.Errorf("GET leaked telegram_token: %v", got["telegram_token"])
+	}
+	// PUT with an empty secret keeps the stored one (write-only), while other
+	// fields still update.
+	if resp, _ := doJSON(t, "PUT", ts.URL+"/api/config", `{"model":"m2","telegram_token":""}`); resp.StatusCode != 200 {
+		t.Fatalf("put config 2 = %d", resp.StatusCode)
+	}
+	if svc.Config().TelegramToken != "tok-123" {
+		t.Errorf("empty secret should preserve the stored token, got %q", svc.Config().TelegramToken)
+	}
+	if svc.Config().Model != "m2" {
+		t.Errorf("model not updated: %q", svc.Config().Model)
+	}
+	// A non-empty secret replaces it.
+	if resp, _ := doJSON(t, "PUT", ts.URL+"/api/config", `{"telegram_token":"tok-456"}`); resp.StatusCode != 200 {
+		t.Fatalf("put config 3 = %d", resp.StatusCode)
+	}
+	if svc.Config().TelegramToken != "tok-456" {
+		t.Errorf("secret not replaced: %q", svc.Config().TelegramToken)
+	}
+	if rebuilt < 3 {
+		t.Errorf("onConfigSaved should fire on each save, got %d", rebuilt)
+	}
+}
+
 func TestAuthToken(t *testing.T) {
 	ts := newTestServer(t, "s3cret")
 	// No token → 401.
