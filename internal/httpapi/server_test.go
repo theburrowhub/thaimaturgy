@@ -283,20 +283,41 @@ func TestImportAndDeleteAdventure(t *testing.T) {
 		t.Fatalf("package: %v", err)
 	}
 
-	// Upload it as multipart/form-data under the "module" field.
+	// Serialize the multipart body once, then reuse the bytes for each request.
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	fw, _ := mw.CreateFormFile("module", "module.tar.gz")
 	pkgBytes, _ := os.ReadFile(pkg)
 	_, _ = fw.Write(pkgBytes)
 	mw.Close()
-	req, _ := http.NewRequest("POST", ts.URL+"/api/adventures/import", &buf)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("import = %v / %d", err, resp.StatusCode)
+	ctype := mw.FormDataContentType()
+	body := buf.Bytes()
+
+	doImport := func(csrf bool) *http.Response {
+		req, _ := http.NewRequest("POST", ts.URL+"/api/adventures/import", bytes.NewReader(body))
+		req.Header.Set("Content-Type", ctype)
+		if csrf {
+			req.Header.Set("X-Thaim-CSRF", "1")
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("import request: %v", err)
+		}
+		return resp
 	}
-	resp.Body.Close()
+
+	// Without the CSRF header the safelisted upload is rejected (403).
+	if resp := doImport(false); resp.StatusCode != http.StatusForbidden {
+		resp.Body.Close()
+		t.Fatalf("import without CSRF header = %d; want 403", resp.StatusCode)
+	}
+	// With it, the import succeeds.
+	if resp := doImport(true); resp.StatusCode != http.StatusCreated {
+		resp.Body.Close()
+		t.Fatalf("import = %d; want 201", resp.StatusCode)
+	} else {
+		resp.Body.Close()
+	}
 
 	// It now appears in the library.
 	if got := getArray(t, ts.URL+"/api/adventures"); len(got) < 2 {

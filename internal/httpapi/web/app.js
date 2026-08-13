@@ -138,7 +138,9 @@ $("#import-form").addEventListener("submit", async (e) => {
   if (!f) { status("Choose a .tar.gz module first.", true); return; }
   const fd = new FormData();
   fd.append("module", f);
-  const headers = {};
+  // X-Thaim-CSRF makes this a non-simple request, forcing a CORS preflight that a
+  // cross-origin page can't satisfy — CSRF protection for the safelisted upload.
+  const headers = { "X-Thaim-CSRF": "1" };
   if (token()) headers["Authorization"] = "Bearer " + token();
   try {
     const resp = await fetch("/api/adventures/import", { method: "POST", headers, body: fd });
