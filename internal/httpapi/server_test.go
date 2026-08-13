@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -258,6 +259,57 @@ func TestPartyAndCharacterEndpoints(t *testing.T) {
 	// PlanParty needs an AI provider (nil in tests) → 400, not a crash.
 	if resp, _ := doJSON(t, "POST", base+"/party/plan", `{"prompt":"a balanced trio"}`); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("plan without provider = %d; want 400", resp.StatusCode)
+	}
+}
+
+func TestImportAndDeleteAdventure(t *testing.T) {
+	ts := newTestServer(t, "")
+
+	// Build a minimal module .tar.gz to upload.
+	src := t.TempDir()
+	adv := &domain.Adventure{
+		SchemaVersion: domain.SchemaVersion, ID: "imported", Title: "Imported Module",
+		Zones: []domain.Zone{{ID: "z1", Name: "Start", Rooms: []domain.Room{{ID: "r1", Name: "Door"}}}},
+	}
+	data, _ := json.MarshalIndent(adv, "", "  ")
+	if err := os.WriteFile(filepath.Join(src, storage.AdventureFile), data, 0o644); err != nil {
+		t.Fatalf("write adventure: %v", err)
+	}
+	pkg := filepath.Join(t.TempDir(), "module.tar.gz")
+	if err := storage.PackageModule(src, pkg); err != nil {
+		t.Fatalf("package: %v", err)
+	}
+
+	// Upload it as multipart/form-data under the "module" field.
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, _ := mw.CreateFormFile("module", "module.tar.gz")
+	pkgBytes, _ := os.ReadFile(pkg)
+	_, _ = fw.Write(pkgBytes)
+	mw.Close()
+	req, _ := http.NewRequest("POST", ts.URL+"/api/adventures/import", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		t.Fatalf("import = %v / %d", err, resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// It now appears in the library.
+	if got := getArray(t, ts.URL+"/api/adventures"); len(got) < 2 {
+		t.Fatalf("library should list the imported adventure, got %d", len(got))
+	}
+
+	// Delete it.
+	if resp, _ := doJSON(t, "DELETE", ts.URL+"/api/adventures/imported", ""); resp.StatusCode != 200 {
+		t.Fatalf("delete = %d", resp.StatusCode)
+	}
+	if resp, _ := doJSON(t, "GET", ts.URL+"/api/adventures/imported", ""); resp.StatusCode != 404 {
+		t.Errorf("deleted adventure should be gone, got %d", resp.StatusCode)
+	}
+	// Deleting a missing adventure → 404.
+	if resp, _ := doJSON(t, "DELETE", ts.URL+"/api/adventures/nope", ""); resp.StatusCode != 404 {
+		t.Errorf("delete missing = %d; want 404", resp.StatusCode)
 	}
 }
 
