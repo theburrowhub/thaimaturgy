@@ -163,6 +163,13 @@ func (s *Service) ImportAdventure(path string) (*domain.Adventure, error) {
 }
 func (s *Service) DeleteAdventure(id string) error { return s.store.DeleteAdventure(id) }
 
+// AdventureAsset resolves a module-relative image path to its absolute on-disk
+// path, verifying it stays within the adventure's directory (path-traversal
+// safe). It lets a transport serve module images without reaching into storage.
+func (s *Service) AdventureAsset(id, relPath string) (string, error) {
+	return s.store.ResolveImagePath(id, relPath)
+}
+
 // --- Sessions ------------------------------------------------------------
 
 func (s *Service) ListSessions() ([]storage.SessionInfo, error) { return s.store.ListSessions() }

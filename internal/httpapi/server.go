@@ -71,6 +71,8 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /api/adventures", s.listAdventures)
+	mux.HandleFunc("GET /api/adventures/{id}", s.getAdventure)
+	mux.HandleFunc("GET /api/adventures/{id}/asset", s.adventureAsset)
 	mux.HandleFunc("GET /api/sessions", s.listSessions)
 	mux.HandleFunc("POST /api/sessions", s.newSession)
 	mux.HandleFunc("GET /api/sessions/{name}", s.getSession)
@@ -217,6 +219,36 @@ func (s *Server) listAdventures(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, advs)
+}
+
+// getAdventure returns a single imported adventure's full content, so the web UI
+// can build the module browser and detail panes client-side.
+func (s *Server) getAdventure(w http.ResponseWriter, r *http.Request) {
+	adv, err := s.svc.LoadAdventure(r.PathValue("id"))
+	if err != nil {
+		httpError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, adv)
+}
+
+// adventureAsset streams a module image (map/art) by its module-relative path.
+// The path is resolved and bounds-checked inside the adventure directory by
+// AdventureAsset, so path traversal is rejected. It stays under the normal auth
+// wrapper; the web UI fetches it with the bearer header (as a blob), since an
+// <img> tag can't set Authorization when a token is configured.
+func (s *Server) adventureAsset(w http.ResponseWriter, r *http.Request) {
+	rel := r.URL.Query().Get("path")
+	if rel == "" {
+		httpError(w, http.StatusBadRequest, "missing image path")
+		return
+	}
+	abs, err := s.svc.AdventureAsset(r.PathValue("id"), rel)
+	if err != nil {
+		httpError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	http.ServeFile(w, r, abs)
 }
 
 func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
