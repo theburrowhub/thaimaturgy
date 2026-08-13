@@ -22,6 +22,7 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
+	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/httpapi"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
@@ -73,9 +74,15 @@ func main() {
 		log.Fatalf("refusing to bind %q beyond loopback without a token: set THAIM_SERVER_TOKEN (or bind 127.0.0.1)", *addr)
 	}
 
+	// Rebuild the LLM provider when the config is saved over the API, so new
+	// credentials/model take effect without a restart (mirrors the desktop app).
+	h := httpapi.New(svc, tok).OnConfigSaved(func(cfg *domain.Config) {
+		_ = auth.AutoConfigure(cfg)
+		svc.SetProvider(providers.New(cfg))
+	})
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           httpapi.New(svc, tok).Handler(),
+		Handler:           h.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("thaimaturgy-server on http://%s — %s", *addr, msg)

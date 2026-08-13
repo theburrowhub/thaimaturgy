@@ -60,8 +60,20 @@ type Server struct {
 	svc   *appservice.Service
 	token string
 
+	// onConfigSaved, when set, is invoked with the freshly-saved config after a
+	// successful PUT /api/config, so the host can rebuild the LLM provider (e.g.
+	// after new API keys) without a restart.
+	onConfigSaved func(*domain.Config)
+
 	ticketMu sync.Mutex
 	tickets  map[string]time.Time // single-use SSE tickets → expiry
+}
+
+// OnConfigSaved registers a callback run after a successful config save (see the
+// field doc). Returns the server for chaining.
+func (s *Server) OnConfigSaved(fn func(*domain.Config)) *Server {
+	s.onConfigSaved = fn
+	return s
 }
 
 // New builds an HTTP server over the service. token may be empty (no auth — only
@@ -676,18 +688,47 @@ func (s *Server) deleteRosterCharacter(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// getConfig returns the active configuration with secrets redacted. Secrets are
+// write-only over the API: the UI shows blank fields and PUT treats an empty
+// value as "leave unchanged" (see putConfig). The response keeps the plain
+// domain.Config shape so existing clients (apiclient) keep working.
 func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.svc.Config())
+	c := s.svc.Config()
+	c.OpenAIAPIKey, c.AnthropicAPIKey, c.GeminiAPIKey, c.TelegramToken = "", "", "", ""
+	writeJSON(w, http.StatusOK, c)
 }
 
+// putConfig saves configuration. It starts from the CURRENT config and decodes
+// the request over it, so fields the client omits — including the never-serialized
+// OAuth tokens / auth source — are preserved. Secret fields are write-only: an
+// empty value keeps the stored secret (the client never receives it to echo back),
+// a non-empty value replaces it. On success it rebuilds the provider (if a hook
+// is set) so new credentials take effect without a restart.
 func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
-	var cfg domain.Config
-	if !readJSON(w, r, &cfg) {
+	cfg := s.svc.Config() // *domain.Config; decode overlays present fields
+	oldOpenAI, oldAnthropic := cfg.OpenAIAPIKey, cfg.AnthropicAPIKey
+	oldGemini, oldTelegram := cfg.GeminiAPIKey, cfg.TelegramToken
+	if !readJSON(w, r, cfg) {
 		return
 	}
-	if err := s.svc.SaveConfig(&cfg); err != nil {
+	if cfg.OpenAIAPIKey == "" {
+		cfg.OpenAIAPIKey = oldOpenAI
+	}
+	if cfg.AnthropicAPIKey == "" {
+		cfg.AnthropicAPIKey = oldAnthropic
+	}
+	if cfg.GeminiAPIKey == "" {
+		cfg.GeminiAPIKey = oldGemini
+	}
+	if cfg.TelegramToken == "" {
+		cfg.TelegramToken = oldTelegram
+	}
+	if err := s.svc.SaveConfig(cfg); err != nil {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if s.onConfigSaved != nil {
+		s.onConfigSaved(cfg)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
 }

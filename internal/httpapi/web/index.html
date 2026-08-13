@@ -98,13 +98,8 @@
     <!-- Settings -->
     <section id="view-settings" class="view hidden">
       <h2>Settings</h2>
-      <form id="settings-form" class="settings">
-        <label>Provider <input id="cfg-provider"></label>
-        <label>Model <input id="cfg-model"></label>
-        <label>UI language <input id="cfg-language"></label>
-        <button type="submit">Save settings</button>
-      </form>
-      <p class="muted">Secrets (API keys, Telegram token) are managed server-side and not shown here.</p>
+      <form id="settings-form" class="settings"></form>
+      <p class="muted">API keys and the Telegram token are write-only: leave a field blank to keep the current value. Keys are applied to the running server; API keys are not written to disk.</p>
     </section>
   </main>
 
