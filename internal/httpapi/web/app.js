@@ -94,13 +94,15 @@ async function loadLibrary() {
         try { const r = await api("POST", "/sessions", { adventure_id: a.id }); openSession(r.name); }
         catch (e) { status(e.message, true); }
       };
+      const edit = el("button", "ghost", "Edit");
+      edit.onclick = () => openEditor(a.id);
       const del = el("button", "ghost", "Delete");
       del.onclick = async () => {
         if (!confirm("Delete adventure “" + (a.title || a.id) + "” and its assets?")) return;
         try { await api("DELETE", "/adventures/" + encodeURIComponent(a.id)); loadLibrary(); status("Adventure deleted."); }
         catch (e) { status(e.message, true); }
       };
-      c.append(play, del);
+      c.append(play, edit, del);
       advs.append(c);
     }
     for (const s of (await api("GET", "/sessions")) || []) {
@@ -1168,6 +1170,199 @@ function parseSpells(text) {
     const parts = l.split("|").map((x) => x.trim());
     return { name: parts[0] || "", level: parseInt(parts[1] || "0", 10) || 0, prepared: /^p$/i.test(parts[2] || ""), school: parts[3] || "" };
   });
+}
+
+// --- Module editor (phase 5, issue #70) ----------------------------------
+
+let editAdv = null;   // the adventure being edited (full object)
+let editId = null;    // its module id
+let edSel = null;     // current selection descriptor
+
+// Friendly fields per node type; everything else on the node is edited via the
+// "Advanced (JSON)" box, so nothing is uneditable. kinds: text | area | csv | lines.
+const NODE_FIELDS = {
+  meta: [["title", "text"], ["author", "text"], ["system", "text"], ["language", "text"],
+    ["start_room", "text"], ["summary", "area"], ["background", "area"], ["introduction", "area"],
+    ["conclusion", "area"], ["hooks", "lines"]],
+  zone: [["id", "text"], ["name", "text"], ["overview", "area"], ["description", "area"], ["map_image", "text"]],
+  room: [["id", "text"], ["name", "text"], ["read_aloud", "area"], ["dm_notes", "area"], ["image", "text"],
+    ["npc_ids", "csv"], ["event_ids", "csv"], ["treasure", "lines"]],
+  npc: [["id", "text"], ["name", "text"], ["role", "text"], ["appearance", "area"], ["personality", "area"],
+    ["motivations", "area"], ["secrets", "area"], ["voice", "text"], ["disposition", "text"], ["image", "text"],
+    ["default_location", "text"], ["knowledge", "lines"], ["sample_dialogue", "lines"]],
+  event: [["id", "text"], ["name", "text"], ["trigger", "text"], ["description", "area"], ["read_aloud", "area"],
+    ["dm_notes", "area"], ["consequences", "area"]],
+  item: [["id", "text"], ["name", "text"], ["rarity", "text"], ["description", "area"], ["mechanics", "area"], ["image", "text"]],
+  table: [["id", "text"], ["name", "text"], ["description", "area"], ["dice", "text"]],
+};
+// Keys handled elsewhere (rooms live as their own tree nodes under a zone).
+const NODE_EXTRA_SKIP = { zone: ["rooms"] };
+
+async function openEditor(id) {
+  try {
+    editAdv = await api("GET", "/adventures/" + encodeURIComponent(id));
+  } catch (e) { status(e.message, true); return; }
+  editId = id;
+  editAdv.zones = editAdv.zones || [];
+  edSel = { type: "meta" };
+  document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
+  $("#view-editor").classList.remove("hidden");
+  $("#ed-title").textContent = editAdv.title || id;
+  renderEdTree();
+  renderEdForm();
+}
+
+function renderEdTree() {
+  const box = $("#ed-tree"); box.innerHTML = "";
+  const add = (key, label, sel) => {
+    const n = el("div", "node", label);
+    if (sameSel(sel, edSel)) n.classList.add("active");
+    n.onclick = () => { edSel = sel; renderEdTree(); renderEdForm(); };
+    return n;
+  };
+  box.append(add("meta", "▸ " + (editAdv.title || "Adventure"), { type: "meta" }));
+  const group = (label, nodes) => {
+    if (!nodes.length) { return; }
+    const g = el("div", "group");
+    g.append(el("div", "row-label", label));
+    const kids = el("div", "children");
+    nodes.forEach((n) => kids.append(n));
+    g.append(kids); box.append(g);
+  };
+  // Zones with their rooms nested.
+  const zoneNodes = [];
+  (editAdv.zones || []).forEach((z, zi) => {
+    zoneNodes.push(add("", z.name || z.id || ("zone " + zi), { type: "zone", zi }));
+    const kids = el("div", "children");
+    (z.rooms || []).forEach((r, ri) => kids.append(add("", r.name || r.id || ("room " + ri), { type: "room", zi, ri })));
+    if (kids.children.length) zoneNodes.push(kids);
+  });
+  group("Zones", zoneNodes);
+  group("NPCs", (editAdv.npcs || []).map((n, i) => add("", n.name || n.id, { type: "npc", i })));
+  group("Events", (editAdv.events || []).map((e, i) => add("", e.name || e.id, { type: "event", i })));
+  group("Items", (editAdv.items || []).map((it, i) => add("", it.name || it.id, { type: "item", i })));
+  group("Tables", (editAdv.tables || []).map((t, i) => add("", t.name || t.id, { type: "table", i })));
+}
+
+function sameSel(a, b) { return a && b && a.type === b.type && a.zi === b.zi && a.ri === b.ri && a.i === b.i; }
+
+function edNode() {
+  const s = edSel; if (!s) return null;
+  if (s.type === "meta") return editAdv;
+  if (s.type === "zone") return editAdv.zones[s.zi];
+  if (s.type === "room") return editAdv.zones[s.zi].rooms[s.ri];
+  if (s.type === "npc") return editAdv.npcs[s.i];
+  if (s.type === "event") return editAdv.events[s.i];
+  if (s.type === "item") return editAdv.items[s.i];
+  if (s.type === "table") return editAdv.tables[s.i];
+  return null;
+}
+
+function renderEdForm() {
+  const node = edNode();
+  const box = $("#ed-form"); box.innerHTML = "";
+  if (!node) { box.append(el("div", "muted", "Nothing selected.")); return; }
+  const type = edSel.type;
+  $("#ed-nodetitle").textContent = type === "meta" ? "Adventure metadata" : (type[0].toUpperCase() + type.slice(1));
+
+  const fields = NODE_FIELDS[type] || [];
+  const friendlyKeys = new Set(fields.map((f) => f[0]));
+  for (const [key, kind] of fields) {
+    let inp;
+    if (kind === "area") { inp = textarea(node[key] || "", 3); }
+    else if (kind === "lines") { inp = textarea((node[key] || []).join("\n"), 3); }
+    else if (kind === "csv") { inp = input((node[key] || []).join(", ")); }
+    else { inp = input(node[key] != null ? node[key] : ""); }
+    inp.addEventListener("input", () => {
+      if (kind === "lines") node[key] = inp.value.split("\n").map((s) => s.trim()).filter(Boolean);
+      else if (kind === "csv") node[key] = inp.value.split(",").map((s) => s.trim()).filter(Boolean);
+      else node[key] = inp.value;
+      if (key === "name" || key === "id" || key === "title") { $("#ed-title").textContent = editAdv.title || editId; renderEdTree(); }
+    });
+    box.append(field(key.replace(/_/g, " "), inp));
+  }
+
+  // Advanced JSON for the remaining fields.
+  const skip = new Set([...friendlyKeys, ...(NODE_EXTRA_SKIP[type] || [])]);
+  const advObj = {};
+  for (const k of Object.keys(node)) if (!skip.has(k)) advObj[k] = node[k];
+  const adv = textarea(JSON.stringify(advObj, null, 2), 8);
+  adv.addEventListener("change", () => {
+    let parsed;
+    try { parsed = JSON.parse(adv.value); } catch (e) { status("Advanced JSON is invalid: " + e.message, true); return; }
+    for (const k of Object.keys(node)) if (!skip.has(k)) delete node[k];
+    Object.assign(node, parsed);
+    status("Advanced fields applied.");
+  });
+  box.append(el("div", "label", "Advanced (JSON) — nested fields like exits, stat_block, rows"));
+  box.append(adv);
+
+  // Per-node delete (not for metadata).
+  if (type !== "meta") {
+    const del = el("button", "ghost small", "Delete this " + type);
+    del.onclick = () => edDeleteNode();
+    const bar = el("div", "actions"); bar.append(del); box.append(bar);
+  }
+}
+
+function edGenId(prefix) { return prefix + "-" + Math.random().toString(36).slice(2, 8); }
+
+$("#ed-add").onclick = () => {
+  const type = $("#ed-addtype").value;
+  if (type === "zone") { editAdv.zones.push({ id: edGenId("zone"), name: "New zone", rooms: [] }); edSel = { type: "zone", zi: editAdv.zones.length - 1 }; }
+  else if (type === "room") {
+    if (!editAdv.zones.length) editAdv.zones.push({ id: edGenId("zone"), name: "New zone", rooms: [] });
+    const zi = (edSel && edSel.type === "zone") ? edSel.zi : (edSel && edSel.type === "room" ? edSel.zi : 0);
+    editAdv.zones[zi].rooms = editAdv.zones[zi].rooms || [];
+    editAdv.zones[zi].rooms.push({ id: edGenId("room"), name: "New room" });
+    edSel = { type: "room", zi, ri: editAdv.zones[zi].rooms.length - 1 };
+  } else {
+    const coll = type + "s";
+    editAdv[coll] = editAdv[coll] || [];
+    editAdv[coll].push({ id: edGenId(type), name: "New " + type });
+    edSel = { type, i: editAdv[coll].length - 1 };
+  }
+  renderEdTree(); renderEdForm();
+};
+
+function edDeleteNode() {
+  const s = edSel; if (!s || s.type === "meta") return;
+  if (!confirm("Delete this " + s.type + "?")) return;
+  if (s.type === "zone") editAdv.zones.splice(s.zi, 1);
+  else if (s.type === "room") editAdv.zones[s.zi].rooms.splice(s.ri, 1);
+  else editAdv[s.type + "s"].splice(s.i, 1);
+  edSel = { type: "meta" };
+  renderEdTree(); renderEdForm();
+}
+
+$("#ed-back").onclick = () => { editAdv = null; editId = null; edSel = null; show("library"); };
+$("#ed-save").onclick = async () => {
+  try { await api("PUT", "/adventures/" + encodeURIComponent(editId), editAdv); status("Adventure saved."); }
+  catch (e) { status(e.message, true); }
+};
+$("#ed-validate").onclick = async () => {
+  try {
+    const r = await api("POST", "/adventures/" + encodeURIComponent(editId) + "/validate", editAdv);
+    const errs = r.errors || [];
+    if (!errs.length) { status("Valid — no problems found."); }
+    else { alert("Validation problems (" + errs.length + "):\n\n" + errs.join("\n")); }
+  } catch (e) { status(e.message, true); }
+};
+$("#ed-export").onclick = () => downloadAuthed("/adventures/" + encodeURIComponent(editId) + "/export", editId + ".tar.gz");
+$("#ed-dmbook").onclick = () => downloadAuthed("/adventures/" + encodeURIComponent(editId) + "/dmbook", editId + "-dmbook.md");
+
+// downloadAuthed fetches a file with the bearer header (so token-protected
+// downloads work — an anchor can't set Authorization) and saves it locally.
+async function downloadAuthed(path, filename) {
+  const headers = {};
+  if (token()) headers["Authorization"] = "Bearer " + token();
+  try {
+    const resp = await fetch("/api" + path, { headers });
+    if (!resp.ok) { const d = await resp.json().catch(() => null); throw new Error((d && d.error) || ("HTTP " + resp.status)); }
+    const url = URL.createObjectURL(await resp.blob());
+    const a = el("a"); a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch (e) { status(e.message, true); }
 }
 
 // --- boot ----------------------------------------------------------------

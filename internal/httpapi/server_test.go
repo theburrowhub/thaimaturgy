@@ -381,6 +381,65 @@ func TestConfigSecretsWriteOnly(t *testing.T) {
 	}
 }
 
+func TestAdventureEditorEndpoints(t *testing.T) {
+	ts := newTestServer(t, "")
+
+	// Load, rename, save, reload.
+	_, adv := doJSON(t, "GET", ts.URL+"/api/adventures/crypt", "")
+	adv["title"] = "Renamed Crypt"
+	b, _ := json.Marshal(adv)
+	if resp, _ := doJSON(t, "PUT", ts.URL+"/api/adventures/crypt", string(b)); resp.StatusCode != 200 {
+		t.Fatalf("save adventure = %d", resp.StatusCode)
+	}
+	if _, got := doJSON(t, "GET", ts.URL+"/api/adventures/crypt", ""); got["title"] != "Renamed Crypt" {
+		t.Errorf("title not saved: %v", got["title"])
+	}
+
+	// Empty title is rejected.
+	if resp, _ := doJSON(t, "PUT", ts.URL+"/api/adventures/crypt", `{"id":"crypt","title":""}`); resp.StatusCode != 400 {
+		t.Errorf("empty title = %d; want 400", resp.StatusCode)
+	}
+
+	// Validate: the round-tripped module is valid; a dangling npc reference is not.
+	if _, v := doJSON(t, "POST", ts.URL+"/api/adventures/crypt/validate", string(b)); v["errors"] == nil {
+		t.Error("validate should return an errors array")
+	} else if errs, _ := v["errors"].([]any); len(errs) != 0 {
+		t.Errorf("valid module should have no errors, got %v", errs)
+	}
+	broken := `{"schema_version":"1.0","id":"crypt","title":"X","zones":[{"id":"z1","name":"Z","rooms":[{"id":"r1","name":"R","npc_ids":["ghost"]}]}]}`
+	if _, v := doJSON(t, "POST", ts.URL+"/api/adventures/crypt/validate", broken); func() bool {
+		errs, _ := v["errors"].([]any)
+		return len(errs) == 0
+	}() {
+		t.Error("a dangling npc reference should produce a validation error")
+	}
+
+	// Export streams a gzip module.
+	er, _ := http.Get(ts.URL + "/api/adventures/crypt/export")
+	if er.StatusCode != 200 || er.Header.Get("Content-Type") != "application/gzip" {
+		t.Fatalf("export = %d / %q", er.StatusCode, er.Header.Get("Content-Type"))
+	}
+	eb, _ := io.ReadAll(er.Body)
+	er.Body.Close()
+	if len(eb) == 0 {
+		t.Error("export body should not be empty")
+	}
+
+	// DM book: markdown and PDF.
+	dr, _ := http.Get(ts.URL + "/api/adventures/crypt/dmbook")
+	db, _ := io.ReadAll(dr.Body)
+	dr.Body.Close()
+	if dr.StatusCode != 200 || len(db) == 0 {
+		t.Fatalf("dmbook md = %d / %d bytes", dr.StatusCode, len(db))
+	}
+	pr, _ := http.Get(ts.URL + "/api/adventures/crypt/dmbook?format=pdf")
+	pb, _ := io.ReadAll(pr.Body)
+	pr.Body.Close()
+	if pr.StatusCode != 200 || pr.Header.Get("Content-Type") != "application/pdf" || len(pb) == 0 {
+		t.Errorf("dmbook pdf = %d / %q / %d bytes", pr.StatusCode, pr.Header.Get("Content-Type"), len(pb))
+	}
+}
+
 func TestAuthToken(t *testing.T) {
 	ts := newTestServer(t, "s3cret")
 	// No token → 401.
