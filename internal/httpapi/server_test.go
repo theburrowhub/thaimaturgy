@@ -167,6 +167,85 @@ func TestAdventureContentAndAsset(t *testing.T) {
 	mr.Body.Close()
 }
 
+func getArray(t *testing.T, url string) []map[string]any {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	var out []map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return out
+}
+
+func TestPartyAndCharacterEndpoints(t *testing.T) {
+	ts := newTestServer(t, "")
+	_, out := doJSON(t, "POST", ts.URL+"/api/sessions", `{"adventure_id":"crypt"}`)
+	name := out["name"].(string)
+	base := ts.URL + "/api/sessions/" + name
+
+	// Set a two-member party.
+	party := `[{"name":"Alden","race":"Human","class":"Fighter","level":1,"max_hp":10,"current_hp":10,"ac":10},` +
+		`{"name":"Naivara","race":"Elf","class":"Wizard","level":1,"max_hp":6,"current_hp":6,"ac":12}]`
+	if resp, _ := doJSON(t, "PUT", base+"/party", party); resp.StatusCode != 200 {
+		t.Fatalf("set party = %d", resp.StatusCode)
+	}
+	if got := getArray(t, base+"/party"); len(got) != 2 {
+		t.Fatalf("party = %d; want 2", len(got))
+	}
+
+	// Chargen options + generate a character.
+	_, opts := doJSON(t, "GET", ts.URL+"/api/chargen/options", "")
+	if races, _ := opts["races"].([]any); len(races) == 0 {
+		t.Error("chargen options should list races")
+	}
+	_, gen := doJSON(t, "POST", ts.URL+"/api/chargen", `{"name":"Borin","race":"Dwarf","class":"Cleric","level":2}`)
+	if gen["name"] != "Borin" || gen["max_hp"] == nil {
+		t.Errorf("chargen should return a built character: %v", gen)
+	}
+
+	// Optimistic concurrency: first edit with the correct baseline succeeds…
+	cur := getArray(t, base+"/party")
+	baseChar := cur[0] // Alden
+	baseJSON, _ := json.Marshal(baseChar)
+	edited := map[string]any{}
+	for k, v := range baseChar {
+		edited[k] = v
+	}
+	edited["current_hp"] = 5
+	editedJSON, _ := json.Marshal(edited)
+	body1 := `{"base":` + string(baseJSON) + `,"edited":` + string(editedJSON) + `}`
+	if resp, _ := doJSON(t, "PUT", base+"/characters/Alden", body1); resp.StatusCode != 200 {
+		t.Fatalf("update character = %d", resp.StatusCode)
+	}
+	// …but re-using the now-stale baseline is rejected with 409.
+	if resp, _ := doJSON(t, "PUT", base+"/characters/Alden", body1); resp.StatusCode != http.StatusConflict {
+		t.Errorf("stale update = %d; want 409", resp.StatusCode)
+	}
+
+	// Default party replaces the roster with the sample party.
+	if resp, _ := doJSON(t, "POST", base+"/party/default", ""); resp.StatusCode != 200 {
+		t.Fatalf("default party = %d", resp.StatusCode)
+	}
+	if got := getArray(t, base+"/party"); len(got) == 0 {
+		t.Error("default party should not be empty")
+	}
+
+	// Save party to roster, then it should appear in the roster listing.
+	if resp, _ := doJSON(t, "POST", base+"/party/save-to-roster", ""); resp.StatusCode != 200 {
+		t.Fatalf("save to roster = %d", resp.StatusCode)
+	}
+	if got := getArray(t, ts.URL+"/api/roster"); len(got) == 0 {
+		t.Error("roster should contain the saved party")
+	}
+
+	// PlanParty needs an AI provider (nil in tests) → 400, not a crash.
+	if resp, _ := doJSON(t, "POST", base+"/party/plan", `{"prompt":"a balanced trio"}`); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("plan without provider = %d; want 400", resp.StatusCode)
+	}
+}
+
 func TestAuthToken(t *testing.T) {
 	ts := newTestServer(t, "s3cret")
 	// No token → 401.

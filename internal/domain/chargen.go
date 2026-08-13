@@ -15,6 +15,10 @@ import (
 // priority order (highest score to the most important ability).
 var standardArray = [6]int{15, 14, 13, 12, 10, 8}
 
+// StandardArray returns a copy of the classic 5e ability spread, for UIs that
+// offer "standard array" as an ability-generation method.
+func StandardArray() [6]int { return standardArray }
+
 type raceInfo struct {
 	speed     int
 	bonus     map[Ability]int // racial ability score increases

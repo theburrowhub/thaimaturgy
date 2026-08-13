@@ -103,10 +103,30 @@ h2 { font-size: 16px; margin: 18px 0 8px; color: var(--muted); text-transform: u
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex;
   align-items: center; justify-content: center; z-index: 20; }
 .modal-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-  padding: 16px; width: min(420px, 92vw); }
+  padding: 16px; width: min(420px, 92vw); max-height: 88vh; overflow-y: auto; }
+.modal-card.wide { width: min(760px, 94vw); }
 .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-weight: 600; }
 .dice-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .dice-result { min-height: 22px; margin-top: 6px; }
+
+/* Panel headers with inline actions */
+.panel-head { display: flex; align-items: center; gap: 6px; }
+.panel-head h3 { margin: 0; }
+#party .card { flex-wrap: wrap; }
+
+/* Forms (party editor / character creator / sheet editor) */
+.form { display: flex; flex-direction: column; gap: 10px; }
+.form .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.field { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 12px; }
+.field input, .field select, .field textarea { color: var(--ink); }
+.sheet-sec { border-top: 1px solid var(--line); padding-top: 8px; }
+.sheet-sec > .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 10px; font-size: 13px; }
+.checks label { display: flex; align-items: center; gap: 6px; color: var(--ink); }
+.abilrow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.slotgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.hint { font-size: 12px; color: var(--muted); }
 
 .status {
   position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
