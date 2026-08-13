@@ -82,8 +82,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/sessions/{name}", s.deleteSession)
 	mux.HandleFunc("POST /api/sessions/{name}/command", s.command)
 	mux.HandleFunc("POST /api/sessions/{name}/oracle", s.oracle)
+	mux.HandleFunc("GET /api/sessions/{name}/party", s.getParty)
+	mux.HandleFunc("PUT /api/sessions/{name}/party", s.setParty)
+	mux.HandleFunc("POST /api/sessions/{name}/party/default", s.defaultParty)
+	mux.HandleFunc("POST /api/sessions/{name}/party/plan", s.planParty)
+	mux.HandleFunc("POST /api/sessions/{name}/party/save-to-roster", s.savePartyToRoster)
+	mux.HandleFunc("PUT /api/sessions/{name}/characters/{char}", s.updateCharacter)
 	mux.HandleFunc("GET /api/sessions/{name}/events", s.sessionEvents)
 	mux.HandleFunc("POST /api/sse-ticket", s.sseTicket)
+	mux.HandleFunc("GET /api/chargen/options", s.chargenOptions)
+	mux.HandleFunc("POST /api/chargen", s.chargen)
 	mux.HandleFunc("GET /api/roster", s.listRoster)
 	mux.HandleFunc("POST /api/roster", s.saveRosterCharacter)
 	mux.HandleFunc("DELETE /api/roster/{id}", s.deleteRosterCharacter)
@@ -369,6 +377,138 @@ func (s *Server) oracle(w http.ResponseWriter, r *http.Request) {
 		out["error"] = resp.Error.Error()
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) getParty(w http.ResponseWriter, r *http.Request) {
+	party, err := s.svc.Party(r.PathValue("name"))
+	if err != nil {
+		httpError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, party)
+}
+
+func (s *Server) setParty(w http.ResponseWriter, r *http.Request) {
+	var party []*domain.Character
+	if !readJSON(w, r, &party) {
+		return
+	}
+	if err := s.svc.SetParty(r.PathValue("name"), party); err != nil {
+		httpError(w, http.StatusConflict, err.Error())
+		return
+	}
+	s.writeParty(w, r.PathValue("name"))
+}
+
+func (s *Server) defaultParty(w http.ResponseWriter, r *http.Request) {
+	if err := s.svc.DefaultParty(r.PathValue("name")); err != nil {
+		httpError(w, http.StatusConflict, err.Error())
+		return
+	}
+	s.writeParty(w, r.PathValue("name"))
+}
+
+func (s *Server) planParty(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Prompt string `json:"prompt"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	party, err := s.svc.PlanParty(r.Context(), r.PathValue("name"), body.Prompt)
+	switch {
+	case errors.Is(err, appservice.ErrPartyConflict):
+		httpError(w, http.StatusConflict, "the party changed while planning; reload and try again")
+	case err != nil:
+		httpError(w, http.StatusBadRequest, err.Error())
+	default:
+		writeJSON(w, http.StatusOK, party)
+	}
+}
+
+func (s *Server) savePartyToRoster(w http.ResponseWriter, r *http.Request) {
+	if err := s.svc.SavePartyToRoster(r.PathValue("name")); err != nil {
+		httpError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+}
+
+// updateCharacter applies an edited character over the named session character,
+// guarded by optimistic concurrency: the body carries the baseline the client
+// loaded plus the edited version, and a concurrent change is rejected with 409.
+func (s *Server) updateCharacter(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Base   *domain.Character `json:"base"`
+		Edited *domain.Character `json:"edited"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if body.Base == nil || body.Edited == nil {
+		httpError(w, http.StatusBadRequest, "both base and edited characters are required")
+		return
+	}
+	err := s.svc.UpdateCharacter(r.PathValue("name"), r.PathValue("char"), body.Base, body.Edited)
+	switch {
+	case errors.Is(err, appservice.ErrCharacterConflict):
+		httpError(w, http.StatusConflict, "this character changed since you loaded it; reload and re-apply")
+	case errors.Is(err, appservice.ErrNameConflict):
+		httpError(w, http.StatusConflict, "another party member already uses that name; pick a different name")
+	case err != nil:
+		httpError(w, http.StatusBadRequest, err.Error())
+	default:
+		s.writeParty(w, r.PathValue("name"))
+	}
+}
+
+// writeParty responds with the session's current party snapshot.
+func (s *Server) writeParty(w http.ResponseWriter, name string) {
+	party, err := s.svc.Party(name)
+	if err != nil {
+		httpError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, party)
+}
+
+// chargenOptions returns the allowed races/classes and the standard ability
+// array, so the web character creator can populate its controls.
+func (s *Server) chargenOptions(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"races":          domain.Races,
+		"classes":        domain.Classes,
+		"standard_array": domain.StandardArray(),
+	})
+}
+
+// chargen generates a single 5e character by the rules and returns it (it is not
+// added to any session — the caller decides where it goes).
+func (s *Server) chargen(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name      string                `json:"name"`
+		Race      string                `json:"race"`
+		Class     string                `json:"class"`
+		Level     int                   `json:"level"`
+		Abilities *domain.AbilityScores `json:"abilities"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
+		httpError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if body.Level < 1 {
+		body.Level = 1
+	}
+	var c *domain.Character
+	if body.Abilities != nil {
+		c = domain.GenerateCharacterWithAbilities(body.Name, body.Race, body.Class, body.Level, *body.Abilities)
+	} else {
+		c = domain.GenerateCharacter(body.Name, body.Race, body.Class, body.Level)
+	}
+	writeJSON(w, http.StatusOK, c)
 }
 
 // sessionEvents streams new timeline entries for a session as Server-Sent Events,

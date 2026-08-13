@@ -11,7 +11,10 @@
 package appservice
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -21,6 +24,20 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
+
+// ErrCharacterConflict is returned by UpdateCharacter when the live character no
+// longer matches the baseline the caller captured — a concurrent edit would be
+// clobbered, so the caller should reload and re-apply.
+var ErrCharacterConflict = errors.New("character changed since it was loaded")
+
+// ErrPartyConflict is returned by PlanParty when the party changed while the AI
+// plan was in flight, so applying the plan would overwrite newer edits.
+var ErrPartyConflict = errors.New("party changed while the plan was being generated")
+
+// ErrNameConflict is returned by UpdateCharacter when the edit would rename a
+// member onto another member's name, which would make name-based addressing of
+// the two ambiguous.
+var ErrNameConflict = errors.New("another party member already uses that name")
 
 // Service is the facade. It is safe for concurrent use.
 type Service struct {
@@ -412,6 +429,171 @@ func (s *Service) AskOracle(ctx context.Context, name, input string) (*engine.Re
 	os.opMu.Unlock()
 	s.Autosave(name)
 	return resp, nil
+}
+
+// --- Party & characters (#67) --------------------------------------------
+
+// withOpenSession runs fn under an open session's operation lock, rejecting a
+// closed/unknown session, and autosaves afterwards when fn reports it mutated.
+func (s *Service) withOpenSession(name string, fn func(os *OpenSession) (mutated bool, err error)) error {
+	os, ok := s.Get(name)
+	if !ok {
+		return fmt.Errorf("session %q is not open", name)
+	}
+	os.opMu.Lock()
+	if os.closed {
+		os.opMu.Unlock()
+		return fmt.Errorf("session %q is not open", name)
+	}
+	mutated, err := fn(os)
+	os.opMu.Unlock()
+	if mutated {
+		s.Autosave(name)
+	}
+	return err
+}
+
+// Party returns a snapshot of an open session's party.
+func (s *Service) Party(name string) ([]domain.Character, error) {
+	os, ok := s.Get(name)
+	if !ok {
+		return nil, fmt.Errorf("session %q is not open", name)
+	}
+	return os.Session.State.PartySnapshot(), nil
+}
+
+// SetParty replaces an open session's party.
+func (s *Service) SetParty(name string, party []*domain.Character) error {
+	return s.withOpenSession(name, func(os *OpenSession) (bool, error) {
+		os.Session.State.SetParty(party)
+		return true, nil
+	})
+}
+
+// DefaultParty sets an open session's party to the built-in sample party.
+func (s *Service) DefaultParty(name string) error {
+	return s.SetParty(name, domain.DefaultParty())
+}
+
+// PlanParty asks the AI to build or update the party from a natural-language
+// prompt, then applies the result — but only if the party hasn't changed since
+// the (long) AI call started, so a concurrent edit isn't clobbered. It returns
+// ErrPartyConflict otherwise.
+func (s *Service) PlanParty(ctx context.Context, name, prompt string) ([]domain.Character, error) {
+	os, ok := s.Get(name)
+	if !ok {
+		return nil, fmt.Errorf("session %q is not open", name)
+	}
+	s.mu.Lock()
+	prov, model := s.provider, s.config.Model
+	s.mu.Unlock()
+	baseline := os.Session.State.PartySnapshot()
+	baseJSON, _ := json.Marshal(baseline)
+	party, err := engine.PlanParty(ctx, prov, model, prompt, baseline)
+	if err != nil {
+		return nil, err
+	}
+	var result []domain.Character
+	applyErr := s.withOpenSession(name, func(os *OpenSession) (bool, error) {
+		if cur, _ := json.Marshal(os.Session.State.PartySnapshot()); !bytes.Equal(cur, baseJSON) {
+			return false, ErrPartyConflict
+		}
+		os.Session.State.SetParty(party)
+		result = os.Session.State.PartySnapshot()
+		return true, nil
+	})
+	if applyErr != nil {
+		return nil, applyErr
+	}
+	return result, nil
+}
+
+// UpdateCharacter applies edited over the named session character, but only if
+// the live record still matches base (optimistic concurrency); it returns
+// ErrCharacterConflict otherwise. The character's ID is preserved.
+func (s *Service) UpdateCharacter(name, charName string, base, edited *domain.Character) error {
+	conflict := false
+	found := false
+	nameConflict := false
+	err := s.withOpenSession(name, func(os *OpenSession) (bool, error) {
+		// Reject a rename that collides with a DIFFERENT member's name, so that
+		// name-based addressing stays unambiguous. The whole op runs under opMu, so
+		// the snapshot can't race the mutation below.
+		newName := strings.TrimSpace(edited.Name)
+		for _, m := range os.Session.State.PartySnapshot() {
+			if strings.EqualFold(m.Name, charName) {
+				continue // the member being edited
+			}
+			if strings.EqualFold(m.Name, newName) {
+				nameConflict = true
+				return false, nil
+			}
+		}
+		baseJSON, _ := json.Marshal(base)
+		_, ok := os.Session.State.MutateCharacter(charName, func(c *domain.Character) {
+			if cur, _ := json.Marshal(c); !bytes.Equal(cur, baseJSON) {
+				conflict = true
+				return
+			}
+			id := c.ID
+			*c = *edited
+			c.ID = id
+			c.Normalize()
+		})
+		found = ok
+		return ok && !conflict, nil
+	})
+	if err != nil {
+		return err
+	}
+	if nameConflict {
+		return ErrNameConflict
+	}
+	if !found {
+		return fmt.Errorf("no character named %q in session %q", charName, name)
+	}
+	if conflict {
+		return ErrCharacterConflict
+	}
+	return nil
+}
+
+// SavePartyToRoster saves each party member to the campaign roster and links the
+// assigned IDs back into the session by position (not name, so duplicate names
+// can't cross-link). On a partial failure it still links and persists the writes
+// that succeeded — so no successful roster write is left unrecorded — and returns
+// an error naming the member that failed.
+func (s *Service) SavePartyToRoster(name string) error {
+	var saveErr error
+	err := s.withOpenSession(name, func(os *OpenSession) (bool, error) {
+		snap := os.Session.State.PartySnapshot()
+		ids := make([]string, len(snap))
+		saved := 0
+		for i := range snap {
+			c := snap[i] // value copy; SaveCharacter assigns/returns its ID
+			id, e := s.store.SaveCharacter(&c)
+			if e != nil {
+				saveErr = fmt.Errorf("saving %q to roster: %w", snap[i].Name, e)
+				break
+			}
+			ids[i] = id
+			saved++
+		}
+		// Link back whatever succeeded (by position) and persist synchronously, so
+		// the ID links are durable even on a partial failure. We persist here rather
+		// than returning mutated=true so the write ordering is explicit.
+		if saved > 0 {
+			os.Session.State.LinkRosterIDs(ids)
+			if e := s.persist(os); e != nil && saveErr == nil {
+				saveErr = e
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+	return saveErr
 }
 
 // --- Roster (#33) --------------------------------------------------------

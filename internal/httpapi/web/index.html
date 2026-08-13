@@ -50,7 +50,10 @@
             <div id="browser" class="tree"></div>
           </div>
           <div id="party-wrap" class="hidden">
-            <h3>Party</h3>
+            <div class="panel-head">
+              <h3>Party</h3><span class="spacer"></span>
+              <button id="party-edit" class="ghost small">Party…</button>
+            </div>
             <div id="party" class="list small"></div>
           </div>
           <h3 class="logtitle">Session log</h3>
@@ -82,7 +85,8 @@
         <input id="rc-name" placeholder="Name" required>
         <input id="rc-race" placeholder="Race" value="Human">
         <input id="rc-class" placeholder="Class" value="Fighter">
-        <button type="submit">Add</button>
+        <button type="submit">Quick add</button>
+        <button type="button" id="roster-new-full" class="ghost">New character…</button>
       </form>
       <div id="roster" class="list"></div>
     </section>

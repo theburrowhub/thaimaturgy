@@ -468,12 +468,20 @@ function maybeAutoZoneArt() {
 function renderParty() {
   const p = $("#party"); p.innerHTML = "";
   const party = (sess && sess.characters) || [];
-  if (!party.length) { p.append(el("div", "muted", "No party.")); return; }
+  if (!party.length) { p.append(el("div", "muted", "No party. Use “Party…” to add characters.")); return; }
   for (const c of party) {
-    const line = `${c.name} — L${c.level || 1} ${c.race || ""} ${c.class || ""}  (HP ${c.current_hp ?? "?"}/${c.max_hp ?? "?"}, AC ${c.ac ?? "?"})`;
-    p.append(el("div", "card small", line));
+    const card = el("div", "card small");
+    const line = `${c.name} — L${c.level || 1} ${c.race || ""} ${c.class || ""} (HP ${c.current_hp ?? "?"}/${c.max_hp ?? "?"}, AC ${c.ac ?? "?"})`;
+    card.append(el("span", null, line));
+    card.append(el("span", "spacer"));
+    const edit = el("button", "ghost small", "Edit sheet");
+    edit.onclick = () => openSheetEditor(c);
+    card.append(edit);
+    p.append(card);
   }
 }
+
+$("#party-edit").onclick = () => openPartyEditor();
 
 // --- Session log ---------------------------------------------------------
 
@@ -663,6 +671,8 @@ async function loadRoster() {
   } catch (e) { status(e.message, true); }
 }
 
+$("#roster-new-full").onclick = () => openCharacterCreator(null, () => loadRoster(), "roster");
+
 $("#roster-add").addEventListener("submit", async (e) => {
   e.preventDefault();
   const c = {
@@ -697,6 +707,381 @@ $("#settings-form").addEventListener("submit", async (e) => {
   try { await api("PUT", "/config", cfg); status("Settings saved."); }
   catch (err) { status(err.message, true); }
 });
+
+// --- Party & character sheets (phase 2, issue #67) -----------------------
+
+const ABILITIES = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+const CONDITIONS = ["Blinded", "Charmed", "Deafened", "Exhausted", "Frightened",
+  "Grappled", "Incapacitated", "Invisible", "Paralyzed", "Petrified", "Poisoned",
+  "Prone", "Restrained", "Stunned", "Unconscious"];
+let chargenOpts = null;
+
+async function getChargenOpts() {
+  if (chargenOpts) return chargenOpts;
+  try { chargenOpts = await api("GET", "/chargen/options"); } catch { chargenOpts = { races: [], classes: [] }; }
+  return chargenOpts;
+}
+
+// Generic modal with a title, a body node, and auto-cleanup.
+function openModal(title, bodyNode, opts = {}) {
+  const overlay = el("div", "modal");
+  const card = el("div", "modal-card" + (opts.wide ? " wide" : ""));
+  const head = el("div", "modal-head");
+  head.append(el("span", null, title));
+  const x = el("button", "ghost", "✕");
+  x.onclick = () => overlay.remove();
+  head.append(x);
+  card.append(head, bodyNode);
+  overlay.append(card);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.append(overlay);
+  return overlay;
+}
+
+function field(label, input) {
+  const f = el("label", "field", label);
+  f.append(input);
+  return f;
+}
+function input(value, attrs = {}) {
+  const i = el("input");
+  if (value != null) i.value = value;
+  for (const [k, v] of Object.entries(attrs)) i.setAttribute(k, v);
+  return i;
+}
+function numInput(value) { return input(value ?? 0, { type: "number" }); }
+function selectFrom(options, value) {
+  const s = el("select");
+  for (const o of options) { const op = el("option", null, o); if (o === value) op.selected = true; s.append(op); }
+  return s;
+}
+function textarea(value, rows) {
+  const t = el("textarea"); t.rows = rows || 4; if (value != null) t.value = value; return t;
+}
+
+// --- Party editor --------------------------------------------------------
+
+async function openPartyEditor() {
+  if (!current) return;
+  const opts = await getChargenOpts();
+  const body = el("div", "form");
+
+  const list = el("div", "list small");
+  const renderList = () => {
+    list.innerHTML = "";
+    for (const c of (sess && sess.characters) || [])
+      list.append(el("div", "card small", `${c.name} — L${c.level || 1} ${c.race || ""} ${c.class || ""}`));
+    if (!list.children.length) list.append(el("div", "muted", "Empty party."));
+  };
+  renderList();
+
+  body.append(el("div", "label", "Current party"));
+  body.append(list);
+
+  const prompt = textarea("", 3); prompt.placeholder = "Describe the party you want (e.g. 'a sneaky trio: a rogue, a bard and a ranger')";
+  body.append(field("Generate with AI", prompt));
+
+  const actions = el("div", "actions");
+  const gen = el("button", null, "Generate with AI");
+  gen.onclick = async () => {
+    const txt = prompt.value.trim();
+    if (!txt) { status("Describe the party first.", true); return; }
+    gen.disabled = true; gen.textContent = "Generating…";
+    try {
+      await api("POST", "/sessions/" + encodeURIComponent(current) + "/party/plan", { prompt: txt });
+      await refreshState(); renderList(); status("Party generated.");
+    } catch (e) { status(e.message, true); }
+    finally { gen.disabled = false; gen.textContent = "Generate with AI"; }
+  };
+  const def = el("button", "ghost", "Default party");
+  def.onclick = async () => {
+    try { await api("POST", "/sessions/" + encodeURIComponent(current) + "/party/default");
+      await refreshState(); renderList(); status("Default party set."); }
+    catch (e) { status(e.message, true); }
+  };
+  const neu = el("button", "ghost", "New character…");
+  neu.onclick = () => openCharacterCreator(opts, () => renderList());
+  const fromRoster = el("button", "ghost", "From roster…");
+  fromRoster.onclick = () => openRosterPicker(() => renderList());
+  const toRoster = el("button", "ghost", "Save party → roster");
+  toRoster.onclick = async () => {
+    try { await api("POST", "/sessions/" + encodeURIComponent(current) + "/party/save-to-roster");
+      status("Party saved to roster."); }
+    catch (e) { status(e.message, true); }
+  };
+  actions.append(gen, def, neu, fromRoster, toRoster);
+  body.append(actions);
+  openModal("Party editor", body, { wide: false });
+}
+
+// openRosterPicker lists campaign-roster characters and adds a chosen one to the
+// open session's party.
+async function openRosterPicker(onDone) {
+  const body = el("div", "form");
+  let roster = [];
+  try { roster = (await api("GET", "/roster")) || []; } catch (e) { status(e.message, true); }
+  if (!roster.length) { body.append(el("div", "muted", "The roster is empty.")); }
+  for (const rc of roster) {
+    const card = el("div", "card small");
+    card.append(el("span", null, `${rc.name} — L${rc.level || 1} ${rc.race || ""} ${rc.class || ""}`));
+    card.append(el("span", "spacer"));
+    const add = el("button", "ghost small", "Add to party");
+    add.onclick = async () => {
+      try {
+        const party = (await api("GET", "/sessions/" + encodeURIComponent(current) + "/party")) || [];
+        party.push(rc);
+        await api("PUT", "/sessions/" + encodeURIComponent(current) + "/party", party);
+        await refreshState(); status(rc.name + " added to the party."); if (onDone) onDone();
+      } catch (e) { status(e.message, true); }
+    };
+    card.append(add);
+    body.append(card);
+  }
+  openModal("Add from roster", body, { wide: false });
+}
+
+// --- Character creator ---------------------------------------------------
+
+async function openCharacterCreator(opts, onDone, target) {
+  target = target || "party"; // "party" (add to session) | "roster" (save to roster only)
+  opts = opts || (await getChargenOpts());
+  const body = el("div", "form");
+  const name = input("", { placeholder: "Name" });
+  const race = selectFrom(opts.races || [], "Human");
+  const cls = selectFrom(opts.classes || [], "Fighter");
+  const level = numInput(1);
+  const bg = input("", { placeholder: "Background" });
+  const align = input("", { placeholder: "Alignment" });
+  const grid = el("div", "fgrid");
+  grid.append(field("Name", name), field("Race", race), field("Class", cls),
+    field("Level", level), field("Background", bg), field("Alignment", align));
+  body.append(grid);
+
+  // Abilities.
+  body.append(el("div", "label", "Abilities"));
+  const abilRow = el("div", "abilrow");
+  const abInputs = {};
+  const std = (opts.standard_array || [15, 14, 13, 12, 10, 8]);
+  ABILITIES.forEach((a, i) => { const inp = numInput(std[i] ?? 10); abInputs[a] = inp; abilRow.append(field(a, inp)); });
+  body.append(abilRow);
+  const abilActions = el("div", "actions");
+  const arr = el("button", "ghost small", "Standard array");
+  arr.onclick = () => ABILITIES.forEach((a, i) => abInputs[a].value = std[i] ?? 10);
+  const roll = el("button", "ghost small", "Roll 4d6 (drop lowest)");
+  roll.onclick = () => ABILITIES.forEach((a) => abInputs[a].value = roll4d6());
+  abilActions.append(arr, roll);
+  body.append(abilActions);
+
+  const toRoster = el("input"); toRoster.type = "checkbox";
+  const rosterLbl = el("label", "field"); rosterLbl.append(toRoster, document.createTextNode(" Also save to roster"));
+  if (target === "party") body.append(rosterLbl); // in roster mode it always saves to the roster
+
+  const create = el("button", null, "Create");
+  create.onclick = async () => {
+    if (!name.value.trim()) { status("Name is required.", true); return; }
+    const abilities = {}; ABILITIES.forEach((a) => abilities[a.toLowerCase()] = parseInt(abInputs[a].value || "10", 10));
+    const payload = {
+      name: name.value.trim(), race: race.value, class: cls.value,
+      level: parseInt(level.value || "1", 10), abilities,
+    };
+    try {
+      const c = await api("POST", "/chargen", payload);
+      c.background = bg.value.trim(); c.alignment = align.value.trim();
+      if (target === "roster") {
+        await api("POST", "/roster", c);
+        status("Character saved to roster.");
+      } else {
+        // Append to the session party.
+        const party = (await api("GET", "/sessions/" + encodeURIComponent(current) + "/party")) || [];
+        party.push(c);
+        await api("PUT", "/sessions/" + encodeURIComponent(current) + "/party", party);
+        await refreshState();
+        // If also-save-to-roster is requested, surface any failure rather than
+        // reporting unqualified success.
+        if (toRoster.checked) {
+          try { await api("POST", "/roster", c); status("Character added and saved to roster."); }
+          catch (re) { status("Character added to the party, but saving to roster failed: " + re.message, true); }
+        } else {
+          status("Character added.");
+        }
+      }
+      if (onDone) onDone();
+      create.closest(".modal").remove();
+    } catch (e) { status(e.message, true); }
+  };
+  body.append(create);
+  openModal("New character", body, { wide: false });
+}
+
+function roll4d6() {
+  const r = () => 1 + Math.floor(Math.random() * 6);
+  const d = [r(), r(), r(), r()].sort((a, b) => a - b);
+  return d[1] + d[2] + d[3];
+}
+
+// --- Sheet editor (full 5e sheet, optimistic concurrency) ----------------
+
+function openSheetEditor(character) {
+  const baseChar = character;                       // the loaded version (baseline)
+  const c = JSON.parse(JSON.stringify(character));  // working copy
+  const body = el("div", "form");
+
+  // Identity.
+  const name = input(c.name), race = input(c.race), cls = input(c.class);
+  const level = numInput(c.level), bg = input(c.background || ""), align = input(c.alignment || "");
+  const idg = el("div", "fgrid");
+  idg.append(field("Name", name), field("Race", race), field("Class", cls),
+    field("Level", level), field("Background", bg), field("Alignment", align));
+  body.append(idg);
+
+  // Abilities.
+  const secA = el("div", "sheet-sec"); secA.append(el("div", "label", "Abilities"));
+  const abilRow = el("div", "abilrow"); const ab = c.abilities || {};
+  const abInputs = {};
+  ABILITIES.forEach((a) => { const inp = numInput(ab[a.toLowerCase()] ?? 10); abInputs[a] = inp; abilRow.append(field(a, inp)); });
+  secA.append(abilRow); body.append(secA);
+
+  // Combat / resources.
+  const secC = el("div", "sheet-sec"); secC.append(el("div", "label", "Combat & resources"));
+  const maxhp = numInput(c.max_hp), curhp = numInput(c.current_hp), temphp = numInput(c.temp_hp || 0);
+  const ac = numInput(c.ac), init = numInput(c.initiative), speed = numInput(c.speed);
+  const prof = numInput(c.proficiency_bonus), hdu = numInput(c.hit_dice_used || 0);
+  const gold = numInput(c.gold || 0), xp = numInput(c.xp || 0);
+  const insp = el("input"); insp.type = "checkbox"; insp.checked = !!c.inspiration;
+  const inspLbl = el("label", "field"); inspLbl.append(insp, document.createTextNode(" Inspiration"));
+  const cg = el("div", "fgrid");
+  cg.append(field("Max HP", maxhp), field("Current HP", curhp), field("Temp HP", temphp),
+    field("AC", ac), field("Initiative", init), field("Speed", speed),
+    field("Prof. bonus", prof), field("Hit dice used", hdu), field("Gold", gold), field("XP", xp));
+  secC.append(cg, inspLbl); body.append(secC);
+
+  // Saving throws (proficient abilities).
+  const secS = el("div", "sheet-sec"); secS.append(el("div", "label", "Saving throw proficiencies"));
+  const saveChecks = el("div", "checks"); const saves = new Set((c.saving_throws || []));
+  const saveInputs = {};
+  ABILITIES.forEach((a, i) => {
+    const cb = el("input"); cb.type = "checkbox"; cb.checked = saves.has(i); saveInputs[i] = cb;
+    const l = el("label"); l.append(cb, document.createTextNode(" " + a)); saveChecks.append(l);
+  });
+  secS.append(saveChecks); body.append(secS);
+
+  // Skills (proficient / expert).
+  const secSk = el("div", "sheet-sec"); secSk.append(el("div", "label", "Skills (P = proficient, E = expert)"));
+  const skillRows = el("div", "checks");
+  const skillState = (c.skills || []).map((sk) => {
+    const p = el("input"); p.type = "checkbox"; p.checked = !!sk.proficient;
+    const e = el("input"); e.type = "checkbox"; e.checked = !!sk.expert;
+    const l = el("label"); l.append(p, document.createTextNode(" P "), e, document.createTextNode(" E — " + sk.name));
+    skillRows.append(l);
+    return { sk, p, e };
+  });
+  secSk.append(skillRows); body.append(secSk);
+
+  // Conditions.
+  const secCo = el("div", "sheet-sec"); secCo.append(el("div", "label", "Conditions"));
+  const condChecks = el("div", "checks"); const conds = new Set(c.conditions || []); const condInputs = {};
+  CONDITIONS.forEach((cn) => {
+    const cb = el("input"); cb.type = "checkbox"; cb.checked = conds.has(cn); condInputs[cn] = cb;
+    const l = el("label"); l.append(cb, document.createTextNode(" " + cn)); condChecks.append(l);
+  });
+  secCo.append(condChecks); body.append(secCo);
+
+  // Languages / proficiencies (CSV) + inventory / features / spells (text).
+  const secL = el("div", "sheet-sec");
+  const langs = input((c.languages || []).join(", "));
+  const profs = input((c.proficiencies || []).join(", "));
+  secL.append(field("Languages (comma-separated)", langs), field("Other proficiencies (comma-separated)", profs));
+  const inv = textarea((c.inventory || []).map((it) => `${it.name} x${it.quantity || 1}${it.equipped ? " [E]" : ""}`).join("\n"), 4);
+  secL.append(field("Inventory — one per line: Name xN [E]", inv));
+  const feats = textarea((c.features || []).map((f) => `${f.name} | ${f.source || ""} | ${f.description || ""}`).join("\n"), 3);
+  secL.append(field("Features — Name | Source | Description", feats));
+  const notes = textarea(c.notes || "", 3);
+  secL.append(field("Notes", notes));
+  body.append(secL);
+
+  // Spellcasting (optional).
+  const secSp = el("div", "sheet-sec"); secSp.append(el("div", "label", "Spellcasting"));
+  const hasSp = el("input"); hasSp.type = "checkbox"; hasSp.checked = !!c.spellcasting;
+  const hasSpLbl = el("label", "field"); hasSpLbl.append(hasSp, document.createTextNode(" Has spellcasting"));
+  const sp = c.spellcasting || { ability: 3, save_dc: 0, attack_bonus: 0, slots: { max: [0,0,0,0,0,0,0,0,0], used: [0,0,0,0,0,0,0,0,0] }, spells: [] };
+  const spAbility = selectFrom(ABILITIES, ABILITIES[sp.ability || 0]);
+  const spDC = numInput(sp.save_dc || 0), spAtk = numInput(sp.attack_bonus || 0);
+  const spTop = el("div", "fgrid"); spTop.append(field("Ability", spAbility), field("Save DC", spDC), field("Attack bonus", spAtk));
+  const slotGrid = el("div", "slotgrid"); const slotMax = [], slotUsed = [];
+  for (let i = 0; i < 9; i++) {
+    const m = numInput((sp.slots && sp.slots.max && sp.slots.max[i]) || 0);
+    const u = numInput((sp.slots && sp.slots.used && sp.slots.used[i]) || 0);
+    slotMax.push(m); slotUsed.push(u);
+    const cell = el("div", "field", `L${i + 1} (max/used)`);
+    const pair = el("div", "row"); pair.style.margin = "0"; pair.append(m, u); cell.append(pair); slotGrid.append(cell);
+  }
+  const spells = textarea((sp.spells || []).map((s) => `${s.name} | ${s.level || 0}${s.prepared ? " | P" : ""}${s.school ? " | " + s.school : ""}`).join("\n"), 3);
+  const spBody = el("div"); spBody.append(spTop, el("div", "label", "Spell slots"), slotGrid, field("Spells — Name | Level | P | School", spells));
+  spBody.classList.toggle("hidden", !hasSp.checked);
+  hasSp.onchange = () => spBody.classList.toggle("hidden", !hasSp.checked);
+  secSp.append(hasSpLbl, spBody); body.append(secSp);
+
+  // Save.
+  const save = el("button", null, "Save sheet");
+  save.onclick = async () => {
+    const edited = JSON.parse(JSON.stringify(c));
+    edited.name = name.value.trim(); edited.race = race.value.trim(); edited.class = cls.value.trim();
+    edited.level = parseInt(level.value || "1", 10); edited.background = bg.value.trim(); edited.alignment = align.value.trim();
+    edited.abilities = {}; ABILITIES.forEach((a) => edited.abilities[a.toLowerCase()] = parseInt(abInputs[a].value || "10", 10));
+    edited.max_hp = int(maxhp); edited.current_hp = int(curhp); edited.temp_hp = int(temphp);
+    edited.ac = int(ac); edited.initiative = int(init); edited.speed = int(speed);
+    edited.proficiency_bonus = int(prof); edited.hit_dice_used = int(hdu); edited.gold = int(gold); edited.xp = int(xp);
+    edited.inspiration = insp.checked;
+    edited.saving_throws = ABILITIES.map((a, i) => i).filter((i) => saveInputs[i].checked);
+    edited.skills = skillState.map(({ sk, p, e }) => Object.assign({}, sk, { proficient: p.checked, expert: e.checked }));
+    edited.conditions = CONDITIONS.filter((cn) => condInputs[cn].checked);
+    edited.languages = csv(langs.value);
+    edited.proficiencies = csv(profs.value);
+    edited.inventory = parseInventory(inv.value);
+    edited.features = parseFeatures(feats.value);
+    edited.notes = notes.value;
+    if (hasSp.checked) {
+      edited.spellcasting = {
+        ability: ABILITIES.indexOf(spAbility.value), save_dc: int(spDC), attack_bonus: int(spAtk),
+        slots: { max: slotMax.map(int), used: slotUsed.map(int) }, spells: parseSpells(spells.value),
+      };
+    } else { edited.spellcasting = null; }
+
+    try {
+      await api("PUT", "/sessions/" + encodeURIComponent(current) + "/characters/" + encodeURIComponent(baseChar.name),
+        { base: baseChar, edited });
+      await refreshState();
+      status("Sheet saved.");
+      save.closest(".modal").remove();
+    } catch (e) {
+      status(e.message, true); // 409 conflict message comes from the server
+    }
+  };
+  body.append(save);
+  openModal("Edit sheet — " + (c.name || ""), body, { wide: true });
+}
+
+function int(inp) { return parseInt(inp.value || "0", 10) || 0; }
+function csv(s) { return (s || "").split(",").map((x) => x.trim()).filter(Boolean); }
+function parseInventory(text) {
+  return (text || "").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+    const eq = /\[e\]/i.test(l); l = l.replace(/\[e\]/ig, "").trim();
+    const m = l.match(/^(.*?)\s*x\s*(\d+)$/i);
+    return m ? { name: m[1].trim(), quantity: parseInt(m[2], 10), equipped: eq } : { name: l, quantity: 1, equipped: eq };
+  });
+}
+function parseFeatures(text) {
+  return (text || "").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+    const [name, source, ...rest] = l.split("|").map((x) => x.trim());
+    return { name: name || "", source: source || "", description: rest.join(" | ") };
+  });
+}
+function parseSpells(text) {
+  return (text || "").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+    const parts = l.split("|").map((x) => x.trim());
+    return { name: parts[0] || "", level: parseInt(parts[1] || "0", 10) || 0, prepared: /^p$/i.test(parts[2] || ""), school: parts[3] || "" };
+  });
+}
 
 // --- boot ----------------------------------------------------------------
 show("library");
