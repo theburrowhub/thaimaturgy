@@ -30,6 +30,10 @@ import (
 // clobbered, so the caller should reload and re-apply.
 var ErrCharacterConflict = errors.New("character changed since it was loaded")
 
+// ErrPartyConflict is returned by PlanParty when the party changed while the AI
+// plan was in flight, so applying the plan would overwrite newer edits.
+var ErrPartyConflict = errors.New("party changed while the plan was being generated")
+
 // Service is the facade. It is safe for concurrent use.
 type Service struct {
 	store    *storage.Storage
@@ -467,7 +471,9 @@ func (s *Service) DefaultParty(name string) error {
 }
 
 // PlanParty asks the AI to build or update the party from a natural-language
-// prompt, applies the result, and returns the new party snapshot.
+// prompt, then applies the result — but only if the party hasn't changed since
+// the (long) AI call started, so a concurrent edit isn't clobbered. It returns
+// ErrPartyConflict otherwise.
 func (s *Service) PlanParty(ctx context.Context, name, prompt string) ([]domain.Character, error) {
 	os, ok := s.Get(name)
 	if !ok {
@@ -476,15 +482,25 @@ func (s *Service) PlanParty(ctx context.Context, name, prompt string) ([]domain.
 	s.mu.Lock()
 	prov, model := s.provider, s.config.Model
 	s.mu.Unlock()
-	current := os.Session.State.PartySnapshot()
-	party, err := engine.PlanParty(ctx, prov, model, prompt, current)
+	baseline := os.Session.State.PartySnapshot()
+	baseJSON, _ := json.Marshal(baseline)
+	party, err := engine.PlanParty(ctx, prov, model, prompt, baseline)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.SetParty(name, party); err != nil {
-		return nil, err
+	var result []domain.Character
+	applyErr := s.withOpenSession(name, func(os *OpenSession) (bool, error) {
+		if cur, _ := json.Marshal(os.Session.State.PartySnapshot()); !bytes.Equal(cur, baseJSON) {
+			return false, ErrPartyConflict
+		}
+		os.Session.State.SetParty(party)
+		result = os.Session.State.PartySnapshot()
+		return true, nil
+	})
+	if applyErr != nil {
+		return nil, applyErr
 	}
-	return os.Session.State.PartySnapshot(), nil
+	return result, nil
 }
 
 // UpdateCharacter applies edited over the named session character, but only if
@@ -521,21 +537,41 @@ func (s *Service) UpdateCharacter(name, charName string, base, edited *domain.Ch
 }
 
 // SavePartyToRoster saves each party member to the campaign roster and links the
-// assigned IDs back into the session, so future autosaves keep them in sync.
+// assigned IDs back into the session by position (not name, so duplicate names
+// can't cross-link). On a partial failure it still links and persists the writes
+// that succeeded — so no successful roster write is left unrecorded — and returns
+// an error naming the member that failed.
 func (s *Service) SavePartyToRoster(name string) error {
-	return s.withOpenSession(name, func(os *OpenSession) (bool, error) {
+	var saveErr error
+	err := s.withOpenSession(name, func(os *OpenSession) (bool, error) {
 		snap := os.Session.State.PartySnapshot()
+		ids := make([]string, len(snap))
+		saved := 0
 		for i := range snap {
-			c := snap[i]
-			id, err := s.store.SaveCharacter(&c)
-			if err != nil {
-				return false, err
+			c := snap[i] // value copy; SaveCharacter assigns/returns its ID
+			id, e := s.store.SaveCharacter(&c)
+			if e != nil {
+				saveErr = fmt.Errorf("saving %q to roster: %w", snap[i].Name, e)
+				break
 			}
-			nm := c.Name
-			os.Session.State.MutateCharacter(nm, func(cc *domain.Character) { cc.ID = id })
+			ids[i] = id
+			saved++
 		}
-		return true, nil
+		// Link back whatever succeeded (by position) and persist synchronously, so
+		// the ID links are durable even on a partial failure. We persist here rather
+		// than returning mutated=true so the write ordering is explicit.
+		if saved > 0 {
+			os.Session.State.LinkRosterIDs(ids)
+			if e := s.persist(os); e != nil && saveErr == nil {
+				saveErr = e
+			}
+		}
+		return false, nil
 	})
+	if err != nil {
+		return err
+	}
+	return saveErr
 }
 
 // --- Roster (#33) --------------------------------------------------------

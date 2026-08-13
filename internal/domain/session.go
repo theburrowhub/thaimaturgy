@@ -800,6 +800,27 @@ func (s *SessionState) SetParty(party []*Character) {
 	s.touch()
 }
 
+// LinkRosterIDs assigns roster IDs to party members by position (ids[i] → the
+// i-th party member), skipping empty IDs and out-of-range indices. Linking by
+// index (not name) is unambiguous even if two members share a name.
+func (s *SessionState) LinkRosterIDs(ids []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	for i, c := range s.Characters {
+		if i >= len(ids) || ids[i] == "" || c == nil {
+			continue
+		}
+		if c.ID != ids[i] {
+			c.ID = ids[i]
+			changed = true
+		}
+	}
+	if changed {
+		s.touch()
+	}
+}
+
 // PartyNames returns the party members' names (copy) under the lock.
 func (s *SessionState) PartyNames() []string {
 	s.mu.Lock()

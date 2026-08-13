@@ -416,11 +416,14 @@ func (s *Server) planParty(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	party, err := s.svc.PlanParty(r.Context(), r.PathValue("name"), body.Prompt)
-	if err != nil {
+	switch {
+	case errors.Is(err, appservice.ErrPartyConflict):
+		httpError(w, http.StatusConflict, "the party changed while planning; reload and try again")
+	case err != nil:
 		httpError(w, http.StatusBadRequest, err.Error())
-		return
+	default:
+		writeJSON(w, http.StatusOK, party)
 	}
-	writeJSON(w, http.StatusOK, party)
 }
 
 func (s *Server) savePartyToRoster(w http.ResponseWriter, r *http.Request) {

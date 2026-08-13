@@ -895,9 +895,15 @@ async function openCharacterCreator(opts, onDone, target) {
         const party = (await api("GET", "/sessions/" + encodeURIComponent(current) + "/party")) || [];
         party.push(c);
         await api("PUT", "/sessions/" + encodeURIComponent(current) + "/party", party);
-        if (toRoster.checked) { try { await api("POST", "/roster", c); } catch { /* non-fatal */ } }
         await refreshState();
-        status("Character added.");
+        // If also-save-to-roster is requested, surface any failure rather than
+        // reporting unqualified success.
+        if (toRoster.checked) {
+          try { await api("POST", "/roster", c); status("Character added and saved to roster."); }
+          catch (re) { status("Character added to the party, but saving to roster failed: " + re.message, true); }
+        } else {
+          status("Character added.");
+        }
       }
       if (onDone) onDone();
       create.closest(".modal").remove();
