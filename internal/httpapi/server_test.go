@@ -444,6 +444,44 @@ func TestAdventureEditorEndpoints(t *testing.T) {
 	}
 }
 
+func TestImportJobEndpoints(t *testing.T) {
+	ts := newTestServer(t, "")
+
+	// Missing CSRF header → 403 (the multipart endpoint is safelisted).
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("kind", "pdf")
+	mw.Close()
+	req, _ := http.NewRequest("POST", ts.URL+"/api/import-jobs", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, _ := http.DefaultClient.Do(req)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("import job without CSRF = %d; want 403", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// With the header but no AI provider (nil in tests) → 400, not a crash.
+	var b2 bytes.Buffer
+	mw2 := multipart.NewWriter(&b2)
+	_ = mw2.WriteField("kind", "pdf")
+	fw, _ := mw2.CreateFormFile("file", "x.pdf")
+	_, _ = fw.Write([]byte("%PDF-1.4 fake"))
+	mw2.Close()
+	req2, _ := http.NewRequest("POST", ts.URL+"/api/import-jobs", &b2)
+	req2.Header.Set("Content-Type", mw2.FormDataContentType())
+	req2.Header.Set("X-Thaim-CSRF", "1")
+	resp2, _ := http.DefaultClient.Do(req2)
+	if resp2.StatusCode != http.StatusBadRequest {
+		t.Errorf("import job without provider = %d; want 400", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+
+	// Unknown job id → 404.
+	if resp, _ := doJSON(t, "GET", ts.URL+"/api/import-jobs/nope", ""); resp.StatusCode != 404 {
+		t.Errorf("unknown import job = %d; want 404", resp.StatusCode)
+	}
+}
+
 func TestAuthToken(t *testing.T) {
 	ts := newTestServer(t, "s3cret")
 	// No token → 401.

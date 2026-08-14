@@ -27,6 +27,16 @@
         <input id="import-file" type="file" accept=".tar.gz,.tgz,.gz">
         <button type="submit">Import module (.tar.gz)</button>
       </form>
+      <form id="aiimport-form" class="row">
+        <select id="ai-kind">
+          <option value="pdf">AI import from PDF</option>
+          <option value="images">AI import from images</option>
+        </select>
+        <input id="ai-title" placeholder="Title (optional)">
+        <input id="ai-file" type="file" accept="application/pdf,.pdf">
+        <button type="submit">Start AI import</button>
+      </form>
+      <div id="ai-progress" class="muted"></div>
       <div id="adventures" class="list"></div>
       <h2>Sessions</h2>
       <div id="sessions" class="list"></div>

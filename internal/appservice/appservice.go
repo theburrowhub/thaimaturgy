@@ -55,6 +55,10 @@ type Service struct {
 
 	nameMu    sync.Mutex             // guards nameLocks
 	nameLocks map[string]*sync.Mutex // per-session-name lifecycle locks
+
+	jobMu      sync.Mutex            // guards importJobs + jobSeq
+	jobSeq     int                   // monotonic id source for import jobs
+	importJobs map[string]*ImportJob // AI-import jobs by id (#70)
 }
 
 // OpenSession is a live, registered play session with its engine bindings.
