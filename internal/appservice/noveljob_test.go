@@ -35,6 +35,12 @@ func TestNovelJobSingleFlight(t *testing.T) {
 	}
 	defer func() { _ = svc.CloseSession(name) }()
 
+	// Give the session narratable content so novel.Generate proceeds to the
+	// (blocked) AI call and the job stays reliably "running" during the test.
+	os, _ := svc.Get(name)
+	os.Session.State.AddUserMessage("The party descends into the crypt.")
+	os.Session.State.AddAssistantMessage("Cold, still air rises from the dark stair.")
+
 	j1, err := svc.StartNovelJob(name)
 	if err != nil {
 		t.Fatalf("first StartNovelJob: %v", err)
