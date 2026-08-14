@@ -101,6 +101,57 @@ func TestStripBookTitle(t *testing.T) {
 	}
 }
 
+func TestNormalizeChapters(t *testing.T) {
+	in := strings.Join([]string{
+		"# La Casa de la Muerte",
+		"",
+		"## I. El camino",
+		"Prosa uno.",
+		"## VII",
+		"Prosa dos.",
+		"## Capítulo IX",
+		"Prosa tres.",
+		"## La escalera que no debería existir",
+		"Prosa cuatro.",
+		"## 27. El Salón Comedor — dos amenazas",
+		"Prosa cinco.",
+		"## ",
+		"Prosa seis (sin encabezado).",
+		"### Una subsección",
+		"Prosa siete.",
+	}, "\n")
+
+	got := NormalizeChapters(in)
+
+	// Chapters renumbered 1..5; the empty heading is dropped (so 6 headings → 5).
+	want := []string{
+		"# La Casa de la Muerte", // book title untouched
+		"## 1. El camino",        // roman "I." stripped, title kept
+		"## 2",                   // bare roman "VII" → untitled number
+		"## 3",                   // "Capítulo IX" → untitled number
+		"## 4. La escalera que no debería existir", // plain title kept whole
+		"## 5. El Salón Comedor — dos amenazas",    // "27." stripped
+		"### Una subsección",                       // subheading untouched
+	}
+	for _, w := range want {
+		if !strings.Contains(got, w) {
+			t.Errorf("normalized output missing %q\n---\n%s", w, got)
+		}
+	}
+	if strings.Contains(got, "## 6") || strings.Contains(got, "## 7") {
+		t.Errorf("empty/sub headings should not be numbered as chapters:\n%s", got)
+	}
+	// The dropped empty heading must not leave a "## " with no title.
+	for _, ln := range strings.Split(got, "\n") {
+		if strings.TrimSpace(ln) == "##" {
+			t.Errorf("found a bare '##' heading after normalization")
+		}
+	}
+	if strings.Contains(got, "\n\n\n") {
+		t.Errorf("runs of blank lines were not collapsed")
+	}
+}
+
 func TestLastCharsRuneSafe(t *testing.T) {
 	s := strings.Repeat("é", 10) // 2 bytes each = 20 bytes
 	got := lastChars(s, 5)
