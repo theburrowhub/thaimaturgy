@@ -41,6 +41,11 @@ var ErrPartyConflict = errors.New("party changed while the plan was being genera
 // the two ambiguous.
 var ErrNameConflict = errors.New("another party member already uses that name")
 
+// ErrNovelConflict is returned by SaveNovelText when the stored novel no longer
+// matches the version the caller loaded — a concurrent edit (or a regeneration)
+// would be clobbered, so the caller should reload and re-apply.
+var ErrNovelConflict = errors.New("the novel changed since it was loaded")
+
 // Service is the facade. It is safe for concurrent use.
 type Service struct {
 	store    *storage.Storage
@@ -60,6 +65,8 @@ type Service struct {
 	jobSeq     int                   // monotonic id source for async jobs
 	importJobs map[string]*ImportJob // AI-import jobs by id (#70)
 	novelJobs  map[string]*NovelJob  // novelization jobs by id (#71)
+
+	novelMu sync.Mutex // serializes the read-modify-write of saved novels (#65)
 }
 
 // OpenSession is a live, registered play session with its engine bindings.
