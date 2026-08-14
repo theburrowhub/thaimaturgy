@@ -154,6 +154,63 @@ $("#import-form").addEventListener("submit", async (e) => {
   } catch (err) { status(err.message, true); }
 });
 
+// AI import (PDF or images) — starts an async job and polls its progress.
+$("#ai-kind").addEventListener("change", () => {
+  const kind = $("#ai-kind").value;
+  const f = $("#ai-file");
+  if (kind === "images") { f.setAttribute("multiple", "multiple"); f.setAttribute("accept", "image/*"); }
+  else { f.removeAttribute("multiple"); f.setAttribute("accept", "application/pdf,.pdf"); }
+});
+$("#aiimport-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const kind = $("#ai-kind").value;
+  const files = $("#ai-file").files;
+  if (!files.length) { status("Choose " + (kind === "images" ? "one or more images" : "a PDF") + " first.", true); return; }
+  const fd = new FormData();
+  fd.append("kind", kind);
+  fd.append("title", $("#ai-title").value.trim());
+  if (kind === "images") { for (const f of files) fd.append("files", f); }
+  else { fd.append("file", files[0]); }
+  const headers = { "X-Thaim-CSRF": "1" };
+  if (token()) headers["Authorization"] = "Bearer " + token();
+  $("#ai-progress").textContent = "Starting AI import…";
+  try {
+    const resp = await fetch("/api/import-jobs", { method: "POST", headers, body: fd });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok) throw new Error((data && data.error) || ("HTTP " + resp.status));
+    $("#ai-file").value = "";
+    pollImportJob(data.id);
+  } catch (err) { $("#ai-progress").textContent = ""; status(err.message, true); }
+});
+
+async function pollImportJob(id, fails) {
+  fails = fails || 0;
+  try {
+    const j = await api("GET", "/import-jobs/" + encodeURIComponent(id));
+    if (j.status === "running") {
+      $("#ai-progress").textContent = "AI import: " + (j.stage || "working…");
+      setTimeout(() => pollImportJob(id, 0), 2500);
+    } else if (j.status === "done") {
+      $("#ai-progress").textContent = "";
+      status("Imported “" + (j.adventure_title || j.adventure_id) + "”.");
+      loadLibrary();
+    } else {
+      $("#ai-progress").textContent = "";
+      status("AI import failed: " + (j.error || "unknown error"), true);
+    }
+  } catch (e) {
+    // A transient poll error shouldn't strand a running import: retry with bounded
+    // backoff, surfacing the job id if it finally gives up.
+    if (fails < 5) {
+      $("#ai-progress").textContent = "AI import: reconnecting…";
+      setTimeout(() => pollImportJob(id, fails + 1), Math.min(2500 * (fails + 1), 15000));
+    } else {
+      $("#ai-progress").textContent = "";
+      status("Lost contact with import job " + id + " (" + e.message + "). It may still finish; reload later.", true);
+    }
+  }
+}
+
 function fmtTime(iso) {
   if (!iso) return "";
   const d = new Date(iso);
