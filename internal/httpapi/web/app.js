@@ -183,12 +183,13 @@ $("#aiimport-form").addEventListener("submit", async (e) => {
   } catch (err) { $("#ai-progress").textContent = ""; status(err.message, true); }
 });
 
-async function pollImportJob(id) {
+async function pollImportJob(id, fails) {
+  fails = fails || 0;
   try {
     const j = await api("GET", "/import-jobs/" + encodeURIComponent(id));
     if (j.status === "running") {
       $("#ai-progress").textContent = "AI import: " + (j.stage || "working…");
-      setTimeout(() => pollImportJob(id), 2500);
+      setTimeout(() => pollImportJob(id, 0), 2500);
     } else if (j.status === "done") {
       $("#ai-progress").textContent = "";
       status("Imported “" + (j.adventure_title || j.adventure_id) + "”.");
@@ -197,7 +198,17 @@ async function pollImportJob(id) {
       $("#ai-progress").textContent = "";
       status("AI import failed: " + (j.error || "unknown error"), true);
     }
-  } catch (e) { $("#ai-progress").textContent = ""; status(e.message, true); }
+  } catch (e) {
+    // A transient poll error shouldn't strand a running import: retry with bounded
+    // backoff, surfacing the job id if it finally gives up.
+    if (fails < 5) {
+      $("#ai-progress").textContent = "AI import: reconnecting…";
+      setTimeout(() => pollImportJob(id, fails + 1), Math.min(2500 * (fails + 1), 15000));
+    } else {
+      $("#ai-progress").textContent = "";
+      status("Lost contact with import job " + id + " (" + e.message + "). It may still finish; reload later.", true);
+    }
+  }
 }
 
 function fmtTime(iso) {
