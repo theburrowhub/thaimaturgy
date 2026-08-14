@@ -37,6 +37,43 @@ func TestImportJobAdmission(t *testing.T) {
 	}
 }
 
+// TestImportJobTotalCap verifies that when the registry is full of terminal jobs,
+// admitting a new one evicts the oldest terminal job(s) rather than growing
+// unboundedly — even though terminal jobs don't count toward the running cap.
+func TestImportJobTotalCap(t *testing.T) {
+	svc, _ := newService(t)
+	svc.SetProvider(&planProvider{})
+
+	base := time.Now().Add(-time.Minute) // recent (not past retention) terminal jobs
+	svc.jobMu.Lock()
+	svc.importJobs = map[string]*ImportJob{}
+	for i := 0; i < maxTotalImportJobs; i++ {
+		svc.importJobs["done"+strconv.Itoa(i)] = &ImportJob{
+			ID: "done" + strconv.Itoa(i), status: ImportDone, endedAt: base.Add(time.Duration(i) * time.Second),
+		}
+	}
+	svc.jobMu.Unlock()
+
+	// Admitting a new job (no running jobs → under the concurrency cap) must evict
+	// the oldest terminal one and keep the map at the cap.
+	src, _ := os.MkdirTemp("", "thaim-capbtest-*")
+	job, err := svc.StartImportJob("images", src, "X")
+	if err != nil {
+		t.Fatalf("StartImportJob should be admitted (running under cap): %v", err)
+	}
+	svc.jobMu.Lock()
+	_, oldestGone := svc.importJobs["done0"]
+	total := len(svc.importJobs)
+	svc.jobMu.Unlock()
+	if oldestGone {
+		t.Error("the oldest terminal job (done0) should have been evicted")
+	}
+	if total > maxTotalImportJobs {
+		t.Errorf("retained jobs = %d; must not exceed cap %d", total, maxTotalImportJobs)
+	}
+	_ = job
+}
+
 func TestImportJobLifecycle(t *testing.T) {
 	svc, _ := newService(t)
 	svc.SetProvider(&planProvider{resp: "{}"})

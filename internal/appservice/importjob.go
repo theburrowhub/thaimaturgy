@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -29,6 +30,11 @@ const maxConcurrentImportJobs = 2
 // importJobRetention is how long a finished job is kept (for its status/result to
 // be polled) before eviction, so the jobs map can't grow for the process lifetime.
 const importJobRetention = 30 * time.Minute
+
+// maxTotalImportJobs caps the number of retained jobs (running + terminal). When
+// full, the oldest terminal jobs are evicted on insertion, so a flood of quickly-
+// failing imports can't grow the map with request volume before the TTL elapses.
+const maxTotalImportJobs = 20
 
 // ErrImportCapacity is returned when too many AI imports are already running.
 var ErrImportCapacity = errors.New("too many imports are already running; try again later")
@@ -105,23 +111,41 @@ func (s *Service) StartImportJob(kind, src, title string) (*ImportJob, error) {
 	if s.importJobs == nil {
 		s.importJobs = make(map[string]*ImportJob)
 	}
-	// Evict finished jobs past their retention and count the running ones, so
-	// admission is bounded (no unbounded goroutines / provider spend / memory).
+	// Evict finished jobs past their retention, count the running ones, and track
+	// terminal jobs (with their end time) so we can also cap the TOTAL retained —
+	// otherwise a flood of quickly-failing imports would grow the map within the
+	// retention window even though few are running.
 	running := 0
+	type term struct {
+		id    string
+		ended time.Time
+	}
+	var terminal []term
 	for id, j := range s.importJobs {
 		j.mu.Lock()
 		isRunning := j.status == ImportRunning
-		expired := !isRunning && !j.endedAt.IsZero() && now.Sub(j.endedAt) > importJobRetention
+		ended := j.endedAt
 		j.mu.Unlock()
-		if expired {
+		if !isRunning && !ended.IsZero() && now.Sub(ended) > importJobRetention {
 			delete(s.importJobs, id)
-		} else if isRunning {
+			continue
+		}
+		if isRunning {
 			running++
+		} else {
+			terminal = append(terminal, term{id, ended})
 		}
 	}
 	if running >= maxConcurrentImportJobs {
 		s.jobMu.Unlock()
 		return nil, ErrImportCapacity
+	}
+	// Enforce the total cap by evicting the oldest terminal jobs to make room for
+	// the new one (running jobs are never evicted).
+	sort.Slice(terminal, func(i, j int) bool { return terminal[i].ended.Before(terminal[j].ended) })
+	for len(s.importJobs) >= maxTotalImportJobs && len(terminal) > 0 {
+		delete(s.importJobs, terminal[0].id)
+		terminal = terminal[1:]
 	}
 	s.jobSeq++
 	id := "imp-" + strconv.Itoa(s.jobSeq)
@@ -141,13 +165,27 @@ func (s *Service) ImportJobByID(id string) (*ImportJob, bool) {
 	return j, ok
 }
 
+// runImportJob does the import, ensures ALL temp files (the uploaded source, the
+// working dir, the packaged archive) are removed, and only THEN publishes the
+// terminal status — so a poller can never observe "done"/"error" while the temp
+// artifacts still exist.
 func (s *Service) runImportJob(job *ImportJob, kind, src, title string, cfg *domain.Config, prov providers.Provider) {
-	defer os.RemoveAll(src) // uploaded PDF file or images dir
-
-	workingDir, err := os.MkdirTemp("", "thaim-webimport-*")
+	id, ttl, err := s.buildImport(job, kind, src, title, cfg, prov)
+	_ = os.RemoveAll(src) // uploaded PDF file or images dir
 	if err != nil {
 		job.fail(err)
 		return
+	}
+	job.finish(id, ttl)
+}
+
+// buildImport runs the AI import and installs the module, cleaning up its own
+// working dir and packaged archive before it returns (so all cleanup precedes the
+// caller publishing a terminal status).
+func (s *Service) buildImport(job *ImportJob, kind, src, title string, cfg *domain.Config, prov providers.Provider) (string, string, error) {
+	workingDir, err := os.MkdirTemp("", "thaim-webimport-*")
+	if err != nil {
+		return "", "", err
 	}
 	defer os.RemoveAll(workingDir)
 
@@ -165,8 +203,7 @@ func (s *Service) runImportJob(job *ImportJob, kind, src, title string, cfg *dom
 		adv, err = aibuild.FromImages(ctx, prov, cfg, src, workingDir, title, progress, confirm, vis)
 	}
 	if err != nil {
-		job.fail(err)
-		return
+		return "", "", err
 	}
 
 	// Write adventure.json into the working dir, package it, and import it into
@@ -174,32 +211,27 @@ func (s *Service) runImportJob(job *ImportJob, kind, src, title string, cfg *dom
 	job.setStage("installing module")
 	data, err := json.MarshalIndent(adv, "", "  ")
 	if err != nil {
-		job.fail(err)
-		return
+		return "", "", err
 	}
 	if err := os.WriteFile(filepath.Join(workingDir, storage.AdventureFile), data, 0o644); err != nil {
-		job.fail(err)
-		return
+		return "", "", err
 	}
 	tgz, err := os.CreateTemp("", "thaim-webimport-*.tar.gz")
 	if err != nil {
-		job.fail(err)
-		return
+		return "", "", err
 	}
 	tgzPath := tgz.Name()
 	_ = tgz.Close()
 	_ = os.Remove(tgzPath) // PackageModule recreates it
 	defer os.Remove(tgzPath)
 	if err := storage.PackageModule(workingDir, tgzPath); err != nil {
-		job.fail(err)
-		return
+		return "", "", err
 	}
 	imported, err := s.store.ImportModule(tgzPath)
 	if err != nil {
-		job.fail(err)
-		return
+		return "", "", err
 	}
-	job.finish(imported.ID, imported.Title)
+	return imported.ID, imported.Title, nil
 }
 
 // buildVisionProvider returns a vision-capable provider for image curation when
