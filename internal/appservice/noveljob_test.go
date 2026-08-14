@@ -2,11 +2,41 @@ package appservice
 
 import (
 	"context"
+	"errors"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 )
+
+// TestNovelJobGlobalCap verifies the service-wide concurrency cap: even across
+// distinct sessions, no more than maxConcurrentNovelJobs run at once.
+func TestNovelJobGlobalCap(t *testing.T) {
+	svc, _ := newService(t)
+	svc.SetProvider(&planProvider{})
+
+	name, err := svc.NewSession("crypt")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer func() { _ = svc.CloseSession(name) }()
+	os, _ := svc.Get(name)
+	os.Session.State.AddAssistantMessage("A beat, so Generate has content.")
+
+	// Pre-fill the global cap with running jobs for OTHER sessions.
+	svc.jobMu.Lock()
+	svc.novelJobs = map[string]*NovelJob{}
+	for i := 0; i < maxConcurrentNovelJobs; i++ {
+		svc.novelJobs["r"+strconv.Itoa(i)] = &NovelJob{ID: "r" + strconv.Itoa(i), Session: "other-" + strconv.Itoa(i), status: ImportRunning}
+	}
+	svc.jobMu.Unlock()
+
+	// A new export for a different session is rejected by the global cap.
+	if _, err := svc.StartNovelJob(name); !errors.Is(err, ErrNovelCapacity) {
+		t.Fatalf("StartNovelJob at global cap = %v; want ErrNovelCapacity", err)
+	}
+}
 
 // blockProvider blocks in Chat until release is closed, so a job stays "running"
 // deterministically for the single-flight test.

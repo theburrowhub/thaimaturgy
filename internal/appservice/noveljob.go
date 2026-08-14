@@ -3,6 +3,7 @@ package appservice
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -18,6 +19,14 @@ const novelJobTimeout = 15 * time.Minute
 // novelJobRetention is how long a finished job is kept for its result to be
 // downloaded before it is evicted, so the jobs map can't grow without bound.
 const novelJobRetention = 30 * time.Minute
+
+// maxConcurrentNovelJobs caps simultaneously-running novelizations across ALL
+// sessions, so a client can't spawn unbounded 15-minute AI calls by opening many
+// sessions (the per-session duplicate guard alone wouldn't stop that).
+const maxConcurrentNovelJobs = 2
+
+// ErrNovelCapacity is returned when too many novelizations are already running.
+var ErrNovelCapacity = errors.New("too many novel exports are already running; try again later")
 
 // NovelJob tracks an asynchronous session-novelization and holds its result.
 type NovelJob struct {
@@ -106,21 +115,35 @@ func (s *Service) StartNovelJob(sessionName string) (*NovelJob, error) {
 	if s.novelJobs == nil {
 		s.novelJobs = make(map[string]*NovelJob)
 	}
-	// Evict finished jobs past their retention, and enforce one running job per
-	// session so repeated POSTs can't spawn unbounded AI calls.
+	// Evict finished jobs past their retention, count the running ones, and note a
+	// same-session duplicate — computed over a full pass so counts are accurate.
+	running, sameSession := 0, false
 	for id, j := range s.novelJobs {
 		j.mu.Lock()
-		running := j.status == ImportRunning
-		expired := !running && !j.endedAt.IsZero() && now.Sub(j.endedAt) > novelJobRetention
-		sameRunning := running && j.Session == sessionName
+		isRunning := j.status == ImportRunning
+		expired := !isRunning && !j.endedAt.IsZero() && now.Sub(j.endedAt) > novelJobRetention
+		sess := j.Session
 		j.mu.Unlock()
 		if expired {
 			delete(s.novelJobs, id)
+			continue
 		}
-		if sameRunning {
-			s.jobMu.Unlock()
-			return nil, fmt.Errorf("a novel export is already running for this session")
+		if isRunning {
+			running++
+			if sess == sessionName {
+				sameSession = true
+			}
 		}
+	}
+	// One export per session (duplicate guard) AND a service-wide cap, so a client
+	// can't spawn unbounded 15-minute jobs by opening many distinct sessions.
+	if sameSession {
+		s.jobMu.Unlock()
+		return nil, fmt.Errorf("a novel export is already running for this session")
+	}
+	if running >= maxConcurrentNovelJobs {
+		s.jobMu.Unlock()
+		return nil, ErrNovelCapacity
 	}
 	s.jobSeq++
 	id := "novel-" + strconv.Itoa(s.jobSeq)

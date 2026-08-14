@@ -828,7 +828,11 @@ func (s *Server) chargen(w http.ResponseWriter, r *http.Request) {
 func (s *Server) startNovelJob(w http.ResponseWriter, r *http.Request) {
 	job, err := s.svc.StartNovelJob(r.PathValue("name"))
 	if err != nil {
-		httpError(w, http.StatusBadRequest, err.Error())
+		if errors.Is(err, appservice.ErrNovelCapacity) {
+			httpError(w, http.StatusServiceUnavailable, err.Error())
+		} else {
+			httpError(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 	writeJSON(w, http.StatusAccepted, job.Snapshot())
