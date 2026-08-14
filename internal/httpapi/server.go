@@ -352,12 +352,19 @@ func (s *Server) validateAdventure(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"errors": s.svc.ValidateAdventure(id, &adv)})
 }
 
-// exportAdventure streams the adventure packaged as a .tar.gz download.
+// exportAdventure streams the adventure packaged as a .tar.gz download. A missing
+// adventure is a 404; a packaging/temp-file failure is an operational 500 (with
+// the detail logged, not returned, so internal paths aren't exposed).
 func (s *Server) exportAdventure(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !s.svc.AdventureExists(id) {
+		httpError(w, http.StatusNotFound, "adventure not found")
+		return
+	}
 	path, err := s.svc.ExportModule(id)
 	if err != nil {
-		httpError(w, http.StatusNotFound, err.Error())
+		log.Printf("httpapi: export adventure %q: %v", id, err)
+		httpError(w, http.StatusInternalServerError, "could not export the adventure")
 		return
 	}
 	defer os.Remove(path)

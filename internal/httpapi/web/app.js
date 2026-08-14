@@ -1195,8 +1195,14 @@ const NODE_FIELDS = {
   item: [["id", "text"], ["name", "text"], ["rarity", "text"], ["description", "area"], ["mechanics", "area"], ["image", "text"]],
   table: [["id", "text"], ["name", "text"], ["description", "area"], ["dice", "text"]],
 };
-// Keys handled elsewhere (rooms live as their own tree nodes under a zone).
-const NODE_EXTRA_SKIP = { zone: ["rooms"] };
+// Keys handled elsewhere, so the Advanced (JSON) box never exposes them: rooms
+// live as their own tree nodes under a zone, and the top-level collections are
+// edited via the tree — keeping them out of the metadata JSON box means a stray
+// edit there can't erase zones/NPCs/etc.
+const NODE_EXTRA_SKIP = {
+  zone: ["rooms"],
+  meta: ["zones", "npcs", "events", "items", "tables"],
+};
 
 async function openEditor(id) {
   try {
@@ -1273,12 +1279,16 @@ function renderEdForm() {
     else if (kind === "lines") { inp = textarea((node[key] || []).join("\n"), 3); }
     else if (kind === "csv") { inp = input((node[key] || []).join(", ")); }
     else { inp = input(node[key] != null ? node[key] : ""); }
+    // Update the model live on each keystroke, but DON'T re-render the form (that
+    // would drop focus mid-typing). Refresh the tree/header only on blur (change).
     inp.addEventListener("input", () => {
       if (kind === "lines") node[key] = inp.value.split("\n").map((s) => s.trim()).filter(Boolean);
       else if (kind === "csv") node[key] = inp.value.split(",").map((s) => s.trim()).filter(Boolean);
       else node[key] = inp.value;
-      if (key === "name" || key === "id" || key === "title") { $("#ed-title").textContent = editAdv.title || editId; renderEdTree(); }
     });
+    if (key === "name" || key === "id" || key === "title") {
+      inp.addEventListener("change", () => { $("#ed-title").textContent = editAdv.title || editId; renderEdTree(); });
+    }
     box.append(field(key.replace(/_/g, " "), inp));
   }
 
@@ -1290,6 +1300,12 @@ function renderEdForm() {
   adv.addEventListener("change", () => {
     let parsed;
     try { parsed = JSON.parse(adv.value); } catch (e) { status("Advanced JSON is invalid: " + e.message, true); return; }
+    // Must be a plain object; a valid non-object (e.g. [] or null) would otherwise
+    // wipe the node's non-friendly fields after the delete below.
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      status("Advanced fields must be a JSON object.", true);
+      return;
+    }
     for (const k of Object.keys(node)) if (!skip.has(k)) delete node[k];
     Object.assign(node, parsed);
     status("Advanced fields applied.");

@@ -424,6 +424,10 @@ func TestAdventureEditorEndpoints(t *testing.T) {
 	if len(eb) == 0 {
 		t.Error("export body should not be empty")
 	}
+	// Exporting a missing adventure is a 404 (not a misclassified error).
+	if nr, _ := http.Get(ts.URL + "/api/adventures/nope/export"); nr.StatusCode != 404 {
+		t.Errorf("export missing = %d; want 404", nr.StatusCode)
+	}
 
 	// DM book: markdown and PDF.
 	dr, _ := http.Get(ts.URL + "/api/adventures/crypt/dmbook")
