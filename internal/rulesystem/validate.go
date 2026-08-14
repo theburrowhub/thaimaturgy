@@ -5,63 +5,179 @@ import (
 	"strings"
 )
 
-// Validate checks a pack for structural completeness. It does not verify rules
-// accuracy against a publisher PDF.
-func Validate(p *Pack) error {
+// ValidationIssue describes a single validation problem.
+type ValidationIssue struct {
+	Path    string
+	Message string
+}
+
+func (v ValidationIssue) Error() string {
+	if v.Path == "" {
+		return v.Message
+	}
+	return fmt.Sprintf("%s: %s", v.Path, v.Message)
+}
+
+// ValidatePack performs deep validation on a pack definition.
+func ValidatePack(p *Pack) []ValidationIssue {
 	if p == nil {
-		return fmt.Errorf("pack is nil")
+		return []ValidationIssue{{Message: "pack is nil"}}
 	}
-	if p.APIVersion != APIVersion {
-		return fmt.Errorf("api_version: want %q, got %q", APIVersion, p.APIVersion)
+	var issues []ValidationIssue
+	if p.ID == "" {
+		issues = append(issues, ValidationIssue{Path: "id", Message: "required"})
 	}
-	if strings.TrimSpace(p.ID) == "" {
-		return fmt.Errorf("id is required")
+	if p.Name == "" {
+		issues = append(issues, ValidationIssue{Path: "name", Message: "required"})
 	}
-	if strings.TrimSpace(p.Name) == "" {
-		return fmt.Errorf("name is required")
+	if p.APIVersion != "" && p.APIVersion != APIVersion {
+		issues = append(issues, ValidationIssue{Path: "api_version", Message: fmt.Sprintf("expected %q", APIVersion)})
 	}
-	if strings.TrimSpace(p.Dice.Primary) == "" {
-		return fmt.Errorf("dice.primary is required")
+	if len(p.Chapters) == 0 {
+		issues = append(issues, ValidationIssue{Path: "chapters", Message: "at least one chapter required"})
 	}
-	if len(p.Attributes) == 0 {
-		return fmt.Errorf("at least one attribute is required")
+	for i, ch := range p.Chapters {
+		if strings.TrimSpace(ch.Title) == "" {
+			issues = append(issues, ValidationIssue{Path: fmt.Sprintf("chapters[%d].title", i), Message: "required"})
+		}
+		if len(ch.Sections) == 0 {
+			issues = append(issues, ValidationIssue{Path: fmt.Sprintf("chapters[%d].sections", i), Message: "at least one section required"})
+		}
 	}
-	if len(p.Resources) == 0 {
-		return fmt.Errorf("at least one resource is required")
-	}
-	if strings.TrimSpace(p.Prompts.OracleContext) == "" {
-		return fmt.Errorf("prompts.oracle_context is required")
-	}
-
-	seen := map[string]bool{}
+	attrIDs := map[string]struct{}{}
 	for _, a := range p.Attributes {
-		if a.ID == "" {
-			return fmt.Errorf("attribute id is required")
-		}
-		if seen[a.ID] {
-			return fmt.Errorf("duplicate attribute id %q", a.ID)
-		}
-		seen[a.ID] = true
+		attrIDs[a.ID] = struct{}{}
 	}
+	skillIDs := map[string]struct{}{}
+	for _, s := range p.Skills {
+		skillIDs[s.ID] = struct{}{}
+		if s.Attribute != "" {
+			if _, ok := attrIDs[s.Attribute]; !ok {
+				issues = append(issues, ValidationIssue{Path: "skills." + s.ID, Message: fmt.Sprintf("unknown attribute %q", s.Attribute)})
+			}
+		}
+	}
+	condIDs := map[string]struct{}{}
+	for _, c := range p.Conditions {
+		condIDs[c.ID] = struct{}{}
+	}
+	wfIDs := map[string]struct{}{}
+	for _, w := range p.Workflows {
+		wfIDs[w.ID] = struct{}{}
+		stepIDs := map[string]struct{}{}
+		for _, st := range w.Steps {
+			stepIDs[st.ID] = struct{}{}
+		}
+		for j, st := range w.Steps {
+			if st.Next != "" {
+				if _, ok := stepIDs[st.Next]; !ok {
+					issues = append(issues, ValidationIssue{
+						Path:    fmt.Sprintf("workflows.%s.steps[%d].next", w.ID, j),
+						Message: fmt.Sprintf("unknown step %q", st.Next),
+					})
+				}
+			}
+		}
+		for _, rt := range w.RelatedTools {
+			if _, ok := canonicalByID[rt]; !ok {
+				issues = append(issues, ValidationIssue{
+					Path:    "workflows." + w.ID + ".related_tools",
+					Message: fmt.Sprintf("unknown canonical tool %q", rt),
+				})
+			}
+		}
+	}
+	for _, m := range p.Mechanics {
+		if m.WorkflowID != "" {
+			if _, ok := wfIDs[m.WorkflowID]; !ok {
+				issues = append(issues, ValidationIssue{
+					Path:    "mechanics." + m.ID,
+					Message: fmt.Sprintf("unknown workflow %q", m.WorkflowID),
+				})
+			}
+		}
+	}
+	tableIDs := map[string]struct{}{}
+	for _, t := range p.Tables {
+		tableIDs[t.ID] = struct{}{}
+	}
+	for _, f := range p.Formulas {
+		if _, err := EvalFormula(f.Expression, sampleVars(f.Variables)); err != nil {
+			issues = append(issues, ValidationIssue{
+				Path:    "formulas." + f.ID,
+				Message: fmt.Sprintf("invalid expression: %v", err),
+			})
+		}
+	}
+	for _, r := range p.Resources {
+		if r.MaxFormula != "" {
+			if _, err := EvalFormula(r.MaxFormula, sampleVars(nil)); err != nil {
+				issues = append(issues, ValidationIssue{
+					Path:    "resources." + r.ID + ".max_formula",
+					Message: fmt.Sprintf("invalid formula: %v", err),
+				})
+			}
+		}
+	}
+	for i, tb := range p.Tools {
+		if _, ok := canonicalByID[tb.CanonicalID]; !ok {
+			issues = append(issues, ValidationIssue{
+				Path:    fmt.Sprintf("tools[%d].canonical_id", i),
+				Message: fmt.Sprintf("unknown canonical tool %q", tb.CanonicalID),
+			})
+		}
+		if tb.WorkflowID != "" {
+			if _, ok := wfIDs[tb.WorkflowID]; !ok {
+				issues = append(issues, ValidationIssue{
+					Path:    fmt.Sprintf("tools[%d].workflow_id", i),
+					Message: fmt.Sprintf("unknown workflow %q", tb.WorkflowID),
+				})
+			}
+		}
+	}
+	for _, field := range p.Character.Fields {
+		if field.Formula != "" {
+			if _, err := EvalFormula(field.Formula, sampleVars(nil)); err != nil {
+				issues = append(issues, ValidationIssue{
+					Path:    "character.fields." + field.ID,
+					Message: fmt.Sprintf("invalid formula: %v", err),
+				})
+			}
+		}
+	}
+	_ = condIDs
+	_ = tableIDs
+	_ = skillIDs
+	return issues
+}
 
-	enabled := 0
-	for _, t := range p.Tools {
-		if !t.Enabled {
-			continue
-		}
-		enabled++
-		if t.CanonicalID == "" || t.Name == "" {
-			return fmt.Errorf("enabled tool must have canonical_id and name")
-		}
-		if _, ok := canonicalByID(t.CanonicalID); !ok {
-			return fmt.Errorf("unknown canonical tool %q", t.CanonicalID)
-		}
-		if len(t.Parameters) == 0 {
-			return fmt.Errorf("tool %q parameters are required", t.Name)
+func sampleVars(desc map[string]string) map[string]float64 {
+	out := map[string]float64{
+		"level": 5, "con_mod": 2, "dex_mod": 3, "wis_mod": 1, "str_mod": 2,
+		"proficiency": 3, "rank": 2, "die_size": 8, "stat": 50,
+		"con": 55, "siz": 65, "pow": 60, "dex": 45, "int": 50, "cha": 40,
+		"hit_die_max": 10, "hit_die_avg": 6, "max_hp": 45,
+		"armor": 5, "shield": 2, "fighting": 8, "vigor": 10,
+		"spellcasting_mod": 3, "slots_by_level": 9, "power_points_by_rank": 15,
+		"damage": 12,
+	}
+	for k := range desc {
+		if _, ok := out[k]; !ok {
+			out[k] = 1
 		}
 	}
-	if enabled == 0 {
-		return fmt.Errorf("at least one tool must be enabled")
+	return out
+}
+
+// ValidatePackStrict returns an error if any issues are found.
+func ValidatePackStrict(p *Pack) error {
+	issues := ValidatePack(p)
+	if len(issues) == 0 {
+		return nil
 	}
-	return nil
+	msgs := make([]string, len(issues))
+	for i, iss := range issues {
+		msgs[i] = iss.Error()
+	}
+	return fmt.Errorf("pack validation failed:\n  - %s", strings.Join(msgs, "\n  - "))
 }

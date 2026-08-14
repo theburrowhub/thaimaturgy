@@ -85,9 +85,10 @@ internal/
                            for the Claude-CLI backend); used by the app and the bot
   tts/                     Optional OpenAI TTS (narrate read-aloud text)
   types/                   Shared tool types
-  rulesystem/              Experimental RPG system pack schema + generator
-                           (dnd5e, d100, savage_worlds); not wired into engine yet
-  cmd/rulesystem-gen/      CLI to generate .json/.yaml packs from templates/PDF
+  rulesystem/              RPG system pack schema v2 + generator (workflows,
+                           mechanics, chapters, oracle guide); not wired yet
+  rulesystem/profiles/     Rich built-ins: dnd5e, d100, savage_worlds
+  cmd/rulesystem-gen/      CLI: -inspect -validate -pdf -all -diff
 ```
 
 ### Key Data Flow

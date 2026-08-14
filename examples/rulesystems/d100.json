@@ -1,287 +1,202 @@
 {
-  "api_version": "rulesystem/v1",
+  "api_version": "rulesystem/v2",
   "id": "d100",
-  "name": "Percentile (d100) System",
-  "version": "BRP-inspired starter",
+  "name": "Basic Role-Playing (d100)",
+  "version": "7.5",
   "language": "en",
+  "family": "percentile",
   "source": {
     "type": "builtin",
-    "notes": "Generic d100 profile for percentile skill systems (CoC, RuneQuest, BRP). Not a licensed reproduction of any single publisher text."
+    "templates": [
+      "BRP",
+      "CoC7"
+    ],
+    "notes": "Percentile skill system with opposed rolls, sanity, and major wounds.",
+    "confidence": 1
   },
   "dice": {
     "primary": "d100",
     "common": [
-      "d3",
-      "d4",
-      "d6",
-      "d8",
       "d10",
-      "d12",
-      "d20",
-      "d100"
+      "d100",
+      "d6"
     ],
-    "notation": "percentile",
-    "notes": "Roll d100 (or 1d100) aiming to roll under skill value unless noted. Hard/Extreme success tiers optional."
+    "notation": "d100 \u003c= skill",
+    "notes": "Roll under skill for success; opposed rolls compare levels of success."
   },
   "attributes": [
     {
       "id": "str",
       "label": "Strength",
       "abbrev": "STR",
-      "scale": "score"
+      "scale": "3d6*5",
+      "min": 1,
+      "max": 100
     },
     {
       "id": "con",
       "label": "Constitution",
       "abbrev": "CON",
-      "scale": "score"
+      "scale": "3d6*5",
+      "min": 1,
+      "max": 100
     },
     {
       "id": "siz",
       "label": "Size",
       "abbrev": "SIZ",
-      "scale": "score"
+      "scale": "2d6+6*5",
+      "min": 1,
+      "max": 100
     },
     {
       "id": "dex",
       "label": "Dexterity",
       "abbrev": "DEX",
-      "scale": "score"
+      "scale": "3d6*5",
+      "min": 1,
+      "max": 100
     },
     {
       "id": "app",
       "label": "Appearance",
       "abbrev": "APP",
-      "scale": "score"
+      "scale": "3d6*5",
+      "min": 1,
+      "max": 100
     },
     {
       "id": "int",
       "label": "Intelligence",
       "abbrev": "INT",
-      "scale": "score"
+      "scale": "2d6+6*5",
+      "min": 1,
+      "max": 100
     },
     {
       "id": "pow",
       "label": "Power",
       "abbrev": "POW",
-      "scale": "score"
+      "scale": "3d6*5",
+      "min": 1,
+      "max": 100
     },
     {
       "id": "edu",
       "label": "Education",
       "abbrev": "EDU",
-      "scale": "score"
+      "scale": "2d6+6*5",
+      "min": 1,
+      "max": 100
     }
   ],
   "skills": [
     {
-      "id": "accounting",
-      "label": "Accounting",
-      "training": true
-    },
-    {
-      "id": "anthropology",
-      "label": "Anthropology",
-      "training": true
-    },
-    {
-      "id": "archaeology",
-      "label": "Archaeology",
-      "training": true
-    },
-    {
-      "id": "art_craft",
-      "label": "Art/Craft",
-      "training": true
-    },
-    {
-      "id": "charm",
-      "label": "Charm",
-      "training": true
-    },
-    {
-      "id": "climb",
-      "label": "Climb",
-      "training": true
-    },
-    {
-      "id": "credit_rating",
-      "label": "Credit Rating",
-      "training": true
-    },
-    {
-      "id": "disguise",
-      "label": "Disguise",
-      "training": true
-    },
-    {
       "id": "dodge",
       "label": "Dodge",
-      "training": true
-    },
-    {
-      "id": "drive_auto",
-      "label": "Drive Auto",
-      "training": true
-    },
-    {
-      "id": "fast_talk",
-      "label": "Fast Talk",
-      "training": true
-    },
-    {
-      "id": "fighting",
-      "label": "Fighting",
-      "training": true
-    },
-    {
-      "id": "firearms",
-      "label": "Firearms",
-      "training": true
-    },
-    {
-      "id": "first_aid",
-      "label": "First Aid",
-      "training": true
-    },
-    {
-      "id": "history",
-      "label": "History",
-      "training": true
-    },
-    {
-      "id": "insight",
-      "label": "Insight",
-      "training": true
-    },
-    {
-      "id": "intimidate",
-      "label": "Intimidate",
-      "training": true
-    },
-    {
-      "id": "jump",
-      "label": "Jump",
-      "training": true
-    },
-    {
-      "id": "language",
-      "label": "Language",
-      "training": true
-    },
-    {
-      "id": "law",
-      "label": "Law",
-      "training": true
-    },
-    {
-      "id": "library_use",
-      "label": "Library Use",
-      "training": true
-    },
-    {
-      "id": "listen",
-      "label": "Listen",
-      "training": true
-    },
-    {
-      "id": "locksmith",
-      "label": "Locksmith",
-      "training": true
-    },
-    {
-      "id": "mechanical_repair",
-      "label": "Mechanical Repair",
-      "training": true
-    },
-    {
-      "id": "medicine",
-      "label": "Medicine",
-      "training": true
-    },
-    {
-      "id": "natural_world",
-      "label": "Natural World",
-      "training": true
-    },
-    {
-      "id": "navigate",
-      "label": "Navigate",
-      "training": true
-    },
-    {
-      "id": "occult",
-      "label": "Occult",
-      "training": true
-    },
-    {
-      "id": "operate_heavy_machinery",
-      "label": "Operate Heavy Machinery",
-      "training": true
-    },
-    {
-      "id": "persuade",
-      "label": "Persuade",
-      "training": true
-    },
-    {
-      "id": "pilot",
-      "label": "Pilot",
-      "training": true
-    },
-    {
-      "id": "psychology",
-      "label": "Psychology",
-      "training": true
-    },
-    {
-      "id": "psychoanalysis",
-      "label": "Psychoanalysis",
-      "training": true
-    },
-    {
-      "id": "ride",
-      "label": "Ride",
-      "training": true
-    },
-    {
-      "id": "science",
-      "label": "Science",
-      "training": true
-    },
-    {
-      "id": "sleight_of_hand",
-      "label": "Sleight of Hand",
+      "attribute": "dex",
       "training": true
     },
     {
       "id": "spot_hidden",
       "label": "Spot Hidden",
+      "attribute": "int",
       "training": true
     },
     {
-      "id": "stealth",
-      "label": "Stealth",
+      "id": "listen",
+      "label": "Listen",
+      "attribute": "int",
       "training": true
     },
     {
-      "id": "survival",
-      "label": "Survival",
+      "id": "persuade",
+      "label": "Persuade",
+      "attribute": "app",
+      "training": true
+    },
+    {
+      "id": "fast_talk",
+      "label": "Fast Talk",
+      "attribute": "app",
+      "training": true
+    },
+    {
+      "id": "intimidate",
+      "label": "Intimidate",
+      "attribute": "app",
+      "training": true
+    },
+    {
+      "id": "psychology",
+      "label": "Psychology",
+      "attribute": "int",
+      "training": true
+    },
+    {
+      "id": "medicine",
+      "label": "Medicine",
+      "attribute": "edu",
+      "training": true
+    },
+    {
+      "id": "first_aid",
+      "label": "First Aid",
+      "attribute": "edu",
+      "training": true
+    },
+    {
+      "id": "climb",
+      "label": "Climb",
+      "attribute": "str",
       "training": true
     },
     {
       "id": "swim",
       "label": "Swim",
+      "attribute": "str",
       "training": true
     },
     {
-      "id": "throw",
-      "label": "Throw",
+      "id": "stealth",
+      "label": "Stealth",
+      "attribute": "dex",
       "training": true
     },
     {
-      "id": "track",
-      "label": "Track",
+      "id": "firearms_handgun",
+      "label": "Firearms (Handgun)",
+      "attribute": "dex",
+      "training": true
+    },
+    {
+      "id": "fighting_brawl",
+      "label": "Fighting (Brawl)",
+      "attribute": "str",
+      "training": true
+    },
+    {
+      "id": "occult",
+      "label": "Occult",
+      "attribute": "edu",
+      "training": true
+    },
+    {
+      "id": "library_use",
+      "label": "Library Use",
+      "attribute": "edu",
+      "training": true
+    },
+    {
+      "id": "credit_rating",
+      "label": "Credit Rating",
+      "attribute": "edu",
+      "training": true
+    },
+    {
+      "id": "sanity",
+      "label": "Sanity",
+      "attribute": "pow",
       "training": true
     }
   ],
@@ -291,424 +206,937 @@
       "label": "Hit Points",
       "kind": "pool",
       "primary": true,
-      "default_max": "(con + siz) / 2"
+      "max_formula": "(con + siz) / 10"
     },
     {
-      "id": "mp",
+      "id": "sanity",
+      "label": "Sanity Points",
+      "kind": "pool",
+      "max_formula": "pow",
+      "reset_on": [
+        "therapy",
+        "scenario_end"
+      ]
+    },
+    {
+      "id": "magic_points",
       "label": "Magic Points",
       "kind": "pool",
-      "default_max": "pow"
+      "max_formula": "pow / 5"
     },
     {
-      "id": "san",
-      "label": "Sanity",
-      "kind": "pool",
-      "notes": "Optional; common in horror variants."
-    },
-    {
-      "id": "luck",
-      "label": "Luck",
-      "kind": "pool",
-      "notes": "Optional spendable luck points."
+      "id": "major_wound",
+      "label": "Major Wound Track",
+      "kind": "flag"
     }
   ],
   "conditions": [
     {
       "id": "unconscious",
-      "label": "Unconscious"
-    },
-    {
-      "id": "dying",
-      "label": "Dying"
+      "label": "Unconscious",
+      "severity": 4,
+      "effects": [
+        "cannot_act",
+        "prone"
+      ]
     },
     {
       "id": "major_wound",
-      "label": "Major wound"
+      "label": "Major Wound",
+      "severity": 4,
+      "effects": [
+        "incapacitating_injury",
+        "requires_first_aid_or_medicine"
+      ]
     },
     {
-      "id": "insane",
-      "label": "Insane"
+      "id": "temp_insanity",
+      "label": "Temporary Insanity",
+      "severity": 3,
+      "effects": [
+        "flee_or_faint",
+        "duration_1d10_hours"
+      ]
+    },
+    {
+      "id": "indef_insanity",
+      "label": "Indefinite Insanity",
+      "severity": 5,
+      "effects": [
+        "long_term_disorder"
+      ]
+    },
+    {
+      "id": "prone",
+      "label": "Prone",
+      "severity": 1,
+      "effects": [
+        "melee_defense_harder"
+      ]
+    },
+    {
+      "id": "bleeding",
+      "label": "Bleeding",
+      "severity": 2,
+      "effects": [
+        "lose_1_hp_per_round_until_treated"
+      ]
     }
   ],
+  "damage_types": [
+    {
+      "id": "bullet",
+      "label": "bullet"
+    },
+    {
+      "id": "cutting",
+      "label": "cutting"
+    },
+    {
+      "id": "blunt",
+      "label": "blunt"
+    },
+    {
+      "id": "fire",
+      "label": "fire"
+    },
+    {
+      "id": "cold",
+      "label": "cold"
+    },
+    {
+      "id": "electric",
+      "label": "electric"
+    },
+    {
+      "id": "poison",
+      "label": "poison"
+    }
+  ],
+  "equipment": {},
   "resolution": {
     "skill_check": {
       "roll": "1d100",
-      "compare": "under",
+      "compare": "\u003c=",
       "target": "skill_value",
-      "success": "roll \u003c= skill",
-      "critical": "roll \u003c= skill/5",
-      "fumble": "roll \u003e= 96",
-      "notes": "Opposed checks: both roll under skill; lower successful roll wins."
+      "success": "roll_under_skill",
+      "failure": "roll_over_skill",
+      "critical": "skill/20",
+      "fumble": "96-100",
+      "workflow_id": "skill_check"
     },
     "ability_check": {
       "roll": "1d100",
-      "compare": "under",
-      "target": "characteristic_x5",
-      "notes": "Untrained characteristic roll often uses score x5 as target."
+      "compare": "\u003c=",
+      "target": "stat*5",
+      "workflow_id": "skill_check"
+    },
+    "saving_throw": {
+      "roll": "1d100",
+      "compare": "\u003c=",
+      "target": "skill_or_luck",
+      "workflow_id": "skill_check"
+    },
+    "opposed_check": {
+      "attacker_roll": "1d100",
+      "defender_roll": "1d100",
+      "win": "better_level_of_success",
+      "tie": "higher_skill_wins",
+      "notes": "Compare critical/success/fail/fumble levels."
     },
     "attack": {
-      "roll": "1d100",
-      "target": "fighting_skill",
-      "compare": "under",
-      "notes": "Opposed parry/dodge may apply; impale/critical on low rolls."
+      "roll": "1d100\u003c=fighting_or_firearms",
+      "target": "defense_value",
+      "compare": "\u003c=",
+      "on_hit": [
+        "damage_roll",
+        "major_wound_if_damage_ge_siz"
+      ],
+      "workflow_id": "attack"
     },
     "defense": {
-      "stat": "armor_points",
-      "formula": "location-based armor reduces damage"
+      "stat": "dodge_or_fighting",
+      "alternate": [
+        "dodge_skill",
+        "fighting_parry"
+      ]
     },
     "spell": {
       "cost": "magic_points",
-      "roll": "spell skill or POW vs POW",
-      "notes": "Casting often costs MP and requires a skill roll."
+      "roll": "1d100\u003c=casting",
+      "workflow_id": "spell_cast"
+    },
+    "power": {
+      "cost": "",
+      "roll": ""
     },
     "damage": {
-      "roll": "weapon_damage_dice - armor",
-      "notes": "Major wounds when single hit exceeds half max HP."
+      "roll": "weapon_damage_dice",
+      "on_apply": [
+        "update_health",
+        "major_wound_check"
+      ]
     },
     "initiative": {
-      "roll": "1d10 + dex_bonus",
-      "compare": "descending_order"
+      "roll": "1d10+dx_bonus",
+      "compare": "order_desc"
+    },
+    "death": {
+      "at_zero": [
+        "unconscious",
+        "dying_roll_each_round"
+      ],
+      "recovery": [
+        "first_aid",
+        "medicine",
+        "hospitalization"
+      ],
+      "workflow_id": "major_wound"
     }
   },
-  "tools": [
-    {
-      "canonical_id": "roll_dice",
-      "enabled": true,
-      "name": "roll_dice",
-      "description": "Roll dice (d100 for skills, damage dice as needed).",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "notation": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          }
+  "combat": {
+    "mode": "declared_actions",
+    "round_steps": [
+      "1. Declare actions (lowest DEX first declaration in some variants)",
+      "2. Resolve in DEX order",
+      "3. Apply damage, major wounds, sanity"
+    ],
+    "action_economy": {
+      "actions": [
+        {
+          "id": "action",
+          "label": "Action",
+          "per_turn": 1,
+          "examples": [
+            "Attack",
+            "Cast spell",
+            "Skill use"
+          ]
         },
-        "required": [
-          "notation"
-        ]
+        {
+          "id": "reaction",
+          "label": "Reaction",
+          "per_turn": 1,
+          "examples": [
+            "Dodge"
+          ]
+        }
+      ]
+    }
+  },
+  "progression": {
+    "kind": "skill_improvement",
+    "levels": [
+      {
+        "level": 1,
+        "advance": "character_creation"
       },
-      "engine_hook": "dice.roll"
+      {
+        "level": 2,
+        "advance": "session_skill_checks"
+      },
+      {
+        "level": 3,
+        "advance": "improve_used_skills"
+      },
+      {
+        "level": 4,
+        "advance": "sanity_threshold_changes"
+      },
+      {
+        "level": 5,
+        "advance": "expertise_specialization"
+      }
+    ],
+    "milestones": [
+      "End of scenario skill improvement",
+      "Successful use during play"
+    ]
+  },
+  "magic": {
+    "traditions": [
+      {
+        "id": "mythos",
+        "label": "Mythos Magic"
+      },
+      {
+        "id": "folk",
+        "label": "Folk Magic"
+      }
+    ],
+    "casting": [
+      "Spend MP",
+      "Roll casting skill",
+      "Sanity loss on mythos spells"
+    ]
+  },
+  "social": {
+    "conflicts": [
+      {
+        "id": "debate",
+        "label": "Debate"
+      },
+      {
+        "id": "bargain",
+        "label": "Bargain"
+      }
+    ]
+  },
+  "formulas": [
+    {
+      "id": "max_hp",
+      "label": "Max HP",
+      "expression": "(con + siz) / 10",
+      "variables": {
+        "con": "CON",
+        "siz": "SIZ"
+      }
     },
+    {
+      "id": "sanity_max",
+      "label": "Sanity Max",
+      "expression": "pow"
+    }
+  ],
+  "workflows": [
+    {
+      "id": "skill_check",
+      "label": "Skill Check",
+      "category": "resolution",
+      "steps": [
+        {
+          "id": "roll",
+          "label": "Roll d100",
+          "kind": "roll",
+          "roll": "1d100",
+          "next": "compare"
+        },
+        {
+          "id": "compare",
+          "label": "Under skill?",
+          "kind": "branch"
+        }
+      ],
+      "related_tools": [
+        "skill_check",
+        "roll_dice"
+      ]
+    },
+    {
+      "id": "opposed",
+      "label": "Opposed Roll",
+      "category": "resolution",
+      "steps": [
+        {
+          "id": "attacker",
+          "label": "Attacker rolls",
+          "kind": "roll",
+          "roll": "1d100",
+          "next": "defender"
+        },
+        {
+          "id": "defender",
+          "label": "Defender rolls",
+          "kind": "roll",
+          "roll": "1d100",
+          "next": "compare"
+        },
+        {
+          "id": "compare",
+          "label": "Level of success",
+          "kind": "branch"
+        }
+      ],
+      "related_tools": [
+        "opposed_check"
+      ]
+    },
+    {
+      "id": "attack",
+      "label": "Attack",
+      "category": "combat",
+      "steps": [
+        {
+          "id": "attack_roll",
+          "label": "Fighting/Firearms roll",
+          "kind": "roll",
+          "roll": "1d100",
+          "next": "damage"
+        },
+        {
+          "id": "damage",
+          "label": "Roll damage",
+          "kind": "roll",
+          "roll": "weapon_dice",
+          "next": "wound"
+        },
+        {
+          "id": "wound",
+          "label": "Check major wound",
+          "kind": "branch"
+        }
+      ],
+      "related_tools": [
+        "attack",
+        "damage_roll"
+      ]
+    },
+    {
+      "id": "major_wound",
+      "label": "Major Wound",
+      "category": "combat",
+      "trigger": "damage_ge_siz",
+      "steps": [
+        {
+          "id": "check",
+          "label": "Damage \u003e= SIZ?",
+          "kind": "branch",
+          "next": "effect"
+        },
+        {
+          "id": "effect",
+          "label": "Apply major wound",
+          "kind": "effect"
+        }
+      ],
+      "related_tools": [
+        "apply_condition",
+        "update_health"
+      ]
+    },
+    {
+      "id": "sanity",
+      "label": "Sanity Test",
+      "category": "horror",
+      "trigger": "mythos_encounter",
+      "steps": [
+        {
+          "id": "roll",
+          "label": "Roll SAN loss",
+          "kind": "roll",
+          "roll": "d100_sanity_loss",
+          "next": "threshold"
+        },
+        {
+          "id": "threshold",
+          "label": "Check temp/indef insanity",
+          "kind": "branch"
+        }
+      ],
+      "related_tools": [
+        "fear_sanity",
+        "update_health"
+      ]
+    },
+    {
+      "id": "spell_cast",
+      "label": "Cast Spell",
+      "category": "magic",
+      "steps": [
+        {
+          "id": "cost",
+          "label": "Pay MP",
+          "kind": "state",
+          "next": "roll"
+        },
+        {
+          "id": "roll",
+          "label": "Casting roll",
+          "kind": "roll",
+          "roll": "1d100",
+          "next": "effect"
+        },
+        {
+          "id": "effect",
+          "label": "Resolve spell",
+          "kind": "effect"
+        }
+      ],
+      "related_tools": [
+        "cast_spell",
+        "use_power"
+      ]
+    },
+    {
+      "id": "fear",
+      "label": "Fear Response",
+      "category": "horror",
+      "steps": [
+        {
+          "id": "roll",
+          "label": "Roll fear/sanity",
+          "kind": "roll",
+          "roll": "1d100",
+          "next": "outcome"
+        },
+        {
+          "id": "outcome",
+          "label": "Apply fear effect",
+          "kind": "branch"
+        }
+      ],
+      "related_tools": [
+        "fear_sanity"
+      ]
+    },
+    {
+      "id": "improve",
+      "label": "Skill Improvement",
+      "category": "progression",
+      "steps": [
+        {
+          "id": "mark",
+          "label": "Mark used skills",
+          "kind": "state",
+          "next": "roll"
+        },
+        {
+          "id": "roll",
+          "label": "Roll above current skill to improve",
+          "kind": "roll",
+          "roll": "1d100"
+        }
+      ],
+      "related_tools": [
+        "improve_skill"
+      ]
+    }
+  ],
+  "mechanics": [
+    {
+      "id": "levels_of_success",
+      "label": "Levels of Success",
+      "category": "core",
+      "summary": "Critical (skill/20), Hard (half skill), Regular, Fail, Fumble (96+)."
+    },
+    {
+      "id": "opposed_rolls",
+      "label": "Opposed Rolls",
+      "category": "core",
+      "summary": "Both roll; better level wins.",
+      "workflow_id": "opposed",
+      "related_tools": [
+        "opposed_check"
+      ]
+    },
+    {
+      "id": "major_wounds",
+      "label": "Major Wounds",
+      "category": "combat",
+      "summary": "Single hit damage \u003e= SIZ causes major wound.",
+      "workflow_id": "major_wound"
+    },
+    {
+      "id": "sanity_loss",
+      "label": "Sanity Loss",
+      "category": "horror",
+      "summary": "Encounter mythos; lose SAN on failed roll.",
+      "workflow_id": "sanity",
+      "related_tools": [
+        "fear_sanity"
+      ]
+    },
+    {
+      "id": "temp_insanity",
+      "label": "Temporary Insanity",
+      "category": "horror",
+      "summary": "Lose 5+ SAN in one check triggers temp insanity."
+    },
+    {
+      "id": "indef_insanity",
+      "label": "Indefinite Insanity",
+      "category": "horror",
+      "summary": "SAN 0 triggers indefinite insanity."
+    },
+    {
+      "id": "luck",
+      "label": "Luck Points",
+      "category": "meta",
+      "summary": "Spend luck to adjust rolls."
+    },
+    {
+      "id": "chase",
+      "label": "Chase Rules",
+      "category": "exploration",
+      "summary": "Extended opposed rolls for pursuit."
+    },
+    {
+      "id": "firearms",
+      "label": "Firearms",
+      "category": "combat",
+      "summary": "Handgun/rifle skills; aim action improves chance."
+    },
+    {
+      "id": "armor",
+      "label": "Armor",
+      "category": "combat",
+      "summary": "Armor reduces damage by value."
+    }
+  ],
+  "tables": [
+    {
+      "id": "sanity_loss_sample",
+      "label": "Sample Sanity Loss",
+      "roll": "1d100",
+      "rows": [
+        {
+          "key": "1-10",
+          "result": "1d2 SAN"
+        },
+        {
+          "key": "11-50",
+          "result": "1d6 SAN"
+        },
+        {
+          "key": "51-100",
+          "result": "1d10 SAN"
+        }
+      ]
+    },
+    {
+      "id": "major_wound_location",
+      "label": "Major Wound Location",
+      "roll": "1d10",
+      "rows": [
+        {
+          "key": "1",
+          "result": "Leg"
+        },
+        {
+          "key": "2",
+          "result": "Abdomen"
+        },
+        {
+          "key": "3",
+          "result": "Chest"
+        },
+        {
+          "key": "4",
+          "result": "Arm"
+        },
+        {
+          "key": "5",
+          "result": "Head"
+        }
+      ]
+    },
+    {
+      "id": "insanity_episode",
+      "label": "Insanity Episode",
+      "roll": "1d10",
+      "rows": [
+        {
+          "key": "1-3",
+          "result": "Flee"
+        },
+        {
+          "key": "4-6",
+          "result": "Faint"
+        },
+        {
+          "key": "7-10",
+          "result": "Phobia trigger"
+        }
+      ]
+    }
+  ],
+  "chapters": [
+    {
+      "id": "combat",
+      "title": "Combat",
+      "summary": "d100 combat with major wounds.",
+      "sections": [
+        {
+          "id": "attacks",
+          "title": "Attacks",
+          "body": "Roll under fighting/firearms vs dodge or parry.",
+          "bullets": [
+            "Damage dice",
+            "Major wound if damage \u003e= SIZ"
+          ]
+        },
+        {
+          "id": "wounds",
+          "title": "Wounds \u0026 Healing",
+          "body": "First Aid stabilizes; Medicine for long-term.",
+          "bullets": [
+            "Bleeding",
+            "Hospitalization"
+          ]
+        }
+      ],
+      "tags": [
+        "combat"
+      ]
+    },
+    {
+      "id": "magic",
+      "title": "Magic",
+      "summary": "MP-powered casting with mythos risks.",
+      "sections": [
+        {
+          "id": "casting",
+          "title": "Casting",
+          "body": "Pay MP, roll under casting skill.",
+          "bullets": [
+            "Mythos spells cost SAN"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skills",
+      "title": "Skills",
+      "summary": "Percentile skills improve through use.",
+      "sections": [
+        {
+          "id": "checks",
+          "title": "Skill Checks",
+          "body": "Roll d100 under skill.",
+          "bullets": [
+            "Hard success at half",
+            "Critical at 1/5 skill"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "character",
+      "title": "Character",
+      "summary": "Characteristics and occupation.",
+      "sections": [
+        {
+          "id": "chars",
+          "title": "Characteristics",
+          "body": "3d6*5 (or variant) for core stats.",
+          "bullets": [
+            "Derived HP and SAN"
+          ]
+        },
+        {
+          "id": "horror",
+          "title": "Horror",
+          "body": "Sanity tracks mental stability.",
+          "bullets": [
+            "Temp vs indefinite insanity"
+          ]
+        }
+      ]
+    }
+  ],
+  "tools": [
     {
       "canonical_id": "skill_check",
       "enabled": true,
-      "name": "skill_check",
-      "description": "Roll d100 under a skill value (with optional difficulty tiers).",
+      "name": "Percentile Skill Check",
+      "description": "Roll d100 under skill.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "skill": {
-            "type": "string"
-          },
-          "modifier": {
-            "type": "integer"
-          },
-          "target": {
-            "type": "integer"
-          },
-          "label": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "skill",
-          "target"
-        ]
+        "actor_id": "string",
+        "advantage": "boolean",
+        "dc": "number",
+        "skill": "string"
       },
-      "engine_hook": "check.skill"
+      "category": "resolution",
+      "examples": [
+        {
+          "title": "Spot Hidden",
+          "input": {
+            "actor_id": "inv_1",
+            "skill": "spot_hidden"
+          },
+          "output": "42 vs 65 — success"
+        }
+      ],
+      "workflow_id": "skill_check"
     },
     {
-      "canonical_id": "ability_check",
+      "canonical_id": "opposed_check",
       "enabled": true,
-      "name": "characteristic_check",
-      "description": "Roll d100 under a characteristic x5 value.",
+      "name": "Opposed Roll",
+      "description": "Compare levels of success.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "attribute": {
-            "type": "string"
-          },
-          "modifier": {
-            "type": "integer"
-          },
-          "target": {
-            "type": "integer"
-          },
-          "label": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "attribute",
-          "target"
-        ]
+        "attacker_id": "string",
+        "defender_id": "string",
+        "skill": "string"
       },
-      "engine_hook": "check.ability"
+      "category": "resolution",
+      "workflow_id": "opposed"
     },
     {
       "canonical_id": "attack",
       "enabled": true,
-      "name": "attack",
-      "description": "Resolve a fighting attack with opposed defense if applicable.",
+      "name": "Attack",
+      "description": "Fighting or firearms attack.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "attacker": {
-            "type": "string"
-          },
-          "defender": {
-            "type": "string"
-          },
-          "weapon_or_power": {
-            "type": "string"
-          },
-          "modifier": {
-            "type": "integer"
-          },
-          "damage": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "attacker",
-          "defender"
-        ]
+        "attacker_id": "string",
+        "target_id": "string",
+        "weapon_id": "string"
       },
-      "engine_hook": "combat.attack"
+      "category": "combat",
+      "workflow_id": "attack"
     },
     {
-      "canonical_id": "cast_spell",
+      "canonical_id": "damage_roll",
       "enabled": true,
-      "name": "cast_spell",
-      "description": "Spend MP and roll spell casting skill.",
+      "name": "Damage",
+      "description": "Roll weapon damage.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "character": {
-            "type": "string"
-          },
-          "spell": {
-            "type": "string"
-          },
-          "level_or_cost": {
-            "type": "integer"
-          },
-          "target": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "character",
-          "spell"
-        ]
+        "critical": "boolean",
+        "damage_type": "string",
+        "notation": "string"
       },
-      "engine_hook": "magic.cast"
+      "category": "combat",
+      "workflow_id": "attack"
     },
     {
-      "canonical_id": "update_health",
+      "canonical_id": "fear_sanity",
       "enabled": true,
-      "name": "update_health",
-      "description": "Apply damage, healing, or major wound tracking.",
+      "name": "Sanity Test",
+      "description": "Resolve SAN loss.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "character": {
-            "type": "string"
-          },
-          "resource": {
-            "type": "string"
-          },
-          "delta": {
-            "type": "integer"
-          },
-          "set": {
-            "type": "integer"
-          },
-          "reason": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "character"
-        ]
+        "actor_id": "string",
+        "severity": "number",
+        "trigger": "string"
       },
-      "engine_hook": "character.health"
+      "category": "horror",
+      "workflow_id": "sanity"
     },
     {
       "canonical_id": "apply_condition",
       "enabled": true,
-      "name": "apply_condition",
-      "description": "Apply shock, unconscious, insanity, etc.",
+      "name": "Apply Condition",
+      "description": "Major wound, insanity, etc.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "character": {
-            "type": "string"
-          },
-          "condition": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "character",
-          "condition"
-        ]
+        "actor_id": "string",
+        "condition_id": "string",
+        "duration": "string"
       },
-      "engine_hook": "character.condition.add"
+      "category": "state"
     },
     {
-      "canonical_id": "remove_condition",
+      "canonical_id": "update_health",
       "enabled": true,
-      "name": "remove_condition",
-      "description": "Remove a condition when recovered.",
+      "name": "Adjust HP/SAN",
+      "description": "Modify pools.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "character": {
-            "type": "string"
-          },
-          "condition": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "character",
-          "condition"
-        ]
+        "actor_id": "string",
+        "delta": "number",
+        "resource": "string",
+        "source": "string"
       },
-      "engine_hook": "character.condition.remove"
+      "category": "state"
     },
     {
-      "canonical_id": "update_character",
+      "canonical_id": "improve_skill",
       "enabled": true,
-      "name": "update_character",
-      "description": "Track characteristics, skills, and notes.",
+      "name": "Improve Skill",
+      "description": "Post-scenario advancement.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "character": {
-            "type": "string"
-          },
-          "field": {
-            "type": "string"
-          },
-          "value": {},
-          "notes": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "character"
-        ]
+        "actor_id": "string",
+        "cost": "number",
+        "skill_id": "string"
       },
-      "engine_hook": "character.update"
+      "category": "progression",
+      "workflow_id": "improve"
     },
     {
-      "canonical_id": "rest",
+      "canonical_id": "cast_spell",
       "enabled": true,
-      "name": "rest",
-      "description": "Natural healing over days/weeks of rest.",
+      "name": "Cast Spell",
+      "description": "Spend MP and roll casting.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "character": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "short",
-              "long"
-            ]
-          },
-          "dice": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "character",
-          "kind"
-        ]
+        "caster_id": "string",
+        "slot_level": "number",
+        "spell_id": "string",
+        "targets": "array"
       },
-      "engine_hook": "character.rest",
-      "notes": "Recovery is slower than D\u0026D."
+      "category": "magic",
+      "workflow_id": "spell_cast"
     },
     {
-      "canonical_id": "initiative",
+      "canonical_id": "social_conflict",
       "enabled": true,
-      "name": "initiative",
-      "description": "Set combat order.",
+      "name": "Social Conflict",
+      "description": "Persuade, fast talk, intimidate.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "participants": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "participants"
-        ]
+        "actor_id": "string",
+        "approach": "string",
+        "stakes": "string",
+        "target_id": "string"
       },
-      "engine_hook": "combat.initiative"
+      "category": "social"
     },
     {
-      "canonical_id": "inventory_add",
+      "canonical_id": "roll_on_table",
       "enabled": true,
-      "name": "add_gear",
-      "description": "Add equipment or tomes.",
+      "name": "Roll on Table",
+      "description": "Sanity/insanity tables.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "character": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "quantity": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "character",
-          "name"
-        ]
+        "modifier": "number",
+        "table_id": "string"
       },
-      "engine_hook": "character.inventory.add"
+      "category": "reference"
     },
     {
-      "canonical_id": "inventory_remove",
+      "canonical_id": "lookup_creature",
       "enabled": true,
-      "name": "remove_gear",
-      "description": "Lose or spend gear.",
+      "name": "Lookup Creature",
+      "description": "Fetch mythos entity.",
       "parameters": {
-        "type": "object",
-        "properties": {
-          "character": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "quantity": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "character",
-          "name"
-        ]
+        "scale": "string",
+        "template_id": "string"
       },
-      "engine_hook": "character.inventory.remove"
+      "category": "reference"
+    },
+    {
+      "canonical_id": "ability_check",
+      "enabled": true,
+      "name": "Characteristic Roll",
+      "description": "Roll under stat*5.",
+      "parameters": {
+        "ability": "string",
+        "actor_id": "string",
+        "dc": "number"
+      },
+      "category": "resolution",
+      "workflow_id": "skill_check"
+    },
+    {
+      "canonical_id": "saving_throw",
+      "enabled": true,
+      "name": "Luck Save",
+      "description": "Use luck or POW for saves.",
+      "parameters": {
+        "ability": "string",
+        "actor_id": "string",
+        "dc": "number"
+      },
+      "category": "resolution",
+      "workflow_id": "skill_check"
+    },
+    {
+      "canonical_id": "roll_dice",
+      "enabled": true,
+      "name": "Roll Dice",
+      "description": "Generic roll.",
+      "parameters": {
+        "notation": "string",
+        "reason": "string"
+      },
+      "category": "core"
     }
   ],
   "character": {
+    "sections": [
+      {
+        "id": "profile",
+        "label": "Profile"
+      },
+      {
+        "id": "skills",
+        "label": "Skills"
+      }
+    ],
     "fields": [
       {
         "id": "name",
@@ -722,58 +1150,126 @@
         "kind": "string"
       },
       {
-        "id": "characteristics",
-        "label": "Characteristics",
-        "kind": "list",
-        "required": true
+        "id": "hp",
+        "label": "Hit Points",
+        "kind": "resource",
+        "formula": "(con + siz) / 10"
       },
       {
-        "id": "skills",
-        "label": "Skills (percentile)",
-        "kind": "list",
-        "required": true
+        "id": "sanity",
+        "label": "Sanity",
+        "kind": "resource",
+        "formula": "pow"
+      }
+    ]
+  },
+  "creature": {
+    "fields": [
+      {
+        "id": "name",
+        "label": "Name",
+        "kind": "string"
       },
       {
         "id": "hp",
-        "label": "Hit points",
-        "kind": "resource",
-        "required": true
-      },
-      {
-        "id": "mp",
-        "label": "Magic points",
+        "label": "HP",
         "kind": "resource"
       },
       {
-        "id": "san",
-        "label": "Sanity",
-        "kind": "resource"
+        "id": "san_loss",
+        "label": "SAN Loss",
+        "kind": "string"
+      }
+    ],
+    "templates": [
+      {
+        "id": "deep_one",
+        "label": "Deep One",
+        "stats": {
+          "hp": "14",
+          "san_loss": "0/1d6"
+        }
       },
       {
-        "id": "armor",
-        "label": "Armor by location",
-        "kind": "list"
-      },
-      {
-        "id": "weapons",
-        "label": "Weapons",
-        "kind": "list"
+        "id": "cultist",
+        "label": "Cultist",
+        "stats": {
+          "fighting": "50",
+          "hp": "10"
+        }
       }
     ]
   },
   "prompts": {
-    "oracle_context": "This adventure uses a percentile d100 ruleset. Skills are percentages: roll d100 equal to or under the skill to succeed. Characteristics are typically 3–18 (or 3d6). Combat uses fighting skills, opposed parry/dodge, armor points, and location-based hits. Magic costs magic points. Prefer BRP/CoC terminology unless the module specifies otherwise.",
-    "dm_notes": "Not wired into thAImaturgy engine yet — pack generation only."
+    "oracle_context": "Resolve actions using bound tools and pack workflows."
+  },
+  "oracle_guide": {
+    "principles": [
+      "Use opposed_check for contests; skill_check for static DC.",
+      "Always check major wound when damage \u003e= SIZ.",
+      "Sanity encounters use fear_sanity with table lookup."
+    ],
+    "tool_priority": [
+      "skill_check",
+      "opposed_check",
+      "attack",
+      "fear_sanity"
+    ],
+    "scenarios": [
+      {
+        "situation": "Investigator spots clue",
+        "use_tools": [
+          "skill_check"
+        ],
+        "avoid": [
+          "narrate_success_without_roll"
+        ]
+      },
+      {
+        "situation": "Mythos horror revealed",
+        "use_tools": [
+          "fear_sanity",
+          "roll_on_table"
+        ],
+        "avoid": [
+          "ignore_san_loss"
+        ]
+      },
+      {
+        "situation": "Brawl in alley",
+        "use_tools": [
+          "opposed_check",
+          "attack",
+          "damage_roll"
+        ],
+        "avoid": [
+          "d20_mechanics"
+        ]
+      }
+    ]
+  },
+  "compatibility": {
+    "character_type": "d100_character",
+    "stat_block_type": "d100_creature",
+    "tool_map": {
+      "check": "skill_check",
+      "oppose": "opposed_check",
+      "sanity": "fear_sanity"
+    }
+  },
+  "enrichment": {
+    "enabled": false,
+    "objective": "",
+    "input_fields": null,
+    "output_fields": null
   },
   "rules_summary": [
-    "Roll d100 under skill value to succeed.",
-    "Hard success at half skill; extreme at fifth (optional tiers).",
-    "HP often (CON+SIZ)/2; major wound if single hit \u003e half max HP.",
-    "Sanity and luck are optional horror resources."
+    "d100 roll under skill; levels of success for opposed rolls.",
+    "Major wounds on big hits; SAN for horror.",
+    "Skills improve through successful use over time."
   ],
   "metadata": {
-    "family": "d100",
-    "generated_at": "2026-08-14T11:45:45Z",
+    "generated_at": "2026-08-14T11:54:17Z",
     "generator": "rulesystem-gen"
   }
 }
