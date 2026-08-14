@@ -237,7 +237,9 @@ func (s *Storage) SaveSession(state *domain.SessionState) error {
 	return nil
 }
 
-// DeleteSession removes a persisted session.
+// DeleteSession removes a persisted session and its saved novelization (so a
+// later session reusing the name can't inherit a stale novel). The journal is
+// intentionally left as a historical record, matching prior behavior.
 func (s *Storage) DeleteSession(name string) error {
 	if err := os.Remove(s.sessionPath(name)); err != nil {
 		if os.IsNotExist(err) {
@@ -245,6 +247,7 @@ func (s *Storage) DeleteSession(name string) error {
 		}
 		return fmt.Errorf("failed to delete session file: %w", err)
 	}
+	_ = s.DeleteNovel(name)
 
 	return nil
 }
@@ -278,6 +281,18 @@ func (s *Storage) RenameSession(oldName, newName string) error {
 	// with it (and a later session reusing the old name can't inherit it).
 	if err := os.Rename(s.sessionJournalPath(oldName), s.sessionJournalPath(newName)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to move session journal: %w", err)
+	}
+	// Move the saved novelization too, for the same reason.
+	oldNovel, err := s.sessionNovelPath(oldName)
+	if err != nil {
+		return err
+	}
+	newNovel, err := s.sessionNovelPath(newName)
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(oldNovel, newNovel); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to move session novel: %w", err)
 	}
 	return s.DeleteSession(oldName)
 }
