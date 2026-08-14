@@ -20,11 +20,13 @@ import (
 	"io"
 	"log"
 	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -96,6 +98,8 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /api/adventures", s.listAdventures)
 	mux.HandleFunc("POST /api/adventures/import", s.importAdventure)
+	mux.HandleFunc("POST /api/import-jobs", s.startImportJob)
+	mux.HandleFunc("GET /api/import-jobs/{id}", s.getImportJob)
 	mux.HandleFunc("GET /api/adventures/{id}", s.getAdventure)
 	mux.HandleFunc("PUT /api/adventures/{id}", s.saveAdventure)
 	mux.HandleFunc("DELETE /api/adventures/{id}", s.deleteAdventure)
@@ -413,6 +417,104 @@ func safeFilename(id string) string {
 		return "adventure"
 	}
 	return id
+}
+
+// startImportJob accepts a multipart upload (a PDF under "file", or images under
+// "files") and starts an asynchronous AI import, returning the job id. Like the
+// module upload it requires the non-safelisted X-Thaim-CSRF header.
+func (s *Server) startImportJob(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("X-Thaim-CSRF") == "" {
+		httpError(w, http.StatusForbidden, "missing X-Thaim-CSRF header")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxImportBytes)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid or too-large upload")
+		return
+	}
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
+	kind := r.FormValue("kind")
+	title := r.FormValue("title")
+
+	var src string
+	switch kind {
+	case "pdf":
+		f, _, err := r.FormFile("file")
+		if err != nil {
+			httpError(w, http.StatusBadRequest, "missing 'file' (a PDF) field")
+			return
+		}
+		defer f.Close()
+		tmp, err := os.CreateTemp("", "thaim-import-*.pdf")
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, "could not stage the upload")
+			return
+		}
+		if _, err := io.Copy(tmp, f); err != nil {
+			tmp.Close()
+			_ = os.Remove(tmp.Name())
+			httpError(w, http.StatusBadRequest, "could not read the upload")
+			return
+		}
+		tmp.Close()
+		src = tmp.Name()
+	case "images":
+		files := r.MultipartForm.File["files"]
+		if len(files) == 0 {
+			httpError(w, http.StatusBadRequest, "no images uploaded under 'files'")
+			return
+		}
+		dir, err := os.MkdirTemp("", "thaim-import-imgs-*")
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, "could not stage the upload")
+			return
+		}
+		for i, fh := range files {
+			if err := saveUpload(fh, filepath.Join(dir, fmt.Sprintf("%03d-%s", i, filepath.Base(fh.Filename)))); err != nil {
+				_ = os.RemoveAll(dir)
+				httpError(w, http.StatusBadRequest, "could not read an uploaded image")
+				return
+			}
+		}
+		src = dir
+	default:
+		httpError(w, http.StatusBadRequest, "kind must be 'pdf' or 'images'")
+		return
+	}
+
+	job, err := s.svc.StartImportJob(kind, src, title)
+	if err != nil {
+		_ = os.RemoveAll(src)
+		httpError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, job.Snapshot())
+}
+
+// getImportJob returns the status/progress of an AI-import job.
+func (s *Server) getImportJob(w http.ResponseWriter, r *http.Request) {
+	job, ok := s.svc.ImportJobByID(r.PathValue("id"))
+	if !ok {
+		httpError(w, http.StatusNotFound, "no such import job")
+		return
+	}
+	writeJSON(w, http.StatusOK, job.Snapshot())
+}
+
+// saveUpload copies a multipart file to dst.
+func saveUpload(fh *multipart.FileHeader, dst string) error {
+	f, err := fh.Open()
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, f)
+	return err
 }
 
 // deleteAdventure removes an imported adventure and its assets. A missing
