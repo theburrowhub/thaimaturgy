@@ -1306,9 +1306,15 @@ function renderEdForm() {
       status("Advanced fields must be a JSON object.", true);
       return;
     }
+    // Only the non-reserved keys may be edited here; reserved/structural keys
+    // (e.g. zones/rooms/npcs) are managed by the tree, so ignore them in the
+    // parsed JSON rather than let them overwrite tree-managed collections.
+    const ignored = Object.keys(parsed).filter((k) => skip.has(k));
     for (const k of Object.keys(node)) if (!skip.has(k)) delete node[k];
-    Object.assign(node, parsed);
-    status("Advanced fields applied.");
+    for (const k of Object.keys(parsed)) if (!skip.has(k)) node[k] = parsed[k];
+    status(ignored.length
+      ? "Advanced fields applied (ignored reserved keys: " + ignored.join(", ") + ")."
+      : "Advanced fields applied.");
   });
   box.append(el("div", "label", "Advanced (JSON) — nested fields like exits, stat_block, rows"));
   box.append(adv);
