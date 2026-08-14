@@ -615,6 +615,32 @@ $("#rest").onclick = () => {
   runCommand("/rest " + k);
 };
 
+$("#novel").onclick = async () => {
+  if (!current) return;
+  try {
+    const j = await api("POST", "/sessions/" + encodeURIComponent(current) + "/novel");
+    status("Writing the novel from the session… this can take a minute.");
+    pollNovelJob(j.id);
+  } catch (e) { status(e.message, true); }
+};
+async function pollNovelJob(id, fails) {
+  fails = fails || 0;
+  try {
+    const j = await api("GET", "/novel-jobs/" + encodeURIComponent(id));
+    if (j.status === "running") { setTimeout(() => pollNovelJob(id, 0), 3000); return; }
+    if (j.status === "done") {
+      const fmt = confirm("The novel is ready.\n\nOK = download PDF, Cancel = download Markdown") ? "pdf" : "md";
+      downloadAuthed("/novel-jobs/" + encodeURIComponent(id) + "/download?format=" + fmt, current + "-novel." + fmt);
+      status("Novel ready.");
+    } else { status("Novel export failed: " + (j.error || "unknown error"), true); }
+  } catch (e) {
+    // A transient poll error shouldn't strand a running export: retry with bounded
+    // backoff, and only give up (surfacing the job id to resume) after several tries.
+    if (fails < 5) { setTimeout(() => pollNovelJob(id, fails + 1), Math.min(3000 * (fails + 1), 15000)); }
+    else { status("Lost contact with novel job " + id + " (" + e.message + "). It may still finish; retry later.", true); }
+  }
+}
+
 $("#back").onclick = () => show("library");
 $("#save").onclick = async () => {
   try { await api("POST", "/sessions/" + encodeURIComponent(current) + "/save"); status("Saved."); }

@@ -122,6 +122,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/sessions/{name}/party/plan", s.planParty)
 	mux.HandleFunc("POST /api/sessions/{name}/party/save-to-roster", s.savePartyToRoster)
 	mux.HandleFunc("PUT /api/sessions/{name}/characters/{char}", s.updateCharacter)
+	mux.HandleFunc("POST /api/sessions/{name}/novel", s.startNovelJob)
+	mux.HandleFunc("GET /api/novel-jobs/{id}", s.getNovelJob)
+	mux.HandleFunc("GET /api/novel-jobs/{id}/download", s.downloadNovel)
 	mux.HandleFunc("GET /api/sessions/{name}/events", s.sessionEvents)
 	mux.HandleFunc("POST /api/sse-ticket", s.sseTicket)
 	mux.HandleFunc("GET /api/chargen/options", s.chargenOptions)
@@ -818,6 +821,61 @@ func (s *Server) chargen(w http.ResponseWriter, r *http.Request) {
 		c = domain.GenerateCharacter(body.Name, body.Race, body.Class, body.Level)
 	}
 	writeJSON(w, http.StatusOK, c)
+}
+
+// startNovelJob begins novelizing an open session (a long AI job) and returns the
+// job id to poll.
+func (s *Server) startNovelJob(w http.ResponseWriter, r *http.Request) {
+	job, err := s.svc.StartNovelJob(r.PathValue("name"))
+	if err != nil {
+		if errors.Is(err, appservice.ErrNovelCapacity) {
+			httpError(w, http.StatusServiceUnavailable, err.Error())
+		} else {
+			httpError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusAccepted, job.Snapshot())
+}
+
+// getNovelJob returns a novel job's status/progress.
+func (s *Server) getNovelJob(w http.ResponseWriter, r *http.Request) {
+	job, ok := s.svc.NovelJobByID(r.PathValue("id"))
+	if !ok {
+		httpError(w, http.StatusNotFound, "no such novel job")
+		return
+	}
+	writeJSON(w, http.StatusOK, job.Snapshot())
+}
+
+// downloadNovel streams a finished novel as Markdown (default) or PDF
+// (?format=pdf). 409 while it is still running.
+func (s *Server) downloadNovel(w http.ResponseWriter, r *http.Request) {
+	job, ok := s.svc.NovelJobByID(r.PathValue("id"))
+	if !ok {
+		httpError(w, http.StatusNotFound, "no such novel job")
+		return
+	}
+	md, ready := job.Markdown()
+	if !ready {
+		httpError(w, http.StatusConflict, "the novel is not ready yet")
+		return
+	}
+	if r.URL.Query().Get("format") == "pdf" {
+		pdf, err := bookpdf.FromMarkdown(job.Title, job.Subtitle, md)
+		if err != nil {
+			log.Printf("httpapi: novel pdf %q: %v", job.ID, err)
+			httpError(w, http.StatusInternalServerError, "could not render the PDF")
+			return
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+safeFilename(job.Title)+"-novel.pdf\"")
+		_, _ = w.Write(pdf)
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+safeFilename(job.Title)+"-novel.md\"")
+	_, _ = w.Write([]byte(md))
 }
 
 // sessionEvents streams new timeline entries for a session as Server-Sent Events,
