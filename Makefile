@@ -13,6 +13,8 @@ NOVEL_BINARY_NAME := thaimaturgy-novel
 NOVEL_CMD_DIR := ./cmd/thaimaturgy-novel
 RULESYSTEM_BINARY_NAME := rulesystem-gen
 RULESYSTEM_CMD_DIR := ./cmd/rulesystem-gen
+WORLDPACK_BINARY_NAME := worldpack-gen
+WORLDPACK_CMD_DIR := ./cmd/worldpack-gen
 PKG := github.com/theburrowhub/thaimaturgy
 
 # Go parameters
@@ -42,7 +44,7 @@ YELLOW := \033[33m
 RED := \033[31m
 RESET := \033[0m
 
-.PHONY: all build build-bot build-server build-novel build-rulesystem-gen rulesystem-examples run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall example-module modules
+.PHONY: all build build-bot build-server build-novel build-rulesystem-gen build-worldpack-gen rulesystem-examples worldpack-examples run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall example-module modules
 
 # Adventure modules
 EXAMPLES_DIR := examples/adventures
@@ -91,6 +93,18 @@ build-rulesystem-gen: ## Build the rulesystem pack generator CLI
 	@mkdir -p $(BINARY_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_DIR)/$(RULESYSTEM_BINARY_NAME) $(RULESYSTEM_CMD_DIR)
 	@echo "$(GREEN)Built: $(BINARY_DIR)/$(RULESYSTEM_BINARY_NAME)$(RESET)"
+
+build-worldpack-gen: ## Build the worldpack catalog generator CLI
+	@echo "$(CYAN)Building $(WORLDPACK_BINARY_NAME)...$(RESET)"
+	@mkdir -p $(BINARY_DIR)
+	$(GOBUILD) $(LDFLAGS) -o $(BINARY_DIR)/$(WORLDPACK_BINARY_NAME) $(WORLDPACK_CMD_DIR)
+	@echo "$(GREEN)Built: $(BINARY_DIR)/$(WORLDPACK_BINARY_NAME)$(RESET)"
+
+worldpack-examples: build-worldpack-gen ## Generate example worldpack catalogs
+	@echo "$(CYAN)Generating worldpack examples...$(RESET)"
+	@mkdir -p examples/worldpacks
+	$(BINARY_DIR)/$(WORLDPACK_BINARY_NAME) -all -out examples/worldpacks/
+	@echo "$(GREEN)Examples in examples/worldpacks/$(RESET)"
 
 rulesystem-examples: build-rulesystem-gen ## Generate example rulesystem packs
 	@echo "$(CYAN)Generating rulesystem examples...$(RESET)"

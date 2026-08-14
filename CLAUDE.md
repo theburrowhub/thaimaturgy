@@ -89,6 +89,10 @@ internal/
                            mechanics, chapters, oracle guide); not wired yet
   rulesystem/profiles/     Rich built-ins: dnd5e, d100, savage_worlds
   cmd/rulesystem-gen/      CLI: -inspect -validate -pdf -all -diff
+  worldpack/               World catalog schema v1 (cities, locations, NPCs,
+                           bestiary, items, encounters); not wired yet
+  worldpack/profiles/      Built-in: dnd5e_shattered_vale (The Shattered Vale)
+  cmd/worldpack-gen/       CLI: -inspect -validate -all
 ```
 
 ### Key Data Flow
