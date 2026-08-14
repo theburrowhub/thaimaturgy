@@ -101,6 +101,8 @@ cmd/worldpack-gen/main.go
 3. Run `go run ./cmd/worldpack-gen -template <world_id> -inspect`.
 4. Commit `examples/worlds/<world_id>/world.json`.
 
+Creatures may define `stat_blocks` per rulesystem (`d100`, `dnd5e`, `savage_worlds`).
+
 Keep ambientación, política, reglas del mundo, personajes y lugares **inside that world folder** — do not split by rulesystem.
 
 ## Built-in worlds
@@ -128,3 +130,14 @@ Twenty query tools in `canonical.go`:
 - Encounters: `list_location_creatures`, `roll_encounter_table`, `list_bestiary`, `filter_creatures_by_habitat`, `get_creature`
 - Treasure: `list_location_items`, `get_item`
 - Reference: `search_world`, `get_lore`
+
+
+### Mistfall Coast (`mistfall_coast`)
+
+Coastal investigation horror for d100 — sessions with Aldo.
+
+- **Suggested rulesystem:** `d100` · **Also:** `dnd5e`
+- **Alias:** `aldo`
+- 3 regions, 2 cities, 11 locations, 8 NPCs, 10 creatures (multi-system stat blocks)
+
+See also [session-packs.md](session-packs.md) for the world + rulesystem session contract.

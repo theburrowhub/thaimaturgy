@@ -21,7 +21,6 @@ func NewBaseWorld(id, name string, meta WorldMeta) *Pack {
 			Summary:             meta.Summary,
 			SuggestedRulesystem: meta.SuggestedRulesystem,
 			PlayableWith:        meta.PlayableWith,
-			RulesystemID:        meta.SuggestedRulesystem,
 		},
 		Tools: DefaultToolBindings(),
 		OracleGuide: OracleGuide{
@@ -99,18 +98,14 @@ func AddCreatureFromSRD(p *Pack, id, srdName string, habitats []string, encounte
 	if !ok {
 		sb = domain.StatBlock{CR: "?"}
 	}
-	p.Creatures = append(p.Creatures, CreatureEntry{
-		ID:             id,
-		Name:           titleCase(srdName),
-		SRDName:        srdName,
-		StatBlock:      sb,
-		Habitats:       habitats,
-		CR:             sb.CR,
-		Tags:           tags,
-		EncounterNotes: encounterNotes,
-		ToolAdapter:    "lookup_creature",
-		Lore:           lore,
-	})
+	entry := CreatureEntry{
+		ID: id, Name: titleCase(srdName), SRDName: srdName, StatBlock: sb,
+		StatBlocks: map[string]domain.StatBlock{"dnd5e": sb},
+		Habitats: habitats, CR: sb.CR, Tags: tags,
+		EncounterNotes: encounterNotes, ToolAdapter: "lookup_creature", Lore: lore,
+	}
+	NormalizeCreatureEntry(&entry)
+	p.Creatures = append(p.Creatures, entry)
 }
 
 // AddItem appends an item.
@@ -171,6 +166,11 @@ func BindToolFromCanonical(p *Pack, canonicalID, name, description, category str
 func LinkCityToRegion(p *Pack, regionID, cityID string) {
 	for i := range p.Regions {
 		if p.Regions[i].ID == regionID {
+			for _, existing := range p.Regions[i].CityIDs {
+				if existing == cityID {
+					return
+				}
+			}
 			p.Regions[i].CityIDs = append(p.Regions[i].CityIDs, cityID)
 			return
 		}
@@ -183,11 +183,15 @@ func LinkLocationToCity(p *Pack, cityID, districtID, locationID string) {
 		if p.Cities[i].ID != cityID {
 			continue
 		}
-		p.Cities[i].LocationIDs = append(p.Cities[i].LocationIDs, locationID)
+		if !stringSliceContains(p.Cities[i].LocationIDs, locationID) {
+			p.Cities[i].LocationIDs = append(p.Cities[i].LocationIDs, locationID)
+		}
 		if districtID != "" {
 			for j := range p.Cities[i].Districts {
 				if p.Cities[i].Districts[j].ID == districtID {
-					p.Cities[i].Districts[j].LocationIDs = append(p.Cities[i].Districts[j].LocationIDs, locationID)
+					if !stringSliceContains(p.Cities[i].Districts[j].LocationIDs, locationID) {
+						p.Cities[i].Districts[j].LocationIDs = append(p.Cities[i].Districts[j].LocationIDs, locationID)
+					}
 				}
 			}
 		}
@@ -199,10 +203,24 @@ func LinkLocationToCity(p *Pack, cityID, districtID, locationID string) {
 func LinkWildernessLocation(p *Pack, regionID, locationID string) {
 	for i := range p.Regions {
 		if p.Regions[i].ID == regionID {
+			for _, existing := range p.Regions[i].LocationIDs {
+				if existing == locationID {
+					return
+				}
+			}
 			p.Regions[i].LocationIDs = append(p.Regions[i].LocationIDs, locationID)
 			return
 		}
 	}
+}
+
+func stringSliceContains(ss []string, want string) bool {
+	for _, s := range ss {
+		if s == want {
+			return true
+		}
+	}
+	return false
 }
 
 func titleCase(s string) string {

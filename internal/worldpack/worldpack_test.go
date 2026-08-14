@@ -26,7 +26,7 @@ func TestBuiltinShatteredVale(t *testing.T) {
 		t.Fatalf("id=%q", p.ID)
 	}
 	if p.Setting.SuggestedRulesystem != "dnd5e" {
-		t.Fatalf("rulesystem=%q", p.Setting.RulesystemID)
+		t.Fatalf("rulesystem=%q", p.Setting.SuggestedRulesystem)
 	}
 	if len(p.Regions) < 4 {
 		t.Fatalf("regions=%d want >=4", len(p.Regions))
@@ -146,5 +146,34 @@ func TestBuiltinCaribdus(t *testing.T) {
 	}
 	if p.Setting.WorldRules.Magic == "" {
 		t.Fatal("world rules missing")
+	}
+}
+
+
+func TestBuiltinMistfallCoast(t *testing.T) {
+	p, err := worldpack.Builtin("mistfall_coast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Setting.SuggestedRulesystem != "d100" {
+		t.Fatalf("suggested_rulesystem=%q", p.Setting.SuggestedRulesystem)
+	}
+	if len(p.Cities) < 2 {
+		t.Fatalf("cities=%d", len(p.Cities))
+	}
+	for _, c := range p.Creatures {
+		if _, ok := c.StatBlocks["d100"]; !ok {
+			t.Fatalf("creature %q missing d100 stat block", c.ID)
+		}
+	}
+}
+
+func TestSessionConfigValidate(t *testing.T) {
+	cfg := worldpack.SessionConfig{WorldID: "mistfall_coast", RulesystemID: "d100"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (worldpack.SessionConfig{}).Validate(); err == nil {
+		t.Fatal("expected error")
 	}
 }

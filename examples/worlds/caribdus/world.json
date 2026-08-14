@@ -39,8 +39,7 @@
       "savage_worlds",
       "dnd5e",
       "d100"
-    ],
-    "rulesystem_id": "savage_worlds"
+    ]
   },
   "regions": [
     {
@@ -64,9 +63,6 @@
       "description": "The heart of Caribdus — crowded anchorages, reef mazes, and the three great ports.",
       "biome": "archipelago",
       "city_ids": [
-        "puerto_sombrio",
-        "perla_azul",
-        "fuerte_almirez",
         "puerto_sombrio",
         "perla_azul",
         "fuerte_almirez"
@@ -996,7 +992,8 @@
       "id": "creature_reef_shark",
       "name": "Reef Shark",
       "stat_block": {
-        "speed": "Swim 12",
+        "ac": 12,
+        "max_hp": 22,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1005,40 +1002,85 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Normal",
-        "type": "Savage Worlds profile",
-        "traits": [
-          "Agility A",
-          "Spirit F",
-          "Strength 8",
-          "Fighting 6",
-          "Pack hunter; +2 attack when blood in water"
-        ],
+        "cr": "1",
+        "type": "Beast",
         "actions": [
           {
-            "name": "Primary",
-            "damage": "d6 bite"
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d8+1"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1",
+          "type": "Beast",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d8+1"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Swim 12",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Normal",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit F",
+            "Strength 8",
+            "Fighting 6",
+            "Pack hunter"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "d6 bite"
+            }
+          ]
+        }
       },
       "habitats": [
         "reef",
         "coast",
         "open_sea"
       ],
+      "cr": "1",
       "tags": [
         "beast",
         "aquatic"
       ],
       "encounter_notes": "1d4+1 in bloodied water near reefs.",
       "tool_adapter": "lookup_creature",
-      "lore": "Caribdus sailors call them 'red fins'."
+      "lore": "Caribdus sailors call them red fins."
     },
     {
       "id": "creature_giant_octopus",
       "name": "Giant Octopus",
       "stat_block": {
-        "speed": "Swim 8",
+        "ac": 11,
+        "max_hp": 52,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1047,40 +1089,85 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Large",
-        "type": "Savage Worlds profile",
-        "traits": [
-          "Agility A",
-          "Spirit G",
-          "Strength 12",
-          "Fighting 8",
-          "Grapple on raise; ink cloud"
-        ],
+        "cr": "1",
+        "type": "Monstrosity",
         "actions": [
           {
-            "name": "Primary",
-            "damage": "2d6 tentacle"
+            "name": "Attack",
+            "to_hit": "+5",
+            "damage": "2d6+3"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 11,
+          "max_hp": 52,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1",
+          "type": "Monstrosity",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+5",
+              "damage": "2d6+3"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Swim 8",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Large",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit G",
+            "Strength 12",
+            "Fighting 8",
+            "Grapple on raise"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "2d6 tentacle"
+            }
+          ]
+        }
       },
       "habitats": [
         "reef",
         "deep",
         "ship"
       ],
+      "cr": "1",
       "tags": [
         "beast",
         "aquatic"
       ],
       "encounter_notes": "One per sunken wreck or night dive.",
       "tool_adapter": "lookup_creature",
-      "lore": "Smugglers train juveniles as living mooring lines — poorly."
+      "lore": "Smugglers train juveniles poorly."
     },
     {
       "id": "creature_drowned_sailor",
       "name": "Drowned Sailor",
       "stat_block": {
-        "speed": "Swim 6",
+        "ac": 11,
+        "max_hp": 22,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1089,27 +1176,77 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Normal",
-        "type": "Savage Worlds profile",
+        "cr": "1/2",
+        "type": "Undead",
         "traits": [
-          "Agility A",
-          "Spirit F",
-          "Strength 8",
-          "Fighting 6",
-          "Undead; Fear check on first sight"
+          "Undead"
         ],
         "actions": [
           {
-            "name": "Primary",
-            "damage": "d6 rust-cutlass"
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 11,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Undead",
+          "traits": [
+            "Undead"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Swim 6",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Normal",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit F",
+            "Strength 8",
+            "Fighting 6",
+            "Undead"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "d6 rust-cutlass"
+            }
+          ]
+        }
       },
       "habitats": [
         "ghost_shoals",
         "wreck",
         "open_sea"
       ],
+      "cr": "1/2",
       "tags": [
         "undead",
         "aquatic"
@@ -1122,7 +1259,8 @@
       "id": "creature_bruma_marina",
       "name": "Bruma Marina",
       "stat_block": {
-        "speed": "Swim 8",
+        "ac": 13,
+        "max_hp": 45,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1131,39 +1269,84 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Normal",
-        "type": "Savage Worlds profile",
-        "traits": [
-          "Agility A",
-          "Spirit G",
-          "Strength 10",
-          "Fighting 8",
-          "Sea hag analog; ill omen; curse on wound"
-        ],
+        "cr": "2",
+        "type": "Monstrosity",
         "actions": [
           {
-            "name": "Primary",
-            "damage": "d6 claws"
+            "name": "Attack",
+            "to_hit": "+4",
+            "damage": "1d8+2"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 13,
+          "max_hp": 45,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "2",
+          "type": "Monstrosity",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+4",
+              "damage": "1d8+2"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Swim 8",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Normal",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit G",
+            "Strength 10",
+            "Fighting 8",
+            "Sea hag analog"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "d6 claws"
+            }
+          ]
+        }
       },
       "habitats": [
         "ghost_shoals",
         "mist"
       ],
+      "cr": "2",
       "tags": [
         "monstrosity",
         "sea-witch"
       ],
       "encounter_notes": "Solitary in shoals; with 1d4 drowned sailors.",
       "tool_adapter": "lookup_creature",
-      "lore": "Covens deny kinship; sailors disagree."
+      "lore": "Covens deny kinship."
     },
     {
       "id": "creature_pirate_crew",
       "name": "Pirate Crew",
       "stat_block": {
-        "speed": "Pace 6",
+        "ac": 12,
+        "max_hp": 11,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1172,32 +1355,82 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Normal",
-        "type": "Savage Worlds profile",
+        "cr": "1/8",
+        "type": "Humanoid",
         "traits": [
-          "Agility A",
-          "Spirit F",
-          "Strength 6",
-          "Fighting 6",
-          "Wild Attack optional; gang up"
+          "Sea Legs"
         ],
         "actions": [
           {
-            "name": "Primary",
-            "damage": "d6 cutlass"
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 11,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/8",
+          "type": "Humanoid",
+          "traits": [
+            "Sea Legs"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Pace 6",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Normal",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit F",
+            "Strength 6",
+            "Fighting 6",
+            "Wild Attack"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "d6 cutlass"
+            }
+          ]
+        }
       },
       "habitats": [
         "urban",
         "coast",
         "open_sea"
       ],
+      "cr": "1/8",
       "tags": [
         "humanoid",
         "pirate"
       ],
-      "encounter_notes": "Crew of 6–12 with one Wild Card captain.",
+      "encounter_notes": "Crew of 6-12 with one Wild Card captain.",
       "tool_adapter": "lookup_creature",
       "lore": "Mix of Corsair Council and freelancers."
     },
@@ -1205,7 +1438,8 @@
       "id": "creature_giant_crab",
       "name": "Giant Crab",
       "stat_block": {
-        "speed": "Pace 6",
+        "ac": 15,
+        "max_hp": 26,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1214,39 +1448,84 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Large",
-        "type": "Savage Worlds profile",
-        "traits": [
-          "Agility A",
-          "Spirit G",
-          "Strength 14",
-          "Fighting 8",
-          "Hard shell +2 armor"
-        ],
+        "cr": "1/2",
+        "type": "Beast",
         "actions": [
           {
-            "name": "Primary",
-            "damage": "2d6 pincer"
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "2d6+1"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 15,
+          "max_hp": 26,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Beast",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "2d6+1"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Pace 6",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Large",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit G",
+            "Strength 14",
+            "Fighting 8",
+            "Hard shell"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "2d6 pincer"
+            }
+          ]
+        }
       },
       "habitats": [
         "reef",
         "coast"
       ],
+      "cr": "1/2",
       "tags": [
         "beast",
         "aquatic"
       ],
-      "encounter_notes": "1–2 on tidal flats or pearl beds.",
+      "encounter_notes": "1-2 on tidal flats or pearl beds.",
       "tool_adapter": "lookup_creature",
-      "lore": "Perla Azul divers carry hammers specifically for them."
+      "lore": "Perla Azul divers carry hammers."
     },
     {
       "id": "creature_jellyfish_swarm",
       "name": "Jellyfish Swarm",
       "stat_block": {
-        "speed": "Swim 4",
+        "ac": 11,
+        "max_hp": 18,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1255,40 +1534,85 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Large",
-        "type": "Savage Worlds profile",
-        "traits": [
-          "Agility A",
-          "Spirit G",
-          "Strength 8",
-          "Fighting 6",
-          "Touch attack; poison fatigue"
-        ],
+        "cr": "1/2",
+        "type": "Beast",
         "actions": [
           {
-            "name": "Primary",
-            "damage": "d4 sting"
+            "name": "Attack",
+            "to_hit": "+2",
+            "damage": "1d4"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 11,
+          "max_hp": 18,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Beast",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+2",
+              "damage": "1d4"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Swim 4",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Large",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit G",
+            "Strength 8",
+            "Fighting 6",
+            "Poison fatigue"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "d4 sting"
+            }
+          ]
+        }
       },
       "habitats": [
         "reef",
         "open_sea",
         "deep"
       ],
+      "cr": "1/2",
       "tags": [
         "beast",
         "aquatic"
       ],
-      "encounter_notes": "Swarm in warm currents; Perception DC 12 to spot.",
+      "encounter_notes": "Swarm in warm currents.",
       "tool_adapter": "lookup_creature",
-      "lore": "Called 'crown's lace' by Almirez marines."
+      "lore": "Called crown lace by Almirez marines."
     },
     {
       "id": "creature_ghost_pirate",
       "name": "Ghost Pirate",
       "stat_block": {
-        "speed": "Pace 6",
+        "ac": 13,
+        "max_hp": 45,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1297,26 +1621,76 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Normal",
-        "type": "Savage Worlds profile",
+        "cr": "3",
+        "type": "Undead",
         "traits": [
-          "Agility A",
-          "Spirit G",
-          "Strength 10",
-          "Fighting 8",
-          "Undead; immune normal weapons unless silver or magic"
+          "Undead"
         ],
         "actions": [
           {
-            "name": "Primary",
-            "damage": "d8 ethereal cutlass"
+            "name": "Attack",
+            "to_hit": "+5",
+            "damage": "1d8+2"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 13,
+          "max_hp": 45,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "3",
+          "type": "Undead",
+          "traits": [
+            "Undead"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+5",
+              "damage": "1d8+2"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Pace 6",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Normal",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit G",
+            "Strength 10",
+            "Fighting 8",
+            "Undead"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "d8 ethereal cutlass"
+            }
+          ]
+        }
       },
       "habitats": [
         "ghost_shoals",
         "wreck"
       ],
+      "cr": "3",
       "tags": [
         "undead",
         "pirate"
@@ -1329,7 +1703,8 @@
       "id": "creature_leviathan_spawn",
       "name": "Leviathan Spawn",
       "stat_block": {
-        "speed": "Swim 10",
+        "ac": 14,
+        "max_hp": 95,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1338,39 +1713,84 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Huge",
-        "type": "Savage Worlds profile",
-        "traits": [
-          "Agility A",
-          "Spirit G",
-          "Strength 24",
-          "Fighting 12",
-          "Swallow whole on raise+4"
-        ],
+        "cr": "5",
+        "type": "Monstrosity",
         "actions": [
           {
-            "name": "Primary",
-            "damage": "3d6 bite"
+            "name": "Attack",
+            "to_hit": "+7",
+            "damage": "3d6+4"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 14,
+          "max_hp": 95,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "5",
+          "type": "Monstrosity",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+7",
+              "damage": "3d6+4"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Swim 10",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Huge",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit G",
+            "Strength 24",
+            "Fighting 12",
+            "Swallow whole"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "3d6 bite"
+            }
+          ]
+        }
       },
       "habitats": [
         "deep",
         "open_sea"
       ],
+      "cr": "5",
       "tags": [
         "monstrosity",
         "horror"
       ],
       "encounter_notes": "Solitary near trench; triggers Fear.",
       "tool_adapter": "lookup_creature",
-      "lore": "Admirals deny reports; divers do not."
+      "lore": "Admirals deny reports."
     },
     {
       "id": "creature_barnacle_zombie",
       "name": "Barnacle Zombie",
       "stat_block": {
-        "speed": "Pace 4",
+        "ac": 8,
+        "max_hp": 22,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1379,27 +1799,77 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Normal",
-        "type": "Savage Worlds profile",
+        "cr": "1/2",
+        "type": "Undead",
         "traits": [
-          "Agility A",
-          "Spirit F",
-          "Strength 10",
-          "Fighting 6",
-          "Undead Fortitude analog; slow"
+          "Undead"
         ],
         "actions": [
           {
-            "name": "Primary",
-            "damage": "d6 slam"
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 8,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Undead",
+          "traits": [
+            "Undead"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Pace 4",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Normal",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit F",
+            "Strength 10",
+            "Fighting 6",
+            "Slow undead"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "d6 slam"
+            }
+          ]
+        }
       },
       "habitats": [
         "wreck",
         "ghost_shoals",
         "ship"
       ],
+      "cr": "1/2",
       "tags": [
         "undead",
         "aquatic"
@@ -1412,7 +1882,8 @@
       "id": "creature_sea_witch_familiar",
       "name": "Sea Witch Familiar",
       "stat_block": {
-        "speed": "Fly 8",
+        "ac": 12,
+        "max_hp": 5,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1421,26 +1892,70 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Small",
-        "type": "Savage Worlds profile",
-        "traits": [
-          "Agility A",
-          "Spirit G",
-          "Strength 6",
-          "Fighting 6",
-          "Spell support; binds to coven hag"
-        ],
+        "cr": "0",
+        "type": "Beast",
         "actions": [
           {
-            "name": "Primary",
-            "damage": "d4 talons"
+            "name": "Attack",
+            "to_hit": "+2",
+            "damage": "1d4"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 5,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "0",
+          "type": "Beast",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+2",
+              "damage": "1d4"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Fly 8",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Small",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit G",
+            "Strength 6",
+            "Fighting 6",
+            "Familiar"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "d4 talons"
+            }
+          ]
+        }
       },
       "habitats": [
         "ghost_shoals",
         "urban"
       ],
+      "cr": "0",
       "tags": [
         "beast",
         "familiar"
@@ -1453,7 +1968,8 @@
       "id": "creature_crown_marine",
       "name": "Crown Marine",
       "stat_block": {
-        "speed": "Pace 6",
+        "ac": 14,
+        "max_hp": 32,
         "abilities": {
           "str": 0,
           "dex": 0,
@@ -1462,32 +1978,82 @@
           "wis": 0,
           "cha": 0
         },
-        "size": "Normal",
-        "type": "Savage Worlds profile",
+        "cr": "1/2",
+        "type": "Humanoid",
         "traits": [
-          "Agility A",
-          "Spirit F",
-          "Strength 8",
-          "Fighting 6",
-          "Volley fire +1 when in squad of 4+"
+          "Marine discipline"
         ],
         "actions": [
           {
-            "name": "Primary",
-            "damage": "d8 flintlock"
+            "name": "Attack",
+            "to_hit": "+4",
+            "damage": "2d8"
           }
         ]
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 14,
+          "max_hp": 32,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "traits": [
+            "Marine discipline"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+4",
+              "damage": "2d8"
+            }
+          ]
+        },
+        "savage_worlds": {
+          "speed": "Pace 6",
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "size": "Normal",
+          "type": "Savage Worlds profile",
+          "traits": [
+            "Agility A",
+            "Spirit F",
+            "Strength 8",
+            "Fighting 6",
+            "Volley fire"
+          ],
+          "actions": [
+            {
+              "name": "Primary",
+              "damage": "d8 flintlock"
+            }
+          ]
+        }
       },
       "habitats": [
         "urban",
         "fort",
         "naval"
       ],
+      "cr": "1/2",
       "tags": [
         "humanoid",
         "military"
       ],
-      "encounter_notes": "Squad of 4–8 with sergeant Wild Card.",
+      "encounter_notes": "Squad of 4-8 with sergeant Wild Card.",
       "tool_adapter": "lookup_creature",
       "lore": "Fuerte Almirez issue."
     }
@@ -3135,7 +3701,7 @@
     "notes": "Future engine wiring maps worldpack query tools to adventure module lookups."
   },
   "metadata": {
-    "generated_at": "2026-08-14T12:15:00Z",
+    "generated_at": "2026-08-14T12:30:40Z",
     "generator": "worldpack-gen"
   }
 }

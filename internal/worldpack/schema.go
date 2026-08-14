@@ -55,7 +55,6 @@ type Setting struct {
 	Politics            Politics   `json:"politics" yaml:"politics"`
 	SuggestedRulesystem string     `json:"suggested_rulesystem,omitempty" yaml:"suggested_rulesystem,omitempty"`
 	PlayableWith        []string   `json:"playable_with,omitempty" yaml:"playable_with,omitempty"`
-	RulesystemID        string     `json:"rulesystem_id,omitempty" yaml:"rulesystem_id,omitempty"`
 }
 
 type WorldRules struct {
@@ -155,12 +154,13 @@ type NPCToolBinding struct {
 	Notes      string         `json:"notes,omitempty" yaml:"notes,omitempty"`
 }
 
-// CreatureEntry is a bestiary entry with SRD stat block and habitat metadata.
+// CreatureEntry is a bestiary entry with optional per-rulesystem stat blocks.
 type CreatureEntry struct {
 	ID             string            `json:"id" yaml:"id"`
 	Name           string            `json:"name" yaml:"name"`
 	SRDName        string            `json:"srd_name,omitempty" yaml:"srd_name,omitempty"`
-	StatBlock      domain.StatBlock  `json:"stat_block" yaml:"stat_block"`
+	StatBlock      domain.StatBlock             `json:"stat_block,omitempty" yaml:"stat_block,omitempty"`
+	StatBlocks     map[string]domain.StatBlock  `json:"stat_blocks,omitempty" yaml:"stat_blocks,omitempty"`
 	Habitats       []string          `json:"habitats,omitempty" yaml:"habitats,omitempty"`
 	CR             string            `json:"cr,omitempty" yaml:"cr,omitempty"`
 	Tags           []string          `json:"tags,omitempty" yaml:"tags,omitempty"`

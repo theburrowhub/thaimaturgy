@@ -23,7 +23,7 @@ func Builtin(id string) (*Pack, error) {
 	return f(), nil
 }
 
-var canonicalWorldIDs = []string{"shattered_vale", "caribdus"}
+var canonicalWorldIDs = []string{"shattered_vale", "caribdus", "mistfall_coast"}
 
 func BuiltinIDs() []string { return append([]string(nil), canonicalWorldIDs...) }
 

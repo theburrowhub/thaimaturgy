@@ -77,6 +77,8 @@ func ValidatePack(p *Pack) []ValidationIssue {
 			add("regions."+r.ID, "duplicate id")
 		}
 		regionIDs[r.ID] = struct{}{}
+		validateNoDuplicateRefs("regions."+r.ID+".city_ids", r.CityIDs, add)
+		validateNoDuplicateRefs("regions."+r.ID+".location_ids", r.LocationIDs, add)
 	}
 	for _, c := range p.Cities {
 		if c.ID == "" {
@@ -87,6 +89,7 @@ func ValidatePack(p *Pack) []ValidationIssue {
 			add("cities."+c.ID, "duplicate id")
 		}
 		cityIDs[c.ID] = struct{}{}
+		validateNoDuplicateRefs("cities."+c.ID+".location_ids", c.LocationIDs, add)
 		if c.RegionID != "" {
 			if _, ok := regionIDs[c.RegionID]; !ok {
 				add("cities."+c.ID, fmt.Sprintf("unknown region %q", c.RegionID))
@@ -173,6 +176,9 @@ func ValidatePack(p *Pack) []ValidationIssue {
 			add("creatures."+c.ID, "duplicate id")
 		}
 		creatureIDs[c.ID] = struct{}{}
+		if c.StatBlock.Type == "" && c.StatBlock.CR == "" && len(c.StatBlocks) == 0 {
+			add("creatures."+c.ID, "stat_block or stat_blocks required")
+		}
 	}
 	for _, it := range p.Items {
 		if it.ID == "" {
@@ -282,6 +288,19 @@ func ValidatePack(p *Pack) []ValidationIssue {
 }
 
 // ValidatePackStrict returns an error if any issues are found.
+func validateNoDuplicateRefs(path string, ids []string, add func(string, string)) {
+	seen := map[string]struct{}{}
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			add(path, fmt.Sprintf("duplicate reference %q", id))
+		}
+		seen[id] = struct{}{}
+	}
+}
+
 func ValidatePackStrict(p *Pack) error {
 	issues := ValidatePack(p)
 	if len(issues) == 0 {

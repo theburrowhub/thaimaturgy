@@ -40,8 +40,7 @@
       "dnd5e",
       "savage_worlds",
       "d100"
-    ],
-    "rulesystem_id": "dnd5e"
+    ]
   },
   "regions": [
     {
@@ -50,7 +49,6 @@
       "description": "Rolling moorland and broken keeps north of the vale. Bandits and undead haunt the old imperial roads.",
       "biome": "grassland",
       "city_ids": [
-        "thornwall",
         "thornwall"
       ],
       "location_ids": [
@@ -71,7 +69,6 @@
       "description": "Cliff-lined shores and fishing villages where smugglers and sahuagin rumors mix with salt spray.",
       "biome": "coastal",
       "city_ids": [
-        "millhaven",
         "millhaven"
       ],
       "location_ids": [
@@ -108,7 +105,6 @@
       "description": "Jagged peaks rich in ore. Hobgoblin legions drill in hidden valleys; ogres block high passes.",
       "biome": "mountain",
       "city_ids": [
-        "ironhold",
         "ironhold"
       ],
       "location_ids": [
@@ -1308,6 +1304,56 @@
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
       },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 15,
+          "max_hp": 7,
+          "hit_dice": "2d6",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 8,
+            "dex": 14,
+            "con": 10,
+            "int": 10,
+            "wis": 8,
+            "cha": 8
+          },
+          "cr": "1/4",
+          "xp": 50,
+          "proficiency_bonus": 2,
+          "size": "Small",
+          "type": "Humanoid (goblinoid)",
+          "alignment": "Neutral Evil",
+          "skills": [
+            "Stealth +6"
+          ],
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 9"
+          ],
+          "languages": [
+            "Common",
+            "Goblin"
+          ],
+          "traits": [
+            "Nimble Escape: can Disengage or Hide as a bonus action on each of its turns."
+          ],
+          "actions": [
+            {
+              "name": "Scimitar",
+              "to_hit": "+4",
+              "damage": "1d6+2 slashing"
+            },
+            {
+              "name": "Shortbow",
+              "description": "range 80/320 ft.",
+              "to_hit": "+4",
+              "damage": "1d6+2 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
       "habitats": [
         "forest",
         "underground",
@@ -1372,6 +1418,54 @@
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
       },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 5,
+          "hit_dice": "2d6-2",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 7,
+            "dex": 15,
+            "con": 9,
+            "int": 8,
+            "wis": 7,
+            "cha": 8
+          },
+          "cr": "1/8",
+          "xp": 25,
+          "proficiency_bonus": 2,
+          "size": "Small",
+          "type": "Humanoid (kobold)",
+          "alignment": "Lawful Evil",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 8"
+          ],
+          "languages": [
+            "Common",
+            "Draconic"
+          ],
+          "traits": [
+            "Sunlight Sensitivity: disadvantage on attacks and Perception (sight) in sunlight.",
+            "Pack Tactics: advantage on attacks against a creature if an ally is within 5 ft. of it."
+          ],
+          "actions": [
+            {
+              "name": "Dagger",
+              "to_hit": "+4",
+              "damage": "1d4+2 piercing"
+            },
+            {
+              "name": "Sling",
+              "description": "range 30/120 ft.",
+              "to_hit": "+4",
+              "damage": "1d4+2 bludgeoning"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
       "habitats": [
         "mountain",
         "underground"
@@ -1429,6 +1523,48 @@
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
       },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 13,
+          "max_hp": 11,
+          "hit_dice": "2d8+2",
+          "speed": "40 ft.",
+          "abilities": {
+            "str": 12,
+            "dex": 15,
+            "con": 12,
+            "int": 3,
+            "wis": 12,
+            "cha": 6
+          },
+          "cr": "1/4",
+          "xp": 50,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Beast",
+          "alignment": "Unaligned",
+          "skills": [
+            "Perception +3",
+            "Stealth +4"
+          ],
+          "senses": [
+            "passive Perception 13"
+          ],
+          "traits": [
+            "Keen Hearing and Smell: advantage on Perception checks relying on hearing or smell.",
+            "Pack Tactics: advantage on attacks against a creature if an ally is within 5 ft. of it."
+          ],
+          "actions": [
+            {
+              "name": "Bite",
+              "description": "target DC 11 STR save or be knocked prone.",
+              "to_hit": "+4",
+              "damage": "2d4+2 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
       "habitats": [
         "forest",
         "grassland"
@@ -1481,6 +1617,44 @@
           }
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 7,
+          "hit_dice": "2d6",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 7,
+            "dex": 15,
+            "con": 11,
+            "int": 2,
+            "wis": 10,
+            "cha": 4
+          },
+          "cr": "1/8",
+          "xp": 25,
+          "proficiency_bonus": 2,
+          "size": "Small",
+          "type": "Beast",
+          "alignment": "Unaligned",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "traits": [
+            "Keen Smell: advantage on Perception checks relying on smell.",
+            "Pack Tactics: advantage on attacks against a creature if an ally is within 5 ft. of it."
+          ],
+          "actions": [
+            {
+              "name": "Bite",
+              "to_hit": "+4",
+              "damage": "1d4+2 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
       },
       "habitats": [
         "urban",
@@ -1540,6 +1714,48 @@
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
       },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 11,
+          "hit_dice": "2d8+2",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 11,
+            "dex": 12,
+            "con": 12,
+            "int": 10,
+            "wis": 10,
+            "cha": 10
+          },
+          "cr": "1/8",
+          "xp": 25,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid",
+          "alignment": "Any Non-Lawful",
+          "senses": [
+            "passive Perception 10"
+          ],
+          "languages": [
+            "any one language (usually Common)"
+          ],
+          "actions": [
+            {
+              "name": "Scimitar",
+              "to_hit": "+3",
+              "damage": "1d6+1 slashing"
+            },
+            {
+              "name": "Light Crossbow",
+              "description": "range 80/320 ft.",
+              "to_hit": "+3",
+              "damage": "1d8+1 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
       "habitats": [
         "road",
         "grassland",
@@ -1596,6 +1812,46 @@
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
       },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 16,
+          "max_hp": 11,
+          "hit_dice": "2d8+2",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 13,
+            "dex": 12,
+            "con": 12,
+            "int": 10,
+            "wis": 11,
+            "cha": 10
+          },
+          "cr": "1/8",
+          "xp": 25,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid",
+          "alignment": "Any",
+          "skills": [
+            "Perception +2"
+          ],
+          "senses": [
+            "passive Perception 12"
+          ],
+          "languages": [
+            "any one language (usually Common)"
+          ],
+          "actions": [
+            {
+              "name": "Spear",
+              "description": "or 1d8+1 if wielded two-handed; thrown range 20/60 ft.",
+              "to_hit": "+3",
+              "damage": "1d6+1 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
       "habitats": [
         "urban",
         "fortress"
@@ -1646,6 +1902,42 @@
           }
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 10,
+          "max_hp": 4,
+          "hit_dice": "1d8",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 10,
+            "dex": 10,
+            "con": 10,
+            "int": 10,
+            "wis": 10,
+            "cha": 10
+          },
+          "cr": "0",
+          "xp": 10,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid",
+          "alignment": "Any",
+          "senses": [
+            "passive Perception 10"
+          ],
+          "languages": [
+            "any one language (usually Common)"
+          ],
+          "actions": [
+            {
+              "name": "Club",
+              "to_hit": "+2",
+              "damage": "1d4 bludgeoning"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
       },
       "habitats": [
         "urban",
@@ -1716,6 +2008,59 @@
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
       },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 13,
+          "max_hp": 13,
+          "hit_dice": "2d8+4",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 10,
+            "dex": 14,
+            "con": 15,
+            "int": 6,
+            "wis": 8,
+            "cha": 5
+          },
+          "cr": "1/4",
+          "xp": 50,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Undead",
+          "alignment": "Lawful Evil",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 9"
+          ],
+          "languages": [
+            "understands the languages it knew in life but can't speak"
+          ],
+          "damage_immunities": [
+            "poison"
+          ],
+          "damage_vulnerabilities": [
+            "bludgeoning"
+          ],
+          "condition_immunities": [
+            "exhaustion",
+            "poisoned"
+          ],
+          "actions": [
+            {
+              "name": "Shortsword",
+              "to_hit": "+4",
+              "damage": "1d6+2 piercing"
+            },
+            {
+              "name": "Shortbow",
+              "description": "range 80/320 ft.",
+              "to_hit": "+4",
+              "damage": "1d6+2 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
       "habitats": [
         "ruins",
         "underground",
@@ -1780,6 +2125,55 @@
           }
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 8,
+          "max_hp": 22,
+          "hit_dice": "3d8+9",
+          "speed": "20 ft.",
+          "abilities": {
+            "str": 13,
+            "dex": 6,
+            "con": 16,
+            "int": 3,
+            "wis": 6,
+            "cha": 5
+          },
+          "cr": "1/4",
+          "xp": 50,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Undead",
+          "alignment": "Neutral Evil",
+          "saving_throws": [
+            "WIS +0"
+          ],
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 8"
+          ],
+          "languages": [
+            "understands the languages it knew in life but can't speak"
+          ],
+          "damage_immunities": [
+            "poison"
+          ],
+          "condition_immunities": [
+            "poisoned"
+          ],
+          "traits": [
+            "Undead Fortitude: if reduced to 0 HP by non-radiant, non-critical damage, makes a CON save (DC 5 + damage) to drop to 1 HP instead."
+          ],
+          "actions": [
+            {
+              "name": "Slam",
+              "to_hit": "+3",
+              "damage": "1d6+1 bludgeoning"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
       },
       "habitats": [
         "underground",
@@ -1848,6 +2242,57 @@
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
       },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "hit_dice": "5d8",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 13,
+            "dex": 15,
+            "con": 10,
+            "int": 7,
+            "wis": 10,
+            "cha": 6
+          },
+          "cr": "1",
+          "xp": 200,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Undead",
+          "alignment": "Chaotic Evil",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "languages": [
+            "Common"
+          ],
+          "damage_immunities": [
+            "poison"
+          ],
+          "condition_immunities": [
+            "charmed",
+            "exhaustion",
+            "poisoned"
+          ],
+          "actions": [
+            {
+              "name": "Bite",
+              "to_hit": "+2",
+              "damage": "2d6 piercing"
+            },
+            {
+              "name": "Claws",
+              "description": "if the target is a non-elf, non-undead creature it must succeed on a DC 10 CON save or be paralyzed for 1 minute (repeat save at end of each turn).",
+              "to_hit": "+4",
+              "damage": "2d4+2 slashing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
       "habitats": [
         "underground",
         "dungeon",
@@ -1914,6 +2359,56 @@
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
       },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 13,
+          "max_hp": 15,
+          "hit_dice": "2d8+6",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 16,
+            "dex": 12,
+            "con": 16,
+            "int": 7,
+            "wis": 11,
+            "cha": 10
+          },
+          "cr": "1/2",
+          "xp": 100,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid (orc)",
+          "alignment": "Chaotic Evil",
+          "skills": [
+            "Intimidation +2"
+          ],
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "languages": [
+            "Common",
+            "Orc"
+          ],
+          "traits": [
+            "Aggressive: as a bonus action, can move up to its speed toward a hostile creature it can see."
+          ],
+          "actions": [
+            {
+              "name": "Greataxe",
+              "to_hit": "+5",
+              "damage": "1d12+3 slashing"
+            },
+            {
+              "name": "Javelin",
+              "description": "range 30/120 ft.",
+              "to_hit": "+5",
+              "damage": "1d6+3 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
       "habitats": [
         "mountain",
         "grassland"
@@ -1976,6 +2471,54 @@
           }
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 18,
+          "max_hp": 11,
+          "hit_dice": "2d8+2",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 13,
+            "dex": 12,
+            "con": 12,
+            "int": 10,
+            "wis": 10,
+            "cha": 9
+          },
+          "cr": "1/2",
+          "xp": 100,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid (goblinoid)",
+          "alignment": "Lawful Evil",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "languages": [
+            "Common",
+            "Goblin"
+          ],
+          "traits": [
+            "Martial Advantage: once per turn, +2d6 damage to a creature it hits if an ally is within 5 ft. of the target."
+          ],
+          "actions": [
+            {
+              "name": "Longsword",
+              "description": "or 1d10+1 if wielded two-handed.",
+              "to_hit": "+3",
+              "damage": "1d8+1 slashing"
+            },
+            {
+              "name": "Longbow",
+              "description": "range 150/600 ft.",
+              "to_hit": "+3",
+              "damage": "1d8+1 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
       },
       "habitats": [
         "mountain",
@@ -2044,6 +2587,58 @@
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
       },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 16,
+          "max_hp": 27,
+          "hit_dice": "5d8+5",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 15,
+            "dex": 14,
+            "con": 13,
+            "int": 8,
+            "wis": 11,
+            "cha": 9
+          },
+          "cr": "1",
+          "xp": 200,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid (goblinoid)",
+          "alignment": "Chaotic Evil",
+          "skills": [
+            "Stealth +6",
+            "Survival +2"
+          ],
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "languages": [
+            "Common",
+            "Goblin"
+          ],
+          "traits": [
+            "Brute: a melee weapon deals one extra die of damage when it hits (included).",
+            "Surprise Attack: +7 (2d6) damage if it surprises a creature and hits it in the first round."
+          ],
+          "actions": [
+            {
+              "name": "Morningstar",
+              "to_hit": "+4",
+              "damage": "2d8+2 piercing (Brute die included)"
+            },
+            {
+              "name": "Javelin",
+              "description": "range 30/120 ft.; the extra melee die is the Brute trait.",
+              "to_hit": "+4",
+              "damage": "2d6+2 piercing in melee, 1d6+2 at range"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
       "habitats": [
         "forest",
         "underground"
@@ -2102,6 +2697,50 @@
           }
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 11,
+          "max_hp": 59,
+          "hit_dice": "7d10+21",
+          "speed": "40 ft.",
+          "abilities": {
+            "str": 19,
+            "dex": 8,
+            "con": 16,
+            "int": 5,
+            "wis": 7,
+            "cha": 7
+          },
+          "cr": "2",
+          "xp": 450,
+          "proficiency_bonus": 2,
+          "size": "Large",
+          "type": "Giant",
+          "alignment": "Chaotic Evil",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 8"
+          ],
+          "languages": [
+            "Common",
+            "Giant"
+          ],
+          "actions": [
+            {
+              "name": "Greatclub",
+              "to_hit": "+6",
+              "damage": "2d8+4 bludgeoning"
+            },
+            {
+              "name": "Javelin",
+              "description": "range 30/120 ft.",
+              "to_hit": "+6",
+              "damage": "2d6+4 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
       },
       "habitats": [
         "mountain",
@@ -2166,6 +2805,55 @@
           }
         ],
         "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 14,
+          "max_hp": 26,
+          "hit_dice": "4d10+4",
+          "speed": "30 ft., climb 30 ft.",
+          "abilities": {
+            "str": 14,
+            "dex": 16,
+            "con": 12,
+            "int": 2,
+            "wis": 11,
+            "cha": 4
+          },
+          "cr": "1",
+          "xp": 200,
+          "proficiency_bonus": 2,
+          "size": "Large",
+          "type": "Beast",
+          "alignment": "Unaligned",
+          "skills": [
+            "Stealth +7"
+          ],
+          "senses": [
+            "blindsight 10 ft.",
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "traits": [
+            "Spider Climb: can climb difficult surfaces, including upside down, without a check.",
+            "Web Sense: while in contact with a web, knows the location of any other creature in contact with the same web.",
+            "Web Walker: ignores movement restrictions caused by webbing."
+          ],
+          "actions": [
+            {
+              "name": "Bite",
+              "description": "DC 11 CON save; half poison damage on a success, and if reduced to 0 HP the target is stable but poisoned and paralyzed for 1 hour.",
+              "to_hit": "+5",
+              "damage": "1d8+3 piercing plus 2d8 poison"
+            },
+            {
+              "name": "Web (Recharge 5-6)",
+              "description": "ranged 30/60 ft., one creature; on a hit the target is restrained by webbing. The restrained target can use its action for a DC 12 Strength check to break free. The webbing can also be attacked and destroyed (AC 10; 5 HP; vulnerable to fire; immune to bludgeoning, poison, and psychic).",
+              "to_hit": "+5"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
       },
       "habitats": [
         "forest",
@@ -4289,7 +4977,7 @@
     "notes": "Future engine wiring maps worldpack query tools to adventure module lookups."
   },
   "metadata": {
-    "generated_at": "2026-08-14T12:15:00Z",
+    "generated_at": "2026-08-14T12:30:40Z",
     "generator": "worldpack-gen"
   }
 }
