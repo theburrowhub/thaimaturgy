@@ -109,6 +109,16 @@ h2 { font-size: 16px; margin: 18px 0 8px; color: var(--muted); text-transform: u
 .dice-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .dice-result { min-height: 22px; margin-top: 6px; }
 
+/* Novel editor modal */
+.modal-card.novel-card { width: min(900px, 96vw); display: flex; flex-direction: column; }
+.modal-head .small { font-weight: 400; }
+.novel-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.novel-text {
+  width: 100%; min-height: 52vh; resize: vertical; font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 12px;
+}
+.novel-text:disabled { opacity: .6; }
+
 /* Panel headers with inline actions */
 .panel-head { display: flex; align-items: center; gap: 6px; }
 .panel-head h3 { margin: 0; }

@@ -615,31 +615,150 @@ $("#rest").onclick = () => {
   runCommand("/rest " + k);
 };
 
+// --- Novel editor -------------------------------------------------------
+// A modal editor over the session's associated novelization: generate it from
+// the play session, edit the prose by hand, adjust it with AI (whole text or a
+// selection), save (optimistic concurrency) and export to Markdown/PDF.
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let novelVersion = ""; // version tag of the last loaded/saved novel
+let novelDirty = false;
+let novelBusy = false;
+
+function novelSetBusy(b) {
+  novelBusy = b;
+  ["#novel-generate", "#novel-save", "#novel-export-md", "#novel-export-pdf", "#novel-adjust", "#novel-instruction", "#novel-text"]
+    .forEach((sel) => { const e = $(sel); if (e) e.disabled = b; });
+}
+function novelSetState(msg) { $("#novel-state").textContent = msg; }
+function novelMarkDirty() { novelDirty = true; novelSetState("unsaved changes"); }
+$("#novel-text").addEventListener("input", novelMarkDirty);
+
+function closeNovelEditor() {
+  if (novelBusy) return; // don't abandon an in-flight AI job
+  if (novelDirty && !confirm("Discard unsaved changes to the novel?")) return;
+  $("#novel-modal").classList.add("hidden");
+}
 $("#novel").onclick = async () => {
   if (!current) return;
+  // Reset editor state up front, so a failed/slow load can't leave the previous
+  // session's text + version in the modal (which Save would then write here).
+  $("#novel-text").value = "";
+  novelVersion = "";
+  novelDirty = false;
+  $("#novel-modal").classList.remove("hidden");
+  novelSetBusy(true);
   try {
-    const j = await api("POST", "/sessions/" + encodeURIComponent(current) + "/novel");
-    status("Writing the novel from the session… this can take a minute.");
-    pollNovelJob(j.id);
-  } catch (e) { status(e.message, true); }
-};
-async function pollNovelJob(id, fails) {
-  fails = fails || 0;
-  try {
-    const j = await api("GET", "/novel-jobs/" + encodeURIComponent(id));
-    if (j.status === "running") { setTimeout(() => pollNovelJob(id, 0), 3000); return; }
-    if (j.status === "done") {
-      const fmt = confirm("The novel is ready.\n\nOK = download PDF, Cancel = download Markdown") ? "pdf" : "md";
-      downloadAuthed("/novel-jobs/" + encodeURIComponent(id) + "/download?format=" + fmt, current + "-novel." + fmt);
-      status("Novel ready.");
-    } else { status("Novel export failed: " + (j.error || "unknown error"), true); }
+    const r = await api("GET", "/sessions/" + encodeURIComponent(current) + "/novel");
+    $("#novel-text").value = r.text || "";
+    novelVersion = r.version || "";
+    novelDirty = false;
+    novelSetState(r.exists ? "loaded" : "no novel yet — Generate to start");
+    novelSetBusy(false); // re-enable editing only after a successful load
   } catch (e) {
-    // A transient poll error shouldn't strand a running export: retry with bounded
-    // backoff, and only give up (surfacing the job id to resume) after several tries.
-    if (fails < 5) { setTimeout(() => pollNovelJob(id, fails + 1), Math.min(3000 * (fails + 1), 15000)); }
-    else { status("Lost contact with novel job " + id + " (" + e.message + "). It may still finish; retry later.", true); }
+    status(e.message, true);
+    novelSetState("could not load — close and reopen to retry");
+    // Leave the mutation controls DISABLED so nothing can be saved over the wrong
+    // session, but clear the busy flag so the modal can still be closed.
+    novelBusy = false;
+  }
+};
+$("#novel-close").onclick = closeNovelEditor;
+$("#novel-modal").addEventListener("click", (e) => { if (e.target === $("#novel-modal")) closeNovelEditor(); });
+
+// awaitNovelJob polls a novel job (generate or adjust) to completion with bounded
+// backoff, returning the finished job or throwing on failure / lost contact.
+async function awaitNovelJob(id) {
+  let fails = 0;
+  for (;;) {
+    let j;
+    try { j = await api("GET", "/novel-jobs/" + encodeURIComponent(id)); fails = 0; }
+    catch (e) {
+      if (++fails > 5) throw new Error("lost contact with novel job " + id + " (" + e.message + ")");
+      await sleep(Math.min(3000 * fails, 15000));
+      continue;
+    }
+    if (j.status === "running") { await sleep(3000); continue; }
+    if (j.status === "done") return j;
+    throw new Error(j.error || "the AI job failed");
   }
 }
+
+async function saveNovel() {
+  const r = await api("PUT", "/sessions/" + encodeURIComponent(current) + "/novel",
+    { text: $("#novel-text").value, base_version: novelVersion });
+  novelVersion = r.version || "";
+  novelDirty = false;
+}
+
+$("#novel-generate").onclick = async () => {
+  if (!current || novelBusy) return;
+  if ($("#novel-text").value.trim() && !confirm("Generate a new novel from the session? This replaces the current text (unsaved edits are lost).")) return;
+  novelSetBusy(true);
+  novelSetState("writing the novel… this can take a minute");
+  try {
+    const j = await api("POST", "/sessions/" + encodeURIComponent(current) + "/novel");
+    await awaitNovelJob(j.id);
+    // The generate job persisted the result server-side; reload the saved text.
+    const r = await api("GET", "/sessions/" + encodeURIComponent(current) + "/novel");
+    $("#novel-text").value = r.text || "";
+    novelVersion = r.version || "";
+    novelDirty = false;
+    novelSetState("generated & saved");
+  } catch (e) { status(e.message, true); novelSetState("generation failed"); }
+  finally { novelSetBusy(false); }
+};
+
+$("#novel-adjust-form").onsubmit = async (e) => {
+  e.preventDefault();
+  if (!current || novelBusy) return;
+  const instruction = $("#novel-instruction").value.trim();
+  if (!instruction) { status("Type an adjustment instruction first.", true); return; }
+  const ta = $("#novel-text");
+  if (!ta.value.trim()) { status("Generate or write a novel first.", true); return; }
+  const selStart = ta.selectionStart, selEnd = ta.selectionEnd;
+  const selection = selStart !== selEnd ? ta.value.substring(selStart, selEnd) : "";
+  novelSetBusy(true);
+  novelSetState(selection ? "revising the selection…" : "revising the whole novel…");
+  try {
+    const j = await api("POST", "/sessions/" + encodeURIComponent(current) + "/novel/adjust",
+      { instruction, selection, text: ta.value });
+    const done = await awaitNovelJob(j.id);
+    const res = await api("GET", "/novel-jobs/" + encodeURIComponent(done.id) + "/result");
+    if (selection) {
+      ta.value = ta.value.slice(0, selStart) + (res.text || "") + ta.value.slice(selEnd);
+    } else {
+      ta.value = res.text || "";
+    }
+    novelMarkDirty();
+    novelSetState("adjusted — review and Save");
+    $("#novel-instruction").value = "";
+  } catch (err) { status(err.message, true); novelSetState("adjustment failed"); }
+  finally { novelSetBusy(false); }
+};
+
+$("#novel-save").onclick = async () => {
+  if (!current || novelBusy) return;
+  novelSetBusy(true);
+  try { await saveNovel(); novelSetState("saved"); status("Novel saved."); }
+  catch (e) { status(e.message, true); novelSetState("save failed — reload if it changed elsewhere"); }
+  finally { novelSetBusy(false); }
+};
+
+async function novelExport(fmt) {
+  if (!current || novelBusy) return;
+  // Export streams the SAVED novel, so persist pending edits first.
+  if (novelDirty) {
+    if (!confirm("Save your edits before exporting? Export uses the saved novel.")) return;
+    novelSetBusy(true);
+    try { await saveNovel(); novelSetState("saved"); }
+    catch (e) { status(e.message, true); novelSetBusy(false); return; }
+    novelSetBusy(false);
+  }
+  downloadAuthed("/sessions/" + encodeURIComponent(current) + "/novel/download?format=" + fmt, current + "-novel." + fmt);
+}
+$("#novel-export-md").onclick = () => novelExport("md");
+$("#novel-export-pdf").onclick = () => novelExport("pdf");
 
 $("#back").onclick = () => show("library");
 $("#save").onclick = async () => {

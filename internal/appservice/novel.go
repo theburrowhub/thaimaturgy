@@ -7,6 +7,19 @@ import (
 	"os"
 )
 
+// ErrSessionUnknown is returned by the novel-text operations when the named
+// session is neither open nor persisted, so a stray name can't create an orphan
+// "<name>.novel.md" on disk.
+var ErrSessionUnknown = errors.New("session not found")
+
+// SessionKnown reports whether a session name is open in memory or persisted on
+// disk.
+func (s *Service) SessionKnown(name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.takenLocked(name)
+}
+
 // novelVersion is a content hash used for optimistic-concurrency checks on the
 // saved novel. An empty novel (none saved yet) has the empty version "".
 func novelVersion(md string) string {
@@ -21,6 +34,9 @@ func novelVersion(md string) string {
 // optimistic concurrency, and whether one exists yet. A session with no novel
 // returns ("", "", false, nil).
 func (s *Service) NovelText(sessionName string) (md, version string, exists bool, err error) {
+	if !s.SessionKnown(sessionName) {
+		return "", "", false, ErrSessionUnknown
+	}
 	s.novelMu.Lock()
 	defer s.novelMu.Unlock()
 	md, err = s.store.LoadNovel(sessionName)
@@ -39,6 +55,9 @@ func (s *Service) NovelText(sessionName string) (md, version string, exists bool
 // new version tag on success. Pass the version from NovelText as baseVersion
 // ("" when saving over no existing novel).
 func (s *Service) SaveNovelText(sessionName, md, baseVersion string) (string, error) {
+	if !s.SessionKnown(sessionName) {
+		return "", ErrSessionUnknown
+	}
 	s.novelMu.Lock()
 	defer s.novelMu.Unlock()
 	if err := s.checkNovelVersionLocked(sessionName, baseVersion); err != nil {

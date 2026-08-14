@@ -161,6 +161,30 @@
     </div>
   </div>
 
+  <!-- Novel editor modal -->
+  <div id="novel-modal" class="modal hidden">
+    <div class="modal-card novel-card">
+      <div class="modal-head">
+        <span>Novel editor</span>
+        <span id="novel-state" class="muted small"></span>
+        <span class="spacer"></span>
+        <button id="novel-close" class="ghost">✕</button>
+      </div>
+      <div class="novel-toolbar">
+        <button id="novel-generate" class="ghost" title="Write a novel from this session (AI)">Generate</button>
+        <span class="spacer"></span>
+        <button id="novel-export-md" class="ghost">Export .md</button>
+        <button id="novel-export-pdf" class="ghost">Export .pdf</button>
+        <button id="novel-save">Save</button>
+      </div>
+      <form id="novel-adjust-form" class="row">
+        <input id="novel-instruction" placeholder="Adjust with AI, e.g. 'make chapter 2 darker' · select text first to revise only that" autocomplete="off">
+        <button type="submit" id="novel-adjust">Adjust ✨</button>
+      </form>
+      <textarea id="novel-text" class="novel-text" spellcheck="false" placeholder="No novel yet. Click Generate to write one from this session, then edit it here or adjust it with AI."></textarea>
+    </div>
+  </div>
+
   <div id="status" class="status"></div>
   <script src="/app.js"></script>
 </body>
