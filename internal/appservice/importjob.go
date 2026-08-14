@@ -3,6 +3,7 @@ package appservice
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,6 +21,17 @@ import (
 // importJobTimeout bounds a single AI-import job. AI authoring of a large module
 // (with continuation) can take many minutes; this is generous but not unbounded.
 const importJobTimeout = 45 * time.Minute
+
+// maxConcurrentImportJobs caps simultaneously-running AI imports, so repeated or
+// concurrent requests can't spawn unbounded 45-minute jobs / provider spend.
+const maxConcurrentImportJobs = 2
+
+// importJobRetention is how long a finished job is kept (for its status/result to
+// be polled) before eviction, so the jobs map can't grow for the process lifetime.
+const importJobRetention = 30 * time.Minute
+
+// ErrImportCapacity is returned when too many AI imports are already running.
+var ErrImportCapacity = errors.New("too many imports are already running; try again later")
 
 // ImportJobStatus is the lifecycle state of an AI-import job.
 type ImportJobStatus string
@@ -41,6 +53,8 @@ type ImportJob struct {
 	errMsg      string
 	adventureID string // set when done
 	adventure   string // resulting title, for display
+	createdAt   time.Time
+	endedAt     time.Time // when it reached a terminal state (for eviction)
 }
 
 // Snapshot returns a JSON-friendly view of the job under its lock.
@@ -61,12 +75,12 @@ func (j *ImportJob) Snapshot() map[string]any {
 func (j *ImportJob) setStage(s string) { j.mu.Lock(); j.stage = s; j.mu.Unlock() }
 func (j *ImportJob) fail(err error) {
 	j.mu.Lock()
-	j.status, j.errMsg = ImportError, err.Error()
+	j.status, j.errMsg, j.endedAt = ImportError, err.Error(), time.Now()
 	j.mu.Unlock()
 }
 func (j *ImportJob) finish(id, title string) {
 	j.mu.Lock()
-	j.status, j.adventureID, j.adventure = ImportDone, id, title
+	j.status, j.adventureID, j.adventure, j.endedAt = ImportDone, id, title, time.Now()
 	j.mu.Unlock()
 }
 
@@ -86,13 +100,32 @@ func (s *Service) StartImportJob(kind, src, title string) (*ImportJob, error) {
 		return nil, fmt.Errorf("no AI provider configured")
 	}
 
+	now := time.Now()
 	s.jobMu.Lock()
-	s.jobSeq++
-	id := "imp-" + strconv.Itoa(s.jobSeq)
-	job := &ImportJob{ID: id, status: ImportRunning, stage: "starting"}
 	if s.importJobs == nil {
 		s.importJobs = make(map[string]*ImportJob)
 	}
+	// Evict finished jobs past their retention and count the running ones, so
+	// admission is bounded (no unbounded goroutines / provider spend / memory).
+	running := 0
+	for id, j := range s.importJobs {
+		j.mu.Lock()
+		isRunning := j.status == ImportRunning
+		expired := !isRunning && !j.endedAt.IsZero() && now.Sub(j.endedAt) > importJobRetention
+		j.mu.Unlock()
+		if expired {
+			delete(s.importJobs, id)
+		} else if isRunning {
+			running++
+		}
+	}
+	if running >= maxConcurrentImportJobs {
+		s.jobMu.Unlock()
+		return nil, ErrImportCapacity
+	}
+	s.jobSeq++
+	id := "imp-" + strconv.Itoa(s.jobSeq)
+	job := &ImportJob{ID: id, status: ImportRunning, stage: "starting", createdAt: now}
 	s.importJobs[id] = job
 	s.jobMu.Unlock()
 

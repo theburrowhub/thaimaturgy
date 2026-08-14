@@ -1,10 +1,41 @@
 package appservice
 
 import (
+	"errors"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 )
+
+// TestImportJobAdmission verifies the concurrency cap (reject when too many are
+// running) and that expired terminal jobs are evicted on admission — both
+// deterministically, without launching real AI goroutines.
+func TestImportJobAdmission(t *testing.T) {
+	svc, _ := newService(t)
+	svc.SetProvider(&planProvider{}) // non-nil so admission is reached
+
+	svc.jobMu.Lock()
+	svc.importJobs = map[string]*ImportJob{}
+	for i := 0; i < maxConcurrentImportJobs; i++ {
+		svc.importJobs["run"+strconv.Itoa(i)] = &ImportJob{ID: "run" + strconv.Itoa(i), status: ImportRunning}
+	}
+	// An old, finished job that should be evicted on the next admission pass.
+	svc.importJobs["old"] = &ImportJob{ID: "old", status: ImportDone, endedAt: time.Now().Add(-2 * importJobRetention)}
+	svc.jobMu.Unlock()
+
+	// At capacity → rejected with ErrImportCapacity (no goroutine launched).
+	if _, err := svc.StartImportJob("images", t.TempDir(), "X"); !errors.Is(err, ErrImportCapacity) {
+		t.Fatalf("StartImportJob at capacity = %v; want ErrImportCapacity", err)
+	}
+	// The expired job was evicted during the admission pass.
+	svc.jobMu.Lock()
+	_, stillThere := svc.importJobs["old"]
+	svc.jobMu.Unlock()
+	if stillThere {
+		t.Error("an expired terminal job should be evicted on admission")
+	}
+}
 
 func TestImportJobLifecycle(t *testing.T) {
 	svc, _ := newService(t)
