@@ -4,25 +4,48 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // The novelization of a session is stored as a sibling Markdown file next to the
 // session JSON (mirroring the journal at "<name>.journal.md"), so the possibly
 // large prose stays out of the session file and can be re-opened and edited.
-func (s *Storage) sessionNovelPath(name string) string {
-	return filepath.Join(s.basePath, SessionsDir, name+".novel.md")
+//
+// The session name becomes a filename, so it is validated and the resolved path
+// is confirmed to stay inside the sessions directory — a name like
+// "../../etc/passwd" must never let a caller read or clobber a file outside it.
+func (s *Storage) sessionNovelPath(name string) (string, error) {
+	if name == "" || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") || strings.ContainsRune(name, 0) {
+		return "", fmt.Errorf("invalid session name: %q", name)
+	}
+	dir := filepath.Join(s.basePath, SessionsDir)
+	p := filepath.Join(dir, name+".novel.md")
+	// Defense in depth: the cleaned path must be exactly "<dir>/<name>.novel.md".
+	if filepath.Dir(p) != dir {
+		return "", fmt.Errorf("invalid session name: %q", name)
+	}
+	return p, nil
 }
 
-// NovelExists reports whether a session has a saved novelization.
+// NovelExists reports whether a session has a saved novelization. An invalid
+// name (which can never have a valid novel path) reports false.
 func (s *Storage) NovelExists(name string) bool {
-	_, err := os.Stat(s.sessionNovelPath(name))
+	p, err := s.sessionNovelPath(name)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(p)
 	return err == nil
 }
 
 // LoadNovel reads a session's saved novelization. It returns os.ErrNotExist
 // (wrapped) when none has been generated yet.
 func (s *Storage) LoadNovel(name string) (string, error) {
-	data, err := os.ReadFile(s.sessionNovelPath(name))
+	p, err := s.sessionNovelPath(name)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(p)
 	if err != nil {
 		return "", err
 	}
@@ -33,12 +56,15 @@ func (s *Storage) LoadNovel(name string) (string, error) {
 // write is atomic (temp file + rename) so a crash mid-write can't truncate an
 // existing novel.
 func (s *Storage) SaveNovel(name, md string) error {
+	path, err := s.sessionNovelPath(name)
+	if err != nil {
+		return err
+	}
 	dir := filepath.Join(s.basePath, SessionsDir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	path := s.sessionNovelPath(name)
-	tmp, err := os.CreateTemp(dir, name+".novel.*.tmp")
+	tmp, err := os.CreateTemp(dir, "novel-*.tmp")
 	if err != nil {
 		return err
 	}
@@ -61,7 +87,11 @@ func (s *Storage) SaveNovel(name, md string) error {
 
 // DeleteNovel removes a session's novelization if present (no error if absent).
 func (s *Storage) DeleteNovel(name string) error {
-	if err := os.Remove(s.sessionNovelPath(name)); err != nil && !os.IsNotExist(err) {
+	p, err := s.sessionNovelPath(name)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete session novel: %w", err)
 	}
 	return nil

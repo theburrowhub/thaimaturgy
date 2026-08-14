@@ -118,6 +118,7 @@ func adjustWhole(ctx context.Context, prov providers.Provider, model, sys, groun
 	}
 
 	var full strings.Builder
+	lastFinish := ""
 	for i := 0; i <= maxAdjustContinuations; i++ {
 		if opt.Progress != nil {
 			opt.Progress(i+1, maxAdjustContinuations+1)
@@ -135,7 +136,8 @@ func adjustWhole(ctx context.Context, prov providers.Provider, model, sys, groun
 			chunk = stitchProse(full.String(), chunk)
 		}
 		full.WriteString(chunk)
-		if !truncatedFinish(resp.FinishReason) {
+		lastFinish = resp.FinishReason
+		if !truncatedFinish(lastFinish) {
 			break
 		}
 		// This model family may not support assistant prefill, so the conversation
@@ -146,6 +148,12 @@ func adjustWhole(ctx context.Context, prov providers.Provider, model, sys, groun
 			providers.Message{Role: providers.RoleAssistant, Content: resp.Content},
 			providers.Message{Role: providers.RoleUser, Content: "Your reply was cut off at the length limit. Continue the novel from EXACTLY where it stopped. Output ONLY the remaining Markdown prose: no repetition of what you already sent, no commentary, no code fences. Your output so far ends with:\n" + tail},
 		)
+	}
+	// If the final permitted pass is STILL truncated, the revision is incomplete —
+	// returning it would let a partial novel be saved as the finished one. Fail
+	// loudly so the caller keeps the previous text.
+	if truncatedFinish(lastFinish) {
+		return "", fmt.Errorf("the revised novel was too long to finish in %d passes; adjust a smaller selection instead", maxAdjustContinuations+1)
 	}
 	return cleanMarkdown(full.String()), nil
 }

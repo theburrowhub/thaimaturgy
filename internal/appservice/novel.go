@@ -50,15 +50,6 @@ func (s *Service) SaveNovelText(sessionName, md, baseVersion string) (string, er
 	return novelVersion(md), nil
 }
 
-// saveNovelRaw persists a novelization unconditionally (used when a generate job
-// finishes and associates its result with the session). It takes the same lock
-// as SaveNovelText so a generate and a manual save can't interleave.
-func (s *Service) saveNovelRaw(sessionName, md string) error {
-	s.novelMu.Lock()
-	defer s.novelMu.Unlock()
-	return s.store.SaveNovel(sessionName, md)
-}
-
 // checkNovelVersionLocked compares the stored novel's version to want. Caller
 // holds novelMu. A missing novel has version "".
 func (s *Service) checkNovelVersionLocked(sessionName, want string) error {

@@ -95,6 +95,10 @@ func (s *Service) StartNovelJob(sessionName string) (*NovelJob, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Capture the stored novel's version now (before the long generation), so the
+	// result is only persisted if nobody edited/saved the novel meanwhile — a
+	// manual edit made during the run must not be silently overwritten.
+	baseVer, _, _, _ := s.NovelText(sessionName)
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), novelJobTimeout)
@@ -104,11 +108,14 @@ func (s *Service) StartNovelJob(sessionName string) (*NovelJob, error) {
 			job.finish(ImportError, "", err.Error(), time.Now())
 			return
 		}
-		// Associate the result with the session so it can be re-opened and edited.
-		// A persistence failure shouldn't lose the generated prose — the client can
-		// still download it from the job — so surface it in the stage, not as a
-		// hard error.
-		if perr := s.saveNovelRaw(sessionName, md); perr != nil {
+		// Associate the result with the session so it can be re-opened and edited,
+		// but only if the stored novel is unchanged since generation started. On a
+		// conflict (edited meanwhile) keep the edit and let the client keep this
+		// result via download; on any other save error, surface it in the stage.
+		// Either way the prose isn't lost, so this stays a done (not error) job.
+		if _, perr := s.SaveNovelText(sessionName, md, baseVer); errors.Is(perr, ErrNovelConflict) {
+			job.setStage("generated (not saved: the novel was edited while writing — download to keep this version)")
+		} else if perr != nil {
 			job.setStage("generated (warning: could not save to session: " + perr.Error() + ")")
 		}
 		job.finish(ImportDone, md, "", time.Now())

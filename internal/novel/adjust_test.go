@@ -106,6 +106,22 @@ func TestStitchProseDropsOverlapAndFence(t *testing.T) {
 	}
 }
 
+// If every allowed pass is still cut off at the token limit, Adjust must fail
+// rather than return a partial novel that could be saved as the finished one.
+func TestAdjustWholeTruncationExhaustedErrors(t *testing.T) {
+	// A provider whose replies are ALWAYS truncated.
+	always := []providers.ChatResponse{}
+	for i := 0; i < maxAdjustContinuations+2; i++ {
+		always = append(always, providers.ChatResponse{Content: "more", FinishReason: "max_tokens"})
+	}
+	prov := &scriptProvider{replies: always}
+	if _, err := Adjust(context.Background(), prov, "m", advWithLang("en"), &domain.SessionState{}, AdjustOptions{
+		FullText: "The story began.", Instruction: "expand it a lot",
+	}); err == nil {
+		t.Error("a never-completing whole-novel rewrite should return an error, not a partial result")
+	}
+}
+
 func TestAdjustValidatesInput(t *testing.T) {
 	prov := &scriptProvider{replies: []providers.ChatResponse{{Content: "x", FinishReason: "stop"}}}
 	if _, err := Adjust(context.Background(), prov, "m", advWithLang("en"), &domain.SessionState{}, AdjustOptions{FullText: "text", Instruction: "  "}); err == nil {

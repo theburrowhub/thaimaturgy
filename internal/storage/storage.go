@@ -283,7 +283,15 @@ func (s *Storage) RenameSession(oldName, newName string) error {
 		return fmt.Errorf("failed to move session journal: %w", err)
 	}
 	// Move the saved novelization too, for the same reason.
-	if err := os.Rename(s.sessionNovelPath(oldName), s.sessionNovelPath(newName)); err != nil && !os.IsNotExist(err) {
+	oldNovel, err := s.sessionNovelPath(oldName)
+	if err != nil {
+		return err
+	}
+	newNovel, err := s.sessionNovelPath(newName)
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(oldNovel, newNovel); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to move session novel: %w", err)
 	}
 	return s.DeleteSession(oldName)

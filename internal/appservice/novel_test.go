@@ -118,6 +118,42 @@ func TestAdjustJobDoesNotPersist(t *testing.T) {
 	}
 }
 
+// A manual edit made WHILE a generate job is running must not be silently
+// overwritten when the job finishes: the generate captures the version at start
+// and only persists if it is still current.
+func TestGenerateDoesNotClobberConcurrentEdit(t *testing.T) {
+	svc, _ := newService(t)
+	defer svc.CloseSession("crypt")
+	rel := make(chan struct{})
+	svc.SetProvider(&blockProvider{release: rel})
+	name, _ := svc.NewSession("crypt")
+	os, _ := svc.Get(name)
+	os.Session.State.AddUserMessage("The party enters.")
+	os.Session.State.AddAssistantMessage("The hall is silent.")
+
+	job, err := svc.StartNovelJob(name)
+	if err != nil {
+		t.Fatalf("StartNovelJob: %v", err)
+	}
+	// While the generator is blocked, a manual edit lands and is saved.
+	if _, err := svc.SaveNovelText(name, "MY MANUAL EDIT", ""); err != nil {
+		t.Fatalf("manual SaveNovelText: %v", err)
+	}
+	close(rel) // let the generator finish
+
+	for i := 0; i < 200; i++ {
+		if s, _ := job.Snapshot()["status"].(string); s != "running" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// The manual edit must have survived — the finished generation must not clobber it.
+	md, _, _, _ := svc.NovelText(name)
+	if md != "MY MANUAL EDIT" {
+		t.Errorf("generate clobbered a concurrent manual edit; novel = %q", md)
+	}
+}
+
 func TestNovelJobRequiresProviderAndSession(t *testing.T) {
 	svc, _ := newService(t) // provider nil
 	if _, err := svc.StartNovelJob("nope"); err == nil {

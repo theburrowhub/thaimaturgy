@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -46,6 +47,31 @@ func TestNovelSaveLoadDelete(t *testing.T) {
 	// Deleting a missing novel is not an error.
 	if err := s.DeleteNovel("sess"); err != nil {
 		t.Errorf("DeleteNovel of a missing novel should be nil, got %v", err)
+	}
+}
+
+// Session names that could escape the sessions directory must be rejected, and
+// nothing may be written or read outside it.
+func TestNovelPathTraversalRejected(t *testing.T) {
+	s := newTestStorage(t)
+	bad := []string{"../evil", "../../etc/passwd", "sub/dir", `back\slash`, "", "a/../b", ".."}
+	for _, name := range bad {
+		if err := s.SaveNovel(name, "x"); err == nil {
+			t.Errorf("SaveNovel(%q) should be rejected", name)
+		}
+		if _, err := s.LoadNovel(name); err == nil {
+			t.Errorf("LoadNovel(%q) should be rejected", name)
+		}
+		if err := s.DeleteNovel(name); err == nil {
+			t.Errorf("DeleteNovel(%q) should be rejected", name)
+		}
+		if s.NovelExists(name) {
+			t.Errorf("NovelExists(%q) should be false", name)
+		}
+	}
+	// A traversal attempt must not have created a file anywhere.
+	if _, err := os.Stat(filepath.Join(s.BasePath(), "evil.novel.md")); err == nil {
+		t.Error("a traversal name wrote a file outside the sessions dir")
 	}
 }
 
