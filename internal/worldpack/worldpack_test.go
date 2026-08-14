@@ -7,25 +7,25 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/srd"
 	"github.com/theburrowhub/thaimaturgy/internal/worldpack"
-	_ "github.com/theburrowhub/thaimaturgy/internal/worldpack/profiles"
+	_ "github.com/theburrowhub/thaimaturgy/internal/worldpack/worlds"
 )
 
 func TestBuiltinIDs(t *testing.T) {
 	ids := worldpack.BuiltinIDs()
-	if len(ids) < 1 {
+	if len(ids) < 2 {
 		t.Fatalf("expected at least 1 builtin, got %d", len(ids))
 	}
 }
 
 func TestBuiltinShatteredVale(t *testing.T) {
-	p, err := worldpack.Builtin("dnd5e_shattered_vale")
+	p, err := worldpack.Builtin("shattered_vale")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.ID != "dnd5e_shattered_vale" {
+	if p.ID != "shattered_vale" {
 		t.Fatalf("id=%q", p.ID)
 	}
-	if p.Setting.RulesystemID != "dnd5e" {
+	if p.Setting.SuggestedRulesystem != "dnd5e" {
 		t.Fatalf("rulesystem=%q", p.Setting.RulesystemID)
 	}
 	if len(p.Regions) < 4 {
@@ -80,7 +80,7 @@ func TestGenerateJSONSize(t *testing.T) {
 }
 
 func TestAllSRDCreaturesPresent(t *testing.T) {
-	p, err := worldpack.Builtin("dnd5e_shattered_vale")
+	p, err := worldpack.Builtin("shattered_vale")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,5 +126,25 @@ func TestSearchWorld(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("hits=%v", hits)
+	}
+}
+
+
+func TestBuiltinCaribdus(t *testing.T) {
+	p, err := worldpack.Builtin("caribdus")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ID != "caribdus" {
+		t.Fatalf("id=%q", p.ID)
+	}
+	if p.Setting.Name != "Caribdus" {
+		t.Fatalf("name=%q", p.Setting.Name)
+	}
+	if len(p.Cities) < 3 {
+		t.Fatalf("cities=%d", len(p.Cities))
+	}
+	if p.Setting.WorldRules.Magic == "" {
+		t.Fatal("world rules missing")
 	}
 }

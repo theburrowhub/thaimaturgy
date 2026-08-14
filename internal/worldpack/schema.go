@@ -43,14 +43,36 @@ type Pack struct {
 	Metadata map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
-// Setting describes the world's genre, era, tone, and linked rulesystem.
+// Setting is everything that defines THIS world (ambience, rules of reality, politics).
+// SuggestedRulesystem is optional — you can run Caribdus with Savage Worlds or D&D.
 type Setting struct {
-	Name         string   `json:"name" yaml:"name"`
-	Era          string   `json:"era,omitempty" yaml:"era,omitempty"`
-	Tone         string   `json:"tone,omitempty" yaml:"tone,omitempty"`
-	RulesystemID string   `json:"rulesystem_id" yaml:"rulesystem_id"`
-	Summary      string   `json:"summary,omitempty" yaml:"summary,omitempty"`
-	Tags         []string `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Name                string     `json:"name" yaml:"name"`
+	Era                 string     `json:"era,omitempty" yaml:"era,omitempty"`
+	Tone                string     `json:"tone,omitempty" yaml:"tone,omitempty"`
+	Summary             string     `json:"summary,omitempty" yaml:"summary,omitempty"`
+	Tags                []string   `json:"tags,omitempty" yaml:"tags,omitempty"`
+	WorldRules          WorldRules `json:"world_rules" yaml:"world_rules"`
+	Politics            Politics   `json:"politics" yaml:"politics"`
+	SuggestedRulesystem string     `json:"suggested_rulesystem,omitempty" yaml:"suggested_rulesystem,omitempty"`
+	PlayableWith        []string   `json:"playable_with,omitempty" yaml:"playable_with,omitempty"`
+	RulesystemID        string     `json:"rulesystem_id,omitempty" yaml:"rulesystem_id,omitempty"`
+}
+
+type WorldRules struct {
+	Magic             string `json:"magic" yaml:"magic"`
+	MagicNotes        string `json:"magic_notes,omitempty" yaml:"magic_notes,omitempty"`
+	Technology        string `json:"technology,omitempty" yaml:"technology,omitempty"`
+	TechnologyNotes   string `json:"technology_notes,omitempty" yaml:"technology_notes,omitempty"`
+	DeathAndAfterlife string `json:"death_and_afterlife,omitempty" yaml:"death_and_afterlife,omitempty"`
+	Travel            string `json:"travel,omitempty" yaml:"travel,omitempty"`
+}
+
+type Politics struct {
+	Summary     string   `json:"summary" yaml:"summary"`
+	Government  string   `json:"government,omitempty" yaml:"government,omitempty"`
+	MajorPowers []string `json:"major_powers,omitempty" yaml:"major_powers,omitempty"`
+	Conflicts   []string `json:"conflicts,omitempty" yaml:"conflicts,omitempty"`
+	LawAndOrder string   `json:"law_and_order,omitempty" yaml:"law_and_order,omitempty"`
 }
 
 // Region is a large geographic area containing cities and wilderness.

@@ -20,9 +20,13 @@ func InspectReport(p *Pack) string {
 	fmt.Fprintf(&b, "  Encounter tables: %d  Lore: %d  Maps: %d  Tools: %d\n\n",
 		len(p.EncounterTables), len(p.Lore), len(p.Maps), len(p.Tools))
 
-	if p.Setting.RulesystemID != "" {
-		fmt.Fprintf(&b, "Rulesystem: %s  Tone: %s  Era: %s\n\n", p.Setting.RulesystemID, p.Setting.Tone, p.Setting.Era)
+	fmt.Fprintf(&b, "Magic: %s\n", p.Setting.WorldRules.Magic)
+	if p.Setting.SuggestedRulesystem != "" {
+		fmt.Fprintf(&b, "Suggested rules: %s  Playable with: %v\n", p.Setting.SuggestedRulesystem, p.Setting.PlayableWith)
 	}
+	fmt.Fprintf(&b, "Politics: %s\n", p.Setting.Politics.Summary)
+	fmt.Fprintf(&b, "Tone: %s  Era: %s\n\n", p.Setting.Tone, p.Setting.Era)
+
 
 	if len(p.Regions) > 0 {
 		fmt.Fprintln(&b, "Regions:")

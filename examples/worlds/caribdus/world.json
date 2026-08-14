@@ -1,0 +1,3141 @@
+{
+  "api_version": "worldpack/v1",
+  "id": "caribdus",
+  "name": "Caribdus",
+  "version": "1.0.0",
+  "language": "en",
+  "setting": {
+    "name": "Caribdus",
+    "era": "Sailing age — flintlocks, powder, and rope; no heavy industry",
+    "tone": "Swashbuckling dread; salt spray, superstition, and sudden violence",
+    "summary": "Caribdus is a chain of storm-battered isles half-swallowed by the Deluge. Every cove hides a flag, every reef hides teeth.",
+    "tags": [
+      "nautical",
+      "pirates",
+      "sea-witch",
+      "colonial"
+    ],
+    "world_rules": {
+      "magic": "Common — sea-witch hedge magic, cursed relics from the Deluge, and tide-bound rituals. Arcane academies are absent; power smells of brine and blood.",
+      "technology": "Sailing age — flintlock pistols, cutlasses, schooners, and diving bells. No steam, no mass production; shipyards hand-fit every hull.",
+      "travel": "Open sea between isles; reef pilots required in the archipelago; Ghost Shoals warp compasses."
+    },
+    "politics": {
+      "summary": "Colonial armadas claim harbors with cannon and charter; pirate republics vote captains by steel and spoils; sea-witch covens trade storms for souls along the Ghost Shoals.",
+      "major_powers": [
+        "Armada del Rey (Fuerte Almirez)",
+        "República de Perla Azul",
+        "Capitanes Libres (Puerto Sombrío)",
+        "Coven del Mar Espectral"
+      ],
+      "conflicts": [
+        "Tariffs vs smuggling routes",
+        "Pirate raids vs colonial patrols",
+        "Sea-witch bargains vs temple inquisitors"
+      ]
+    },
+    "suggested_rulesystem": "savage_worlds",
+    "playable_with": [
+      "savage_worlds",
+      "dnd5e",
+      "d100"
+    ],
+    "rulesystem_id": "savage_worlds"
+  },
+  "regions": [
+    {
+      "id": "open_sea",
+      "name": "Open Sea",
+      "description": "Trackless swells between island chains. Squalls rise without warning; hulls groan on long swells.",
+      "biome": "ocean",
+      "location_ids": [
+        "faro_tormenta"
+      ],
+      "tags": [
+        "travel",
+        "naval"
+      ],
+      "map_id": "map_open_sea",
+      "travel_notes": "Navigation checks each day; off-course drift toward Ghost Shoals on failed rolls."
+    },
+    {
+      "id": "central_archipelago",
+      "name": "Central Archipelago",
+      "description": "The heart of Caribdus — crowded anchorages, reef mazes, and the three great ports.",
+      "biome": "archipelago",
+      "city_ids": [
+        "puerto_sombrio",
+        "perla_azul",
+        "fuerte_almirez",
+        "puerto_sombrio",
+        "perla_azul",
+        "fuerte_almirez"
+      ],
+      "location_ids": [
+        "arrecife_coral",
+        "cala_contrabandistas"
+      ],
+      "tags": [
+        "trade",
+        "civilized"
+      ],
+      "map_id": "map_central_archipelago",
+      "travel_notes": "Inter-island hops take hours by sloop; reef pilots charge 5 gp per passage."
+    },
+    {
+      "id": "ghost_shoals",
+      "name": "Ghost Shoals",
+      "description": "Mist-wrapped shallows where compasses spin and drowned bells toll at dusk.",
+      "biome": "mist",
+      "location_ids": [
+        "choza_bruja_mar",
+        "naufragio_espectral"
+      ],
+      "tags": [
+        "undead",
+        "supernatural"
+      ],
+      "map_id": "map_ghost_shoals",
+      "travel_notes": "Visibility rarely exceeds 100 ft.; sea-witch pacts rumored to calm the fog."
+    },
+    {
+      "id": "deep_trench",
+      "name": "Deep Trench",
+      "description": "A black scar in the ocean floor. Bioluminescent hunters and Deluge ruins lurk below the thermocline.",
+      "biome": "deep_ocean",
+      "location_ids": [
+        "templo_sumergido",
+        "fosa_abisal"
+      ],
+      "tags": [
+        "horror",
+        "ruins"
+      ],
+      "map_id": "map_deep_trench",
+      "travel_notes": "Surface ships avoid the trench; diving bells and enchanted lungs are mandatory."
+    }
+  ],
+  "cities": [
+    {
+      "id": "puerto_sombrio",
+      "name": "Puerto Sombrío",
+      "region_id": "central_archipelago",
+      "description": "Grim port of fifteen thousand souls where Crown tariffs meet pirate gold. Smoke and tar hang over every dawn.",
+      "population": "~15,000",
+      "government": "Colonial governor with a bribed council",
+      "districts": [
+        {
+          "id": "muelle_viejo",
+          "name": "Muelle Viejo",
+          "description": "Rotting piers and tariff shacks; first sight of Caribdus for many crews.",
+          "location_ids": [
+            "taberna_ancla_podrida",
+            "astillero_negro"
+          ],
+          "tags": [
+            "docks",
+            "trade"
+          ]
+        },
+        {
+          "id": "barrio_velas",
+          "name": "Barrio de las Velas",
+          "description": "Sail-loft alleys, chandlers, and boarding houses.",
+          "location_ids": [
+            "mercado_especias"
+          ],
+          "tags": [
+            "maritime",
+            "urban"
+          ]
+        },
+        {
+          "id": "muralla_colonial",
+          "name": "Muralla Colonial",
+          "description": "Stone walls, customs house, and the governor's shadow.",
+          "location_ids": [
+            "aduana_sombrio",
+            "fortin_colonial"
+          ],
+          "tags": [
+            "colonial",
+            "law"
+          ]
+        }
+      ],
+      "location_ids": [
+        "taberna_ancla_podrida",
+        "astillero_negro",
+        "mercado_especias",
+        "aduana_sombrio",
+        "fortin_colonial"
+      ],
+      "tags": [
+        "port",
+        "colonial",
+        "smuggling"
+      ],
+      "map_id": "map_puerto_sombrio"
+    },
+    {
+      "id": "perla_azul",
+      "name": "Perla Azul",
+      "region_id": "central_archipelago",
+      "description": "Lagoon city built on coral pilings. Pearl trade and tide worship keep the peace — barely.",
+      "population": "~9,000",
+      "government": "Pearl Council of master divers and temple elders",
+      "districts": [
+        {
+          "id": "mercado_perlas",
+          "name": "Mercado de Perlas",
+          "description": "Open-air auction pits and diver guild halls.",
+          "location_ids": [
+            "taberna_perla",
+            "casa_cambio_perla"
+          ],
+          "tags": [
+            "trade",
+            "pearl"
+          ]
+        },
+        {
+          "id": "malecon_dorado",
+          "name": "Malecón Dorado",
+          "description": "Wealthy villas on the lagoon rim.",
+          "location_ids": [
+            "templo_mareas",
+            "malecon_faro"
+          ],
+          "tags": [
+            "noble",
+            "coast"
+          ]
+        },
+        {
+          "id": "barrio_pescador",
+          "name": "Barrio Pescador",
+          "description": "Net menders, shrines, and cheap ceviche stalls.",
+          "tags": [
+            "fishing",
+            "urban"
+          ]
+        }
+      ],
+      "location_ids": [
+        "taberna_perla",
+        "casa_cambio_perla",
+        "templo_mareas",
+        "malecon_faro"
+      ],
+      "tags": [
+        "port",
+        "trade",
+        "temple"
+      ],
+      "map_id": "map_perla_azul"
+    },
+    {
+      "id": "fuerte_almirez",
+      "name": "Fuerte Almirez",
+      "region_id": "central_archipelago",
+      "description": "Stone citadel and naval anchor of the Crown Armada. Discipline, cannon, and colonial ambition.",
+      "population": "~12,000",
+      "government": "Governor-General Mateo Almirez",
+      "districts": [
+        {
+          "id": "plaza_armas",
+          "name": "Plaza de Armas",
+          "description": "Parade ground and governor's palace.",
+          "location_ids": [
+            "palacio_gobernador"
+          ],
+          "tags": [
+            "civic",
+            "military"
+          ]
+        },
+        {
+          "id": "astilleros_navales",
+          "name": "Astilleros Navales",
+          "description": "Crown shipyard and rope walks.",
+          "location_ids": [
+            "astillero_crown"
+          ],
+          "tags": [
+            "shipyard",
+            "naval"
+          ]
+        },
+        {
+          "id": "cuartel_naval",
+          "name": "Cuartel Naval",
+          "description": "Barracks, powder store, and naval court.",
+          "location_ids": [
+            "cuartel_almirez",
+            "cantina_mosquito"
+          ],
+          "tags": [
+            "military",
+            "law"
+          ]
+        }
+      ],
+      "location_ids": [
+        "palacio_gobernador",
+        "cuartel_almirez",
+        "astillero_crown",
+        "cantina_mosquito"
+      ],
+      "tags": [
+        "fortress",
+        "naval",
+        "colonial"
+      ],
+      "map_id": "map_fuerte_almirez"
+    }
+  ],
+  "locations": [
+    {
+      "id": "taberna_ancla_podrida",
+      "name": "Taberna del Ancla Podrida",
+      "kind": "tavern",
+      "city_id": "puerto_sombrio",
+      "district_id": "muelle_viejo",
+      "region_id": "central_archipelago",
+      "description": "Three-story flophouse favored by bosuns and deserters. Rooms 4 sp; grog 2 cp; stew questionable.",
+      "read_aloud": "A barnacle-crusted anchor hangs above the door. Inside, dice clatter and a concertina wheezes through pipe smoke.",
+      "dm_notes": "Tabernero Paco hears every dock rumor. Hidden hatch in the cellar leads toward smuggler tunnels.",
+      "tags": [
+        "tavern",
+        "rest",
+        "rumors"
+      ],
+      "connections": [
+        "astillero_negro",
+        "mercado_especias"
+      ]
+    },
+    {
+      "id": "astillero_negro",
+      "name": "Astillero Negro",
+      "kind": "shipyard",
+      "city_id": "puerto_sombrio",
+      "district_id": "muelle_viejo",
+      "region_id": "central_archipelago",
+      "description": "Black-tarred slips where hulls are patched between raids. Contramaestre Toro runs the night shift.",
+      "read_aloud": "Hammer on copper rivets rings across oily water. Cranes swing masts like matchsticks.",
+      "dm_notes": "Stolen naval timber stored under tarpaulin 7. Athletics DC 14 to slip aboard a refitting sloop.",
+      "tags": [
+        "shipyard",
+        "craft",
+        "travel"
+      ],
+      "connections": [
+        "taberna_ancla_podrida",
+        "cala_contrabandistas"
+      ]
+    },
+    {
+      "id": "mercado_especias",
+      "name": "Mercado de Especias",
+      "kind": "market",
+      "city_id": "puerto_sombrio",
+      "district_id": "barrio_velas",
+      "region_id": "central_archipelago",
+      "description": "Canvas stalls selling pepper, rum, compass needles, and questionable charms.",
+      "read_aloud": "Spice heat and tar compete in the air. Hawkers bark prices in three languages.",
+      "tags": [
+        "market",
+        "shopping",
+        "social"
+      ],
+      "connections": [
+        "taberna_ancla_podrida",
+        "aduana_sombrio"
+      ]
+    },
+    {
+      "id": "aduana_sombrio",
+      "name": "Aduana Colonial",
+      "kind": "civic",
+      "city_id": "puerto_sombrio",
+      "district_id": "muralla_colonial",
+      "region_id": "central_archipelago",
+      "description": "Customs house where Crown clerks stamp manifests and squeeze bribes.",
+      "read_aloud": "Wax seals and iron grilles. A clerk's quill scratches like a rat in the wall.",
+      "dm_notes": "Governor's envoy visits on high tide. Hidden ledger of smuggler payoffs in the vault.",
+      "tags": [
+        "civic",
+        "law",
+        "colonial"
+      ],
+      "connections": [
+        "mercado_especias",
+        "fortin_colonial"
+      ]
+    },
+    {
+      "id": "fortin_colonial",
+      "name": "Fortín Colonial",
+      "kind": "fort",
+      "city_id": "puerto_sombrio",
+      "district_id": "muralla_colonial",
+      "region_id": "central_archipelago",
+      "description": "Cannon battery guarding the harbor mouth. Powder magazine below the parapet.",
+      "read_aloud": "Salt-crusted cannon stare seaward. Red-coated marines drill in the yard.",
+      "tags": [
+        "military",
+        "fort"
+      ],
+      "connections": [
+        "aduana_sombrio"
+      ]
+    },
+    {
+      "id": "taberna_perla",
+      "name": "Taberna de la Perla",
+      "kind": "tavern",
+      "city_id": "perla_azul",
+      "district_id": "mercado_perlas",
+      "region_id": "central_archipelago",
+      "description": "Diver's tavern with a pearl-inlaid bar. Fresh catch served at dawn.",
+      "read_aloud": "Mother-of-pearl gleams beneath tankards. Diver tattoos flash in lamplight.",
+      "tags": [
+        "tavern",
+        "rest"
+      ],
+      "connections": [
+        "casa_cambio_perla",
+        "templo_mareas"
+      ]
+    },
+    {
+      "id": "casa_cambio_perla",
+      "name": "Casa de Cambio del Arrecife",
+      "kind": "shop",
+      "city_id": "perla_azul",
+      "district_id": "mercado_perlas",
+      "region_id": "central_archipelago",
+      "description": "Money-changer and fence for unmarked pearls. Heavy shutters, heavier guards.",
+      "read_aloud": "Scales ping. A grille slides open just wide enough for hands and coin.",
+      "tags": [
+        "shop",
+        "finance"
+      ],
+      "connections": [
+        "taberna_perla"
+      ]
+    },
+    {
+      "id": "templo_mareas",
+      "name": "Templo de las Mareas",
+      "kind": "temple",
+      "city_id": "perla_azul",
+      "district_id": "malecon_dorado",
+      "region_id": "central_archipelago",
+      "description": "Open-air shrine where tide priests read omens in shell patterns.",
+      "read_aloud": "Conch horns echo at dusk. Incense of seaweed and myrrh drifts over the lagoon.",
+      "dm_notes": "Sacerdotisa Coral can bless water-breathing for a tithe.",
+      "tags": [
+        "temple",
+        "holy",
+        "sea-witch"
+      ],
+      "connections": [
+        "taberna_perla",
+        "malecon_faro"
+      ]
+    },
+    {
+      "id": "malecon_faro",
+      "name": "Faro del Malecón",
+      "kind": "lighthouse",
+      "city_id": "perla_azul",
+      "district_id": "malecon_dorado",
+      "region_id": "central_archipelago",
+      "description": "White lighthouse guiding lagoon traffic. Cartographer's workshop in the base.",
+      "read_aloud": "A beam sweeps over coral breakers. Charts rustle in a salt-stained room below.",
+      "tags": [
+        "navigation",
+        "landmark"
+      ],
+      "connections": [
+        "templo_mareas"
+      ]
+    },
+    {
+      "id": "palacio_gobernador",
+      "name": "Palacio del Gobernador",
+      "kind": "civic",
+      "city_id": "fuerte_almirez",
+      "district_id": "plaza_armas",
+      "region_id": "central_archipelago",
+      "description": "Marble-faced palace where colonial edicts become law.",
+      "read_aloud": "Guards in blue coats flank a gate of black iron. Fanfare is optional; taxes are not.",
+      "tags": [
+        "civic",
+        "noble",
+        "quests"
+      ],
+      "connections": [
+        "cuartel_almirez",
+        "astillero_crown"
+      ]
+    },
+    {
+      "id": "cuartel_almirez",
+      "name": "Cuartel del Gobernador",
+      "kind": "barracks",
+      "city_id": "fuerte_almirez",
+      "district_id": "cuartel_naval",
+      "region_id": "central_archipelago",
+      "description": "Naval barracks housing two hundred marines. Armory issues weapons by writ only.",
+      "read_aloud": "Boot heels crack on stone. The smell of gun oil is stronger than the sea.",
+      "tags": [
+        "military",
+        "law"
+      ],
+      "connections": [
+        "palacio_gobernador",
+        "cantina_mosquito"
+      ]
+    },
+    {
+      "id": "astillero_crown",
+      "name": "Astillero de la Corona",
+      "kind": "shipyard",
+      "city_id": "fuerte_almirez",
+      "district_id": "astilleros_navales",
+      "region_id": "central_archipelago",
+      "description": "Crown shipyard building frigates and powder hulks.",
+      "read_aloud": "Sawdust snows on the quay. A frigate skeleton waits for its copper sheathing.",
+      "tags": [
+        "shipyard",
+        "naval"
+      ],
+      "connections": [
+        "palacio_gobernador"
+      ]
+    },
+    {
+      "id": "cantina_mosquito",
+      "name": "Cantina del Mosquito",
+      "kind": "tavern",
+      "city_id": "fuerte_almirez",
+      "district_id": "cuartel_naval",
+      "region_id": "central_archipelago",
+      "description": "Off-duty naval tavern. Darts, dice, and discreet duels in the alley.",
+      "read_aloud": "A mosquito is nailed above the door — wings spread, iron pin through the thorax.",
+      "tags": [
+        "tavern",
+        "social"
+      ],
+      "connections": [
+        "cuartel_almirez"
+      ]
+    },
+    {
+      "id": "arrecife_coral",
+      "name": "Arrecife de Coral Sangriento",
+      "kind": "wilderness",
+      "region_id": "central_archipelago",
+      "description": "Crimson coral maze that tears hulls. Sharks patrol the outer rim.",
+      "read_aloud": "Breakers hiss over coral teeth. The lagoon inside is eerily calm.",
+      "tags": [
+        "reef",
+        "wilderness",
+        "danger"
+      ],
+      "connections": [
+        "cala_contrabandistas"
+      ]
+    },
+    {
+      "id": "cala_contrabandistas",
+      "name": "Cala de los Contrabandistas",
+      "kind": "wilderness",
+      "region_id": "central_archipelago",
+      "description": "Hidden cove with camouflaged nets and a pulley hoist into the cliffs.",
+      "read_aloud": "Tarps mimic rock from the sea. A whistle answers your approach — friend or foe?",
+      "dm_notes": "Garfio Reyes uses this cove. Smuggler lookouts Perception +4.",
+      "tags": [
+        "smuggling",
+        "cove",
+        "wilderness"
+      ],
+      "connections": [
+        "astillero_negro",
+        "arrecife_coral"
+      ]
+    },
+    {
+      "id": "choza_bruja_mar",
+      "name": "Choza de la Bruja del Mar",
+      "kind": "wilderness",
+      "region_id": "ghost_shoals",
+      "description": "Stilt hut on a dead mangrove. Shell wind chimes and cauldron smoke.",
+      "read_aloud": "A hut squats on stilts above black water. Chimes clack though there is no wind.",
+      "dm_notes": "Marisela la Bruma trades storms for favors. Coven audience by invitation only.",
+      "tags": [
+        "sea-witch",
+        "wilderness",
+        "magic"
+      ]
+    },
+    {
+      "id": "naufragio_espectral",
+      "name": "Naufragio Espectral",
+      "kind": "wilderness",
+      "region_id": "ghost_shoals",
+      "description": "Ghostly galleon fused with the reef. Bells toll at midnight.",
+      "read_aloud": "Mist parts around a half-sunk hull. Rigging moves with no crew aboard.",
+      "tags": [
+        "undead",
+        "wreck",
+        "wilderness"
+      ]
+    },
+    {
+      "id": "faro_tormenta",
+      "name": "Faro de la Tormenta",
+      "kind": "lighthouse",
+      "region_id": "open_sea",
+      "description": "Storm-lashed lighthouse on a bare rock. Keeper hasn't been paid in years.",
+      "read_aloud": "Lightning fractures the sky. The beacon still turns — who fuels it?",
+      "tags": [
+        "lighthouse",
+        "open_sea",
+        "mystery"
+      ]
+    },
+    {
+      "id": "templo_sumergido",
+      "name": "Templo Sumergido del Abismo",
+      "kind": "dungeon",
+      "region_id": "deep_trench",
+      "description": "Deluge-era temple half buried in the trench wall. Air pockets hold stale breath.",
+      "read_aloud": "Stone angels stare through green dark. Your lamp throws shadows that move wrong.",
+      "tags": [
+        "ruins",
+        "deep",
+        "dungeon"
+      ]
+    },
+    {
+      "id": "fosa_abisal",
+      "name": "Fosa Abisal de las Luces",
+      "kind": "wilderness",
+      "region_id": "deep_trench",
+      "description": "Bioluminescent vent field. Pressure and predators end careless dives.",
+      "read_aloud": "Cold light blooms in the black. Something vast shifts below your keel.",
+      "tags": [
+        "deep",
+        "horror",
+        "wilderness"
+      ]
+    }
+  ],
+  "npcs": [
+    {
+      "id": "npc_valeria_storm",
+      "name": "Capitán Valeria Storm",
+      "role": "privateer captain",
+      "appearance": "Lean woman, storm-gray coat, silver earring shaped like a lightning bolt.",
+      "personality": "Bold, theatrical, hates Crown hypocrisy.",
+      "motivations": "Build a fleet that answers to no flag but her own.",
+      "secrets": "Owes Marisela a blood debt from a saved crew.",
+      "voice": "Laughs mid-sentence; calls everyone 'mate' until they earn a name.",
+      "knowledge": [
+        "Reef passages",
+        "Corsair Council votes",
+        "Storm omens"
+      ],
+      "sample_dialogue": [
+        "I don't sail for kings or coffers — I sail because the sea asked nicely.",
+        "Puerto Sombrío's customs man takes bribes in pearls. I take his pride for free."
+      ],
+      "disposition": "chaotic good",
+      "faction_id": "free_corsair_council",
+      "stat_block": {
+        "ac": 15,
+        "max_hp": 45,
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 14,
+          "dex": 16,
+          "con": 12,
+          "int": 12,
+          "wis": 11,
+          "cha": 14
+        },
+        "cr": "3",
+        "type": "Humanoid",
+        "traits": [
+          "Parry +1",
+          "Sea Legs"
+        ],
+        "actions": [
+          {
+            "name": "Cutlass",
+            "to_hit": "+5",
+            "damage": "1d8+2 slashing"
+          },
+          {
+            "name": "Flintlock",
+            "to_hit": "+5",
+            "damage": "2d6+1 piercing"
+          }
+        ]
+      },
+      "default_location": "taberna_ancla_podrida",
+      "tags": [
+        "captain",
+        "wild_card"
+      ]
+    },
+    {
+      "id": "npc_marisela_bruma",
+      "name": "Marisela la Bruma",
+      "role": "sea witch",
+      "appearance": "Salt-white hair; kelp bracelets; eyes like tide pools.",
+      "personality": "Patient, ominous, never wastes a word.",
+      "motivations": "Bind the trench's waking leviathan back to sleep.",
+      "secrets": "Sold calm weather to the Crown once; regrets it.",
+      "voice": "Speaks as if every sentence is a prophecy.",
+      "knowledge": [
+        "Ghost Shoals paths",
+        "Curse breaking",
+        "Deluge glyphs"
+      ],
+      "sample_dialogue": [
+        "The sea remembers every oath you break. I merely read the minutes.",
+        "Bring salt, blood, and silence. Questions come after."
+      ],
+      "disposition": "neutral",
+      "faction_id": "coven_tides",
+      "stat_block": {
+        "ac": 13,
+        "max_hp": 52,
+        "speed": "30 ft., swim 30 ft.",
+        "abilities": {
+          "str": 8,
+          "dex": 14,
+          "con": 12,
+          "int": 14,
+          "wis": 16,
+          "cha": 16
+        },
+        "cr": "5",
+        "type": "Humanoid",
+        "traits": [
+          "Sea witch magic",
+          "Tide sense 60 ft."
+        ],
+        "actions": [
+          {
+            "name": "Claws",
+            "to_hit": "+4",
+            "damage": "1d6+1 slashing"
+          },
+          {
+            "name": "Hex",
+            "description": "Target −1 all rolls until end of next turn (1/turn)"
+          }
+        ]
+      },
+      "default_location": "choza_bruja_mar",
+      "tags": [
+        "sea-witch",
+        "spellcaster"
+      ]
+    },
+    {
+      "id": "npc_mateo_almirez",
+      "name": "Gobernador Mateo Almirez",
+      "role": "colonial governor",
+      "appearance": "Iron-gray uniform, gout limp, signet ring of the Crown.",
+      "personality": "Polished cruelty; believes order is mercy.",
+      "motivations": "Hang enough pirates to make an example; fill the treasury.",
+      "secrets": "Secretly trades prisoners to the coven for storm warnings.",
+      "voice": "Soft Spanish cadence; threats wrapped in etiquette.",
+      "disposition": "lawful evil",
+      "faction_id": "crown_armada",
+      "default_location": "palacio_gobernador",
+      "tags": [
+        "noble",
+        "authority"
+      ]
+    },
+    {
+      "id": "npc_garfio_reyes",
+      "name": "Garfio Reyes",
+      "role": "smuggler",
+      "appearance": "Hook-hand prosthetic (iron, not silver); shark-tooth necklace.",
+      "personality": "Grins through danger; loyal to coin.",
+      "motivations": "Control the Sombrío smuggling routes.",
+      "secrets": "Informant for Valeria Storm when Crown tariffs rise.",
+      "voice": "Whispers like a knife sliding from a sheath.",
+      "disposition": "neutral",
+      "faction_id": "free_corsair_council",
+      "stat_block": {
+        "ac": 13,
+        "max_hp": 22,
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 12,
+          "dex": 14,
+          "con": 12,
+          "int": 10,
+          "wis": 10,
+          "cha": 10
+        },
+        "cr": "1",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Cutlass",
+            "to_hit": "+4",
+            "damage": "1d6+1 slashing"
+          }
+        ]
+      },
+      "default_location": "cala_contrabandistas",
+      "tags": [
+        "criminal",
+        "smuggler"
+      ]
+    },
+    {
+      "id": "npc_toro_contramaestre",
+      "name": "Contramaestre Toro",
+      "role": "shipwright",
+      "appearance": "Massive shoulders, tar-stained beard, voice like a capstan.",
+      "personality": "Blunt, honest, drinks too much.",
+      "motivations": "Finish the Blackfin sloop before hurricane season.",
+      "default_location": "astillero_negro",
+      "tags": [
+        "craft",
+        "commoner"
+      ]
+    },
+    {
+      "id": "npc_coral_priestess",
+      "name": "Sacerdotisa Coral",
+      "role": "tide priestess",
+      "appearance": "Coral rosary; bare feet; algae-green shawl.",
+      "personality": "Gentle in public; steel when rites are mocked.",
+      "motivations": "Keep Perla Azul neutral in the Crown–Corsair war.",
+      "knowledge": [
+        "Tide omens",
+        "Pearl diving rites",
+        "Coven politics (partial)"
+      ],
+      "faction_id": "coven_tides",
+      "default_location": "templo_mareas",
+      "tags": [
+        "holy",
+        "sea-witch"
+      ]
+    },
+    {
+      "id": "npc_almirante_ribera",
+      "name": "Almirante Ribera",
+      "role": "naval commander",
+      "appearance": "Braid-heavy uniform; powder burns on left cheek.",
+      "personality": "By-the-book; despises pirates and witchcraft equally.",
+      "motivations": "Sink Valeria Storm's squadron before the next moon.",
+      "disposition": "lawful",
+      "faction_id": "crown_armada",
+      "stat_block": {
+        "ac": 16,
+        "max_hp": 58,
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 14,
+          "dex": 12,
+          "con": 14,
+          "int": 12,
+          "wis": 13,
+          "cha": 12
+        },
+        "cr": "4",
+        "type": "Humanoid",
+        "traits": [
+          "Tactical volley",
+          "Marine discipline"
+        ],
+        "actions": [
+          {
+            "name": "Musket",
+            "to_hit": "+4",
+            "damage": "2d8 piercing"
+          },
+          {
+            "name": "Sabre",
+            "to_hit": "+5",
+            "damage": "1d8+2 slashing"
+          }
+        ]
+      },
+      "default_location": "cuartel_almirez",
+      "tags": [
+        "military",
+        "naval"
+      ]
+    },
+    {
+      "id": "npc_cuervo_salazar",
+      "name": "Cuervo Salazar",
+      "role": "pirate captain",
+      "appearance": "Raven-feather tricorn; pistol bandolier.",
+      "personality": "Mocking, reckless, superstitious about crows.",
+      "motivations": "Claim Puerto Sombrío's docks for the Council.",
+      "faction_id": "free_corsair_council",
+      "stat_block": {
+        "ac": 15,
+        "max_hp": 45,
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 14,
+          "dex": 16,
+          "con": 12,
+          "int": 12,
+          "wis": 11,
+          "cha": 14
+        },
+        "cr": "3",
+        "type": "Humanoid",
+        "traits": [
+          "Parry +1",
+          "Sea Legs"
+        ],
+        "actions": [
+          {
+            "name": "Cutlass",
+            "to_hit": "+5",
+            "damage": "1d8+2 slashing"
+          },
+          {
+            "name": "Flintlock",
+            "to_hit": "+5",
+            "damage": "2d6+1 piercing"
+          }
+        ]
+      },
+      "default_location": "taberna_ancla_podrida",
+      "tags": [
+        "pirate",
+        "villain"
+      ]
+    },
+    {
+      "id": "npc_paco_tabernero",
+      "name": "Paco el Tabernero",
+      "role": "innkeeper",
+      "appearance": "Barrel-chested; apron; missing two fingers.",
+      "personality": "Fatherly until you break house rules.",
+      "motivations": "Keep the Ancla Podrida neutral ground.",
+      "sample_dialogue": [
+        "No blades drawn inside — that's what the alley's for."
+      ],
+      "default_location": "taberna_ancla_podrida",
+      "tags": [
+        "tavern",
+        "informant"
+      ]
+    },
+    {
+      "id": "npc_cartografo_mir",
+      "name": "Tomás Mir",
+      "role": "cartographer",
+      "appearance": "Ink-stained fingers; brass dividers on a chain.",
+      "personality": "Obsessive about accuracy.",
+      "motivations": "Chart the trench without Crown censorship.",
+      "knowledge": [
+        "Hidden reefs",
+        "Ghost Shoals drift",
+        "Trench depth soundings"
+      ],
+      "default_location": "malecon_faro",
+      "tags": [
+        "scholar",
+        "navigation"
+      ]
+    },
+    {
+      "id": "npc_isla_marinera",
+      "name": "Isla Cortavientos",
+      "role": "deckhand",
+      "appearance": "Teen sailor; shaved head; knife in boot.",
+      "personality": "Quick, curious, fearless to a fault.",
+      "motivations": "Earn a berth on Valeria's crew.",
+      "default_location": "taberna_ancla_podrida",
+      "tags": [
+        "sailor",
+        "commoner"
+      ]
+    },
+    {
+      "id": "npc_envoy_sombrio",
+      "name": "Envoy Lucía Mendoza",
+      "role": "customs official",
+      "appearance": "Crown livery; spectacles; ledger always open.",
+      "personality": "Corrupt but polite.",
+      "motivations": "Maximize bribes while appearing loyal to Almirez.",
+      "secrets": "Keeps a list of smugglers for blackmail.",
+      "faction_id": "crown_armada",
+      "default_location": "aduana_sombrio",
+      "tags": [
+        "civic",
+        "colonial"
+      ]
+    }
+  ],
+  "creatures": [
+    {
+      "id": "creature_reef_shark",
+      "name": "Reef Shark",
+      "stat_block": {
+        "speed": "Swim 12",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Normal",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit F",
+          "Strength 8",
+          "Fighting 6",
+          "Pack hunter; +2 attack when blood in water"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "d6 bite"
+          }
+        ]
+      },
+      "habitats": [
+        "reef",
+        "coast",
+        "open_sea"
+      ],
+      "tags": [
+        "beast",
+        "aquatic"
+      ],
+      "encounter_notes": "1d4+1 in bloodied water near reefs.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Caribdus sailors call them 'red fins'."
+    },
+    {
+      "id": "creature_giant_octopus",
+      "name": "Giant Octopus",
+      "stat_block": {
+        "speed": "Swim 8",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Large",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit G",
+          "Strength 12",
+          "Fighting 8",
+          "Grapple on raise; ink cloud"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "2d6 tentacle"
+          }
+        ]
+      },
+      "habitats": [
+        "reef",
+        "deep",
+        "ship"
+      ],
+      "tags": [
+        "beast",
+        "aquatic"
+      ],
+      "encounter_notes": "One per sunken wreck or night dive.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Smugglers train juveniles as living mooring lines — poorly."
+    },
+    {
+      "id": "creature_drowned_sailor",
+      "name": "Drowned Sailor",
+      "stat_block": {
+        "speed": "Swim 6",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Normal",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit F",
+          "Strength 8",
+          "Fighting 6",
+          "Undead; Fear check on first sight"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "d6 rust-cutlass"
+          }
+        ]
+      },
+      "habitats": [
+        "ghost_shoals",
+        "wreck",
+        "open_sea"
+      ],
+      "tags": [
+        "undead",
+        "aquatic"
+      ],
+      "encounter_notes": "2d6 rising from spectral wreck at dusk.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Crew of the Naufragio Espectral."
+    },
+    {
+      "id": "creature_bruma_marina",
+      "name": "Bruma Marina",
+      "stat_block": {
+        "speed": "Swim 8",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Normal",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit G",
+          "Strength 10",
+          "Fighting 8",
+          "Sea hag analog; ill omen; curse on wound"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "d6 claws"
+          }
+        ]
+      },
+      "habitats": [
+        "ghost_shoals",
+        "mist"
+      ],
+      "tags": [
+        "monstrosity",
+        "sea-witch"
+      ],
+      "encounter_notes": "Solitary in shoals; with 1d4 drowned sailors.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Covens deny kinship; sailors disagree."
+    },
+    {
+      "id": "creature_pirate_crew",
+      "name": "Pirate Crew",
+      "stat_block": {
+        "speed": "Pace 6",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Normal",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit F",
+          "Strength 6",
+          "Fighting 6",
+          "Wild Attack optional; gang up"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "d6 cutlass"
+          }
+        ]
+      },
+      "habitats": [
+        "urban",
+        "coast",
+        "open_sea"
+      ],
+      "tags": [
+        "humanoid",
+        "pirate"
+      ],
+      "encounter_notes": "Crew of 6–12 with one Wild Card captain.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Mix of Corsair Council and freelancers."
+    },
+    {
+      "id": "creature_giant_crab",
+      "name": "Giant Crab",
+      "stat_block": {
+        "speed": "Pace 6",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Large",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit G",
+          "Strength 14",
+          "Fighting 8",
+          "Hard shell +2 armor"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "2d6 pincer"
+          }
+        ]
+      },
+      "habitats": [
+        "reef",
+        "coast"
+      ],
+      "tags": [
+        "beast",
+        "aquatic"
+      ],
+      "encounter_notes": "1–2 on tidal flats or pearl beds.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Perla Azul divers carry hammers specifically for them."
+    },
+    {
+      "id": "creature_jellyfish_swarm",
+      "name": "Jellyfish Swarm",
+      "stat_block": {
+        "speed": "Swim 4",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Large",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit G",
+          "Strength 8",
+          "Fighting 6",
+          "Touch attack; poison fatigue"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "d4 sting"
+          }
+        ]
+      },
+      "habitats": [
+        "reef",
+        "open_sea",
+        "deep"
+      ],
+      "tags": [
+        "beast",
+        "aquatic"
+      ],
+      "encounter_notes": "Swarm in warm currents; Perception DC 12 to spot.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Called 'crown's lace' by Almirez marines."
+    },
+    {
+      "id": "creature_ghost_pirate",
+      "name": "Ghost Pirate",
+      "stat_block": {
+        "speed": "Pace 6",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Normal",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit G",
+          "Strength 10",
+          "Fighting 8",
+          "Undead; immune normal weapons unless silver or magic"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "d8 ethereal cutlass"
+          }
+        ]
+      },
+      "habitats": [
+        "ghost_shoals",
+        "wreck"
+      ],
+      "tags": [
+        "undead",
+        "pirate"
+      ],
+      "encounter_notes": "1 Wild Card with 1d6 crew shadows.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Officers of the Naufragio Espectral."
+    },
+    {
+      "id": "creature_leviathan_spawn",
+      "name": "Leviathan Spawn",
+      "stat_block": {
+        "speed": "Swim 10",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Huge",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit G",
+          "Strength 24",
+          "Fighting 12",
+          "Swallow whole on raise+4"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "3d6 bite"
+          }
+        ]
+      },
+      "habitats": [
+        "deep",
+        "open_sea"
+      ],
+      "tags": [
+        "monstrosity",
+        "horror"
+      ],
+      "encounter_notes": "Solitary near trench; triggers Fear.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Admirals deny reports; divers do not."
+    },
+    {
+      "id": "creature_barnacle_zombie",
+      "name": "Barnacle Zombie",
+      "stat_block": {
+        "speed": "Pace 4",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Normal",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit F",
+          "Strength 10",
+          "Fighting 6",
+          "Undead Fortitude analog; slow"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "d6 slam"
+          }
+        ]
+      },
+      "habitats": [
+        "wreck",
+        "ghost_shoals",
+        "ship"
+      ],
+      "tags": [
+        "undead",
+        "aquatic"
+      ],
+      "encounter_notes": "2d4 aboard abandoned hulks.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Failsafe guardians for smuggler scuttling."
+    },
+    {
+      "id": "creature_sea_witch_familiar",
+      "name": "Sea Witch Familiar",
+      "stat_block": {
+        "speed": "Fly 8",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Small",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit G",
+          "Strength 6",
+          "Fighting 6",
+          "Spell support; binds to coven hag"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "d4 talons"
+          }
+        ]
+      },
+      "habitats": [
+        "ghost_shoals",
+        "urban"
+      ],
+      "tags": [
+        "beast",
+        "familiar"
+      ],
+      "encounter_notes": "With Marisela or temple envoys.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Osprey, heron, or skeletal gull."
+    },
+    {
+      "id": "creature_crown_marine",
+      "name": "Crown Marine",
+      "stat_block": {
+        "speed": "Pace 6",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "size": "Normal",
+        "type": "Savage Worlds profile",
+        "traits": [
+          "Agility A",
+          "Spirit F",
+          "Strength 8",
+          "Fighting 6",
+          "Volley fire +1 when in squad of 4+"
+        ],
+        "actions": [
+          {
+            "name": "Primary",
+            "damage": "d8 flintlock"
+          }
+        ]
+      },
+      "habitats": [
+        "urban",
+        "fort",
+        "naval"
+      ],
+      "tags": [
+        "humanoid",
+        "military"
+      ],
+      "encounter_notes": "Squad of 4–8 with sergeant Wild Card.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Fuerte Almirez issue."
+    }
+  ],
+  "items": [
+    {
+      "id": "item_cutlass",
+      "name": "Cutlass",
+      "kind": "weapon",
+      "rarity": "common",
+      "description": "Curved naval saber.",
+      "mechanics": "Str+d8; −1 Parry if paired with pistol.",
+      "value_gp": 15,
+      "tags": [
+        "martial",
+        "melee"
+      ]
+    },
+    {
+      "id": "item_flintlock",
+      "name": "Flintlock Pistol",
+      "kind": "weapon",
+      "rarity": "common",
+      "description": "Single-shot naval sidearm.",
+      "mechanics": "Range 5/10/20; 2d6+1; reload 2 actions.",
+      "value_gp": 50,
+      "tags": [
+        "firearm",
+        "ranged"
+      ]
+    },
+    {
+      "id": "item_musket",
+      "name": "Naval Musket",
+      "kind": "weapon",
+      "rarity": "common",
+      "description": "Long arm for marines and hunters.",
+      "mechanics": "Range 24/48/96; 2d8; reload 2 actions.",
+      "value_gp": 75,
+      "tags": [
+        "firearm",
+        "ranged"
+      ]
+    },
+    {
+      "id": "item_grog",
+      "name": "Grog Ration",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Watered rum ration.",
+      "mechanics": "+1 Spirit recovery; −1 Agility until sober.",
+      "value_gp": 1,
+      "tags": [
+        "consumable"
+      ]
+    },
+    {
+      "id": "item_rum_fine",
+      "name": "Fine Aged Rum",
+      "kind": "gear",
+      "rarity": "uncommon",
+      "description": "Caribdus dark rum.",
+      "mechanics": "Bribe or Persuade +1 once; hangover −1 Vigor next day.",
+      "value_gp": 10,
+      "tags": [
+        "consumable",
+        "trade"
+      ]
+    },
+    {
+      "id": "item_compass",
+      "name": "Brass Compass",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Reliable unless near Ghost Shoals.",
+      "mechanics": "Navigation +1; fails in ghost_shoals without witch ward.",
+      "value_gp": 25,
+      "tags": [
+        "navigation"
+      ]
+    },
+    {
+      "id": "item_spyglass",
+      "name": "Spyglass",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Naval observation glass.",
+      "mechanics": "Notice +2 at range; identify flags at 1 mile.",
+      "value_gp": 20,
+      "tags": [
+        "navigation"
+      ]
+    },
+    {
+      "id": "item_diving_helmet",
+      "name": "Brass Diving Helmet",
+      "kind": "gear",
+      "rarity": "uncommon",
+      "description": "Pump-fed helm for shallow trench work.",
+      "mechanics": "Survive 30 min at depth; Athletics −1.",
+      "value_gp": 150,
+      "tags": [
+        "diving"
+      ]
+    },
+    {
+      "id": "item_powder_horn",
+      "name": "Powder Horn",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Watered-proofed black powder store.",
+      "mechanics": "20 shots; wet ruins half.",
+      "value_gp": 8,
+      "tags": [
+        "firearm"
+      ]
+    },
+    {
+      "id": "item_grappling_hook",
+      "name": "Grappling Hook \u0026 Line",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Boarding gear.",
+      "mechanics": "Athletics +1 to climb rigging or walls.",
+      "value_gp": 5,
+      "tags": [
+        "adventuring"
+      ]
+    },
+    {
+      "id": "item_healing_rum",
+      "name": "Medic's Rum \u0026 Salve",
+      "kind": "potion",
+      "rarity": "common",
+      "description": "Rough field medicine.",
+      "mechanics": "Heal 1d6+1 once; −1 Agility 1 hour.",
+      "value_gp": 15,
+      "tags": [
+        "consumable"
+      ]
+    },
+    {
+      "id": "item_cursed_pearl",
+      "name": "Black Pearl of the Trench",
+      "kind": "magic",
+      "rarity": "rare",
+      "description": "Jet pearl warm to the touch.",
+      "mechanics": "Worth 500 gp; owner draws storms (GM discretion).",
+      "value_gp": 500,
+      "tags": [
+        "curse",
+        "treasure"
+      ]
+    },
+    {
+      "id": "item_witch_charm",
+      "name": "Sea-Witch Salt Charm",
+      "kind": "magic",
+      "rarity": "uncommon",
+      "description": "Knotted kelp pouch.",
+      "mechanics": "Ignore one curse or ghost-shoals compulsion.",
+      "value_gp": 75,
+      "tags": [
+        "magic",
+        "sea-witch"
+      ]
+    },
+    {
+      "id": "item_silver_cutlass",
+      "name": "Silver-Edged Cutlass",
+      "kind": "weapon",
+      "rarity": "uncommon",
+      "description": "Silver inlaid blade.",
+      "mechanics": "Str+d8+1; silver damage vs undead.",
+      "value_gp": 120,
+      "tags": [
+        "magic",
+        "silver"
+      ]
+    },
+    {
+      "id": "item_sailor_rope",
+      "name": "Tarred Sailor's Rope (50 ft.)",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Standard ship rope.",
+      "mechanics": "Standard adventuring gear.",
+      "value_gp": 2,
+      "tags": [
+        "adventuring"
+      ]
+    },
+    {
+      "id": "item_chart_shoals",
+      "name": "Smuggler's Shoal Chart",
+      "kind": "gear",
+      "rarity": "uncommon",
+      "description": "Hidden reef passages.",
+      "mechanics": "Navigation +2 in central_archipelago; illegal in Crown ports.",
+      "value_gp": 40,
+      "tags": [
+        "navigation",
+        "smuggling"
+      ],
+      "location_ids": [
+        "cala_contrabandistas"
+      ]
+    }
+  ],
+  "factions": [
+    {
+      "id": "crown_armada",
+      "name": "Crown Armada",
+      "description": "Colonial navy and marines enforcing tariffs, charters, and hangings.",
+      "goals": "Control every harbor; crush pirate republics; monopolize powder and ship timber."
+    },
+    {
+      "id": "free_corsair_council",
+      "name": "Free Corsair Council",
+      "description": "Loose confederation of pirate captains voting at Tortuga-style moots.",
+      "goals": "Keep ports free of Crown law; split spoils fairly; hang traitors from the yardarm."
+    },
+    {
+      "id": "coven_tides",
+      "name": "Coven of Tides",
+      "description": "Sea-witch sisterhood binding storms, curses, and tidal omens.",
+      "goals": "Protect Ghost Shoals; punish oath-breakers; recover Deluge relics from the trench."
+    }
+  ],
+  "lore": [
+    {
+      "id": "lore_great_deluge",
+      "title": "The Great Deluge",
+      "content": "Three centuries ago the sea rose in a single season, swallowing empires and leaving Caribdus a reef-strewn graveyard. Sailors say the trench still belches the bones of drowned cities.",
+      "tags": [
+        "history",
+        "deluge"
+      ],
+      "region_id": "central_archipelago"
+    },
+    {
+      "id": "lore_broken_anchors",
+      "title": "Treaty of Broken Anchors",
+      "content": "A fragile truce between Crown Armada and the Corsair Council: no firing in designated anchorages, exchange of prisoners, and shared charts through neutral Perla Azul. Both sides cheat.",
+      "tags": [
+        "politics",
+        "treaty"
+      ],
+      "region_id": "central_archipelago"
+    },
+    {
+      "id": "lore_black_pearl_curse",
+      "title": "Curse of the Black Pearl",
+      "content": "A jet pearl taken from the trench is said to weigh down a captain's soul. Ships carrying one never outrun the same storm twice.",
+      "tags": [
+        "curse",
+        "treasure"
+      ],
+      "region_id": "deep_trench"
+    },
+    {
+      "id": "lore_shoal_bells",
+      "title": "Bells of the Ghost Shoals",
+      "content": "Drowned sailors ring wrecks at dusk. Hearing the bells thrice marks you for the sea hags unless a witch breaks the omen with salt and blood.",
+      "tags": [
+        "supernatural",
+        "undead"
+      ],
+      "region_id": "ghost_shoals"
+    }
+  ],
+  "maps": [
+    {
+      "id": "map_central_archipelago",
+      "name": "Central Archipelago Chart",
+      "kind": "regional",
+      "path": "maps/central_archipelago.png",
+      "description": "Reef channels, trade winds, and the three port cities marked with anchor symbols.",
+      "scale": "1 hex = 8 nautical miles"
+    },
+    {
+      "id": "map_puerto_sombrio",
+      "name": "Puerto Sombrío Harbor",
+      "kind": "city",
+      "path": "maps/puerto_sombrio.png",
+      "description": "Colonial walls, black-market docks, and the shipyard cranes.",
+      "scale": "1 square = 50 ft"
+    },
+    {
+      "id": "map_perla_azul",
+      "name": "Perla Azul Lagoon",
+      "kind": "city",
+      "path": "maps/perla_azul.png",
+      "description": "Pearl market, tide temple, and coral breakwater.",
+      "scale": "1 square = 50 ft"
+    },
+    {
+      "id": "map_fuerte_almirez",
+      "name": "Fuerte Almirez Citadel",
+      "kind": "city",
+      "path": "maps/fuerte_almirez.png",
+      "description": "Naval fort, governor's plaza, and ironclad shipyard.",
+      "scale": "1 square = 50 ft"
+    },
+    {
+      "id": "map_ghost_shoals",
+      "name": "Ghost Shoals Mist Chart",
+      "kind": "regional",
+      "path": "maps/ghost_shoals.png",
+      "description": "Shallow wrecks, witch huts, and tide rips hatched in gray.",
+      "scale": "1 hex = 4 nautical miles"
+    }
+  ],
+  "encounter_tables": [
+    {
+      "id": "encounter_open_sea",
+      "name": "Open Sea Voyage",
+      "context": "ocean",
+      "biome": "open_sea",
+      "dice": "d12",
+      "description": "Days under sail between islands.",
+      "rows": [
+        {
+          "roll": "1-3",
+          "result": "Fair winds; no encounter."
+        },
+        {
+          "roll": "4-5",
+          "result": "Merchant sloop (trade rumors or piracy?)."
+        },
+        {
+          "roll": "6-7",
+          "result": "1d4 reef sharks circle the hull.",
+          "creature_ids": [
+            "creature_reef_shark"
+          ],
+          "quantity": "1d4"
+        },
+        {
+          "roll": "8",
+          "result": "Jellyfish bloom — Navigation hazard.",
+          "creature_ids": [
+            "creature_jellyfish_swarm"
+          ],
+          "quantity": "1"
+        },
+        {
+          "roll": "9-10",
+          "result": "Pirate schooner intercepts.",
+          "creature_ids": [
+            "creature_pirate_crew"
+          ],
+          "quantity": "6"
+        },
+        {
+          "roll": "11",
+          "result": "Crown patrol demands papers.",
+          "creature_ids": [
+            "creature_crown_marine"
+          ],
+          "quantity": "8"
+        },
+        {
+          "roll": "12",
+          "result": "Leviathan shadow beneath the keel.",
+          "creature_ids": [
+            "creature_leviathan_spawn"
+          ],
+          "quantity": "1"
+        }
+      ]
+    },
+    {
+      "id": "encounter_port_night",
+      "name": "Port Night (Puerto Sombrío)",
+      "context": "urban_night",
+      "biome": "urban",
+      "district_id": "muelle_viejo",
+      "dice": "d8",
+      "rows": [
+        {
+          "roll": "1-2",
+          "result": "Drunk sailors; no threat."
+        },
+        {
+          "roll": "3-4",
+          "result": "Pickpocket pair (use pirate crew stats).",
+          "creature_ids": [
+            "creature_pirate_crew"
+          ],
+          "quantity": "2"
+        },
+        {
+          "roll": "5-6",
+          "result": "Smuggler offload interrupted.",
+          "creature_ids": [
+            "creature_pirate_crew"
+          ],
+          "quantity": "1d4+2"
+        },
+        {
+          "roll": "7",
+          "result": "Crown patrol sweep.",
+          "creature_ids": [
+            "creature_crown_marine"
+          ],
+          "quantity": "1d4"
+        },
+        {
+          "roll": "8",
+          "result": "Valeria Storm recruiting in the tavern.",
+          "notes": "Social; see npc_valeria_storm."
+        }
+      ]
+    },
+    {
+      "id": "encounter_reef",
+      "name": "Coral Reef Passage",
+      "context": "reef",
+      "biome": "reef",
+      "dice": "d10",
+      "rows": [
+        {
+          "roll": "1-3",
+          "result": "Clear channel; colorful fish only."
+        },
+        {
+          "roll": "4-5",
+          "result": "Giant crabs on the flats.",
+          "creature_ids": [
+            "creature_giant_crab"
+          ],
+          "quantity": "1d2"
+        },
+        {
+          "roll": "6-7",
+          "result": "Reef sharks drawn by blood.",
+          "creature_ids": [
+            "creature_reef_shark"
+          ],
+          "quantity": "1d4+1"
+        },
+        {
+          "roll": "8",
+          "result": "Giant octopus in a wreck.",
+          "creature_ids": [
+            "creature_giant_octopus"
+          ],
+          "quantity": "1"
+        },
+        {
+          "roll": "9",
+          "result": "Smuggler cache and lookouts.",
+          "notes": "item_chart_shoals possible."
+        },
+        {
+          "roll": "10",
+          "result": "Jellyfish swarm blocks the channel.",
+          "creature_ids": [
+            "creature_jellyfish_swarm"
+          ],
+          "quantity": "1"
+        }
+      ]
+    },
+    {
+      "id": "encounter_deep_water",
+      "name": "Deep Trench Dive",
+      "context": "deep",
+      "biome": "deep",
+      "dice": "d8",
+      "rows": [
+        {
+          "roll": "1",
+          "result": "Bioluminescent calm."
+        },
+        {
+          "roll": "2-3",
+          "result": "Giant octopus on the temple wall.",
+          "creature_ids": [
+            "creature_giant_octopus"
+          ],
+          "quantity": "1"
+        },
+        {
+          "roll": "4-5",
+          "result": "Barnacle zombies on the descent line.",
+          "creature_ids": [
+            "creature_barnacle_zombie"
+          ],
+          "quantity": "2d4"
+        },
+        {
+          "roll": "6",
+          "result": "Drowned sailors rise from a crevice.",
+          "creature_ids": [
+            "creature_drowned_sailor"
+          ],
+          "quantity": "2d6"
+        },
+        {
+          "roll": "7",
+          "result": "Black pearl lodged in coral — cursed.",
+          "notes": "item_cursed_pearl"
+        },
+        {
+          "roll": "8",
+          "result": "Leviathan spawn passes below.",
+          "creature_ids": [
+            "creature_leviathan_spawn"
+          ],
+          "quantity": "1"
+        }
+      ]
+    },
+    {
+      "id": "encounter_ghost_shoals",
+      "name": "Ghost Shoals Mist",
+      "context": "mist",
+      "biome": "ghost_shoals",
+      "dice": "d10",
+      "rows": [
+        {
+          "roll": "1-2",
+          "result": "Fog thickens; bells distant."
+        },
+        {
+          "roll": "3-4",
+          "result": "Drowned sailors wade from mist.",
+          "creature_ids": [
+            "creature_drowned_sailor"
+          ],
+          "quantity": "2d4"
+        },
+        {
+          "roll": "5-6",
+          "result": "Bruma Marina offers a bargain.",
+          "creature_ids": [
+            "creature_bruma_marina"
+          ],
+          "quantity": "1",
+          "notes": "Social or combat."
+        },
+        {
+          "roll": "7-8",
+          "result": "Ghost pirate officers.",
+          "creature_ids": [
+            "creature_ghost_pirate",
+            "creature_drowned_sailor"
+          ],
+          "quantity": "1 + 2d4"
+        },
+        {
+          "roll": "9",
+          "result": "Sea witch familiar watches.",
+          "creature_ids": [
+            "creature_sea_witch_familiar"
+          ],
+          "quantity": "1"
+        },
+        {
+          "roll": "10",
+          "result": "Naufragio Espectral materializes.",
+          "notes": "Major set-piece."
+        }
+      ]
+    },
+    {
+      "id": "encounter_perla_docks",
+      "name": "Perla Azul Docks (Day)",
+      "context": "urban",
+      "biome": "coast",
+      "dice": "d6",
+      "rows": [
+        {
+          "roll": "1-2",
+          "result": "Pearl auction crowd; no threat."
+        },
+        {
+          "roll": "3-4",
+          "result": "Giant crabs in the shallows.",
+          "creature_ids": [
+            "creature_giant_crab"
+          ],
+          "quantity": "1d2"
+        },
+        {
+          "roll": "5",
+          "result": "Corsair recruiters vs Crown press gang.",
+          "creature_ids": [
+            "creature_pirate_crew",
+            "creature_crown_marine"
+          ],
+          "quantity": "4 each"
+        },
+        {
+          "roll": "6",
+          "result": "Sacerdotisa Coral seeks divers for a ritual.",
+          "notes": "Social; npc_coral_priestess."
+        }
+      ]
+    }
+  ],
+  "location_contents": [
+    {
+      "location_id": "taberna_ancla_podrida",
+      "npc_ids": [
+        "npc_paco_tabernero",
+        "npc_valeria_storm",
+        "npc_cuervo_salazar",
+        "npc_isla_marinera"
+      ],
+      "item_ids": [
+        "item_grog",
+        "item_rum_fine"
+      ],
+      "encounter_table_id": "encounter_port_night"
+    },
+    {
+      "location_id": "astillero_negro",
+      "npc_ids": [
+        "npc_toro_contramaestre"
+      ],
+      "item_ids": [
+        "item_sailor_rope",
+        "item_grappling_hook"
+      ]
+    },
+    {
+      "location_id": "aduana_sombrio",
+      "npc_ids": [
+        "npc_envoy_sombrio"
+      ],
+      "item_ids": [
+        "item_compass"
+      ]
+    },
+    {
+      "location_id": "fortin_colonial",
+      "creature_weights": [
+        {
+          "creature_id": "creature_crown_marine",
+          "weight": 1,
+          "notes": "Day patrol"
+        }
+      ]
+    },
+    {
+      "location_id": "templo_mareas",
+      "npc_ids": [
+        "npc_coral_priestess"
+      ],
+      "item_ids": [
+        "item_witch_charm"
+      ]
+    },
+    {
+      "location_id": "palacio_gobernador",
+      "npc_ids": [
+        "npc_mateo_almirez"
+      ]
+    },
+    {
+      "location_id": "cuartel_almirez",
+      "npc_ids": [
+        "npc_almirante_ribera"
+      ],
+      "creature_weights": [
+        {
+          "creature_id": "creature_crown_marine",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "location_id": "cala_contrabandistas",
+      "npc_ids": [
+        "npc_garfio_reyes"
+      ],
+      "item_ids": [
+        "item_chart_shoals",
+        "item_flintlock"
+      ],
+      "creature_weights": [
+        {
+          "creature_id": "creature_pirate_crew",
+          "weight": 0.6
+        }
+      ]
+    },
+    {
+      "location_id": "arrecife_coral",
+      "creature_weights": [
+        {
+          "creature_id": "creature_reef_shark",
+          "weight": 0.5
+        },
+        {
+          "creature_id": "creature_giant_crab",
+          "weight": 0.3
+        },
+        {
+          "creature_id": "creature_jellyfish_swarm",
+          "weight": 0.2
+        }
+      ],
+      "encounter_table_id": "encounter_reef"
+    },
+    {
+      "location_id": "choza_bruja_mar",
+      "npc_ids": [
+        "npc_marisela_bruma"
+      ],
+      "item_ids": [
+        "item_witch_charm"
+      ],
+      "creature_weights": [
+        {
+          "creature_id": "creature_sea_witch_familiar",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "location_id": "naufragio_espectral",
+      "creature_weights": [
+        {
+          "creature_id": "creature_ghost_pirate",
+          "weight": 0.4
+        },
+        {
+          "creature_id": "creature_drowned_sailor",
+          "weight": 0.6
+        }
+      ],
+      "encounter_table_id": "encounter_ghost_shoals"
+    },
+    {
+      "location_id": "fosa_abisal",
+      "creature_weights": [
+        {
+          "creature_id": "creature_leviathan_spawn",
+          "weight": 0.3
+        },
+        {
+          "creature_id": "creature_giant_octopus",
+          "weight": 0.4
+        }
+      ],
+      "encounter_table_id": "encounter_deep_water"
+    },
+    {
+      "location_id": "templo_sumergido",
+      "item_ids": [
+        "item_cursed_pearl"
+      ],
+      "creature_weights": [
+        {
+          "creature_id": "creature_barnacle_zombie",
+          "weight": 0.7
+        },
+        {
+          "creature_id": "creature_drowned_sailor",
+          "weight": 0.3
+        }
+      ]
+    },
+    {
+      "location_id": "faro_tormenta",
+      "item_ids": [
+        "item_spyglass",
+        "item_compass"
+      ],
+      "encounter_table_id": "encounter_open_sea"
+    }
+  ],
+  "indexes": {
+    "by_city": {
+      "cala_contrabandistas": [
+        "item_chart_shoals"
+      ],
+      "fuerte_almirez": [
+        "palacio_gobernador",
+        "cuartel_almirez",
+        "astillero_crown",
+        "cantina_mosquito"
+      ],
+      "perla_azul": [
+        "taberna_perla",
+        "casa_cambio_perla",
+        "templo_mareas",
+        "malecon_faro"
+      ],
+      "puerto_sombrio": [
+        "taberna_ancla_podrida",
+        "astillero_negro",
+        "mercado_especias",
+        "aduana_sombrio",
+        "fortin_colonial"
+      ]
+    },
+    "by_region": {
+      "central_archipelago": [
+        "taberna_ancla_podrida",
+        "astillero_negro",
+        "mercado_especias",
+        "aduana_sombrio",
+        "fortin_colonial",
+        "taberna_perla",
+        "casa_cambio_perla",
+        "templo_mareas",
+        "malecon_faro",
+        "palacio_gobernador",
+        "cuartel_almirez",
+        "astillero_crown",
+        "cantina_mosquito",
+        "arrecife_coral",
+        "cala_contrabandistas",
+        "puerto_sombrio",
+        "perla_azul",
+        "fuerte_almirez"
+      ],
+      "deep_trench": [
+        "templo_sumergido",
+        "fosa_abisal"
+      ],
+      "ghost_shoals": [
+        "choza_bruja_mar",
+        "naufragio_espectral"
+      ],
+      "open_sea": [
+        "faro_tormenta"
+      ]
+    },
+    "by_tag": {
+      "adventuring": [
+        "item_grappling_hook",
+        "item_sailor_rope"
+      ],
+      "aquatic": [
+        "creature_reef_shark",
+        "creature_giant_octopus",
+        "creature_drowned_sailor",
+        "creature_giant_crab",
+        "creature_jellyfish_swarm",
+        "creature_barnacle_zombie"
+      ],
+      "authority": [
+        "npc_mateo_almirez"
+      ],
+      "beast": [
+        "creature_reef_shark",
+        "creature_giant_octopus",
+        "creature_giant_crab",
+        "creature_jellyfish_swarm",
+        "creature_sea_witch_familiar"
+      ],
+      "captain": [
+        "npc_valeria_storm"
+      ],
+      "civic": [
+        "aduana_sombrio",
+        "palacio_gobernador",
+        "npc_envoy_sombrio"
+      ],
+      "civilized": [
+        "central_archipelago"
+      ],
+      "colonial": [
+        "aduana_sombrio",
+        "puerto_sombrio",
+        "fuerte_almirez",
+        "npc_envoy_sombrio"
+      ],
+      "commoner": [
+        "npc_toro_contramaestre",
+        "npc_isla_marinera"
+      ],
+      "consumable": [
+        "item_grog",
+        "item_rum_fine",
+        "item_healing_rum"
+      ],
+      "cove": [
+        "cala_contrabandistas"
+      ],
+      "craft": [
+        "astillero_negro",
+        "npc_toro_contramaestre"
+      ],
+      "criminal": [
+        "npc_garfio_reyes"
+      ],
+      "curse": [
+        "item_cursed_pearl"
+      ],
+      "danger": [
+        "arrecife_coral"
+      ],
+      "deep": [
+        "templo_sumergido",
+        "fosa_abisal"
+      ],
+      "diving": [
+        "item_diving_helmet"
+      ],
+      "dungeon": [
+        "templo_sumergido"
+      ],
+      "familiar": [
+        "creature_sea_witch_familiar"
+      ],
+      "finance": [
+        "casa_cambio_perla"
+      ],
+      "firearm": [
+        "item_flintlock",
+        "item_musket",
+        "item_powder_horn"
+      ],
+      "fort": [
+        "fortin_colonial"
+      ],
+      "fortress": [
+        "fuerte_almirez"
+      ],
+      "holy": [
+        "templo_mareas",
+        "npc_coral_priestess"
+      ],
+      "horror": [
+        "fosa_abisal",
+        "deep_trench",
+        "creature_leviathan_spawn"
+      ],
+      "humanoid": [
+        "creature_pirate_crew",
+        "creature_crown_marine"
+      ],
+      "informant": [
+        "npc_paco_tabernero"
+      ],
+      "item:cala_contrabandistas": [
+        "item_chart_shoals"
+      ],
+      "landmark": [
+        "malecon_faro"
+      ],
+      "law": [
+        "aduana_sombrio",
+        "cuartel_almirez"
+      ],
+      "lighthouse": [
+        "faro_tormenta"
+      ],
+      "magic": [
+        "choza_bruja_mar",
+        "item_witch_charm",
+        "item_silver_cutlass"
+      ],
+      "market": [
+        "mercado_especias"
+      ],
+      "martial": [
+        "item_cutlass"
+      ],
+      "melee": [
+        "item_cutlass"
+      ],
+      "military": [
+        "fortin_colonial",
+        "cuartel_almirez",
+        "creature_crown_marine",
+        "npc_almirante_ribera"
+      ],
+      "monstrosity": [
+        "creature_bruma_marina",
+        "creature_leviathan_spawn"
+      ],
+      "mystery": [
+        "faro_tormenta"
+      ],
+      "naval": [
+        "astillero_crown",
+        "fuerte_almirez",
+        "open_sea",
+        "npc_almirante_ribera"
+      ],
+      "navigation": [
+        "malecon_faro",
+        "npc_cartografo_mir",
+        "item_compass",
+        "item_spyglass",
+        "item_chart_shoals"
+      ],
+      "noble": [
+        "palacio_gobernador",
+        "npc_mateo_almirez"
+      ],
+      "open_sea": [
+        "faro_tormenta"
+      ],
+      "pirate": [
+        "creature_pirate_crew",
+        "creature_ghost_pirate",
+        "npc_cuervo_salazar"
+      ],
+      "port": [
+        "puerto_sombrio",
+        "perla_azul"
+      ],
+      "quests": [
+        "palacio_gobernador"
+      ],
+      "ranged": [
+        "item_flintlock",
+        "item_musket"
+      ],
+      "reef": [
+        "arrecife_coral"
+      ],
+      "rest": [
+        "taberna_ancla_podrida",
+        "taberna_perla"
+      ],
+      "ruins": [
+        "templo_sumergido",
+        "deep_trench"
+      ],
+      "rumors": [
+        "taberna_ancla_podrida"
+      ],
+      "sailor": [
+        "npc_isla_marinera"
+      ],
+      "scholar": [
+        "npc_cartografo_mir"
+      ],
+      "sea-witch": [
+        "templo_mareas",
+        "choza_bruja_mar",
+        "creature_bruma_marina",
+        "npc_marisela_bruma",
+        "npc_coral_priestess",
+        "item_witch_charm"
+      ],
+      "shipyard": [
+        "astillero_negro",
+        "astillero_crown"
+      ],
+      "shop": [
+        "casa_cambio_perla"
+      ],
+      "shopping": [
+        "mercado_especias"
+      ],
+      "silver": [
+        "item_silver_cutlass"
+      ],
+      "smuggler": [
+        "npc_garfio_reyes"
+      ],
+      "smuggling": [
+        "cala_contrabandistas",
+        "puerto_sombrio",
+        "item_chart_shoals"
+      ],
+      "social": [
+        "mercado_especias",
+        "cantina_mosquito"
+      ],
+      "spellcaster": [
+        "npc_marisela_bruma"
+      ],
+      "supernatural": [
+        "ghost_shoals"
+      ],
+      "tavern": [
+        "taberna_ancla_podrida",
+        "taberna_perla",
+        "cantina_mosquito",
+        "npc_paco_tabernero"
+      ],
+      "temple": [
+        "templo_mareas",
+        "perla_azul"
+      ],
+      "trade": [
+        "perla_azul",
+        "central_archipelago",
+        "item_rum_fine"
+      ],
+      "travel": [
+        "astillero_negro",
+        "open_sea"
+      ],
+      "treasure": [
+        "item_cursed_pearl"
+      ],
+      "undead": [
+        "naufragio_espectral",
+        "ghost_shoals",
+        "creature_drowned_sailor",
+        "creature_ghost_pirate",
+        "creature_barnacle_zombie"
+      ],
+      "villain": [
+        "npc_cuervo_salazar"
+      ],
+      "wild_card": [
+        "npc_valeria_storm"
+      ],
+      "wilderness": [
+        "arrecife_coral",
+        "cala_contrabandistas",
+        "choza_bruja_mar",
+        "naufragio_espectral",
+        "fosa_abisal"
+      ],
+      "wreck": [
+        "naufragio_espectral"
+      ]
+    },
+    "by_creature_habitat": {
+      "coast": [
+        "creature_reef_shark",
+        "creature_pirate_crew",
+        "creature_giant_crab"
+      ],
+      "deep": [
+        "creature_giant_octopus",
+        "creature_jellyfish_swarm",
+        "creature_leviathan_spawn"
+      ],
+      "fort": [
+        "creature_crown_marine"
+      ],
+      "ghost_shoals": [
+        "creature_drowned_sailor",
+        "creature_bruma_marina",
+        "creature_ghost_pirate",
+        "creature_barnacle_zombie",
+        "creature_sea_witch_familiar"
+      ],
+      "mist": [
+        "creature_bruma_marina"
+      ],
+      "naval": [
+        "creature_crown_marine"
+      ],
+      "open_sea": [
+        "creature_reef_shark",
+        "creature_drowned_sailor",
+        "creature_pirate_crew",
+        "creature_jellyfish_swarm",
+        "creature_leviathan_spawn"
+      ],
+      "reef": [
+        "creature_reef_shark",
+        "creature_giant_octopus",
+        "creature_giant_crab",
+        "creature_jellyfish_swarm"
+      ],
+      "ship": [
+        "creature_giant_octopus",
+        "creature_barnacle_zombie"
+      ],
+      "urban": [
+        "creature_pirate_crew",
+        "creature_sea_witch_familiar",
+        "creature_crown_marine"
+      ],
+      "wreck": [
+        "creature_drowned_sailor",
+        "creature_ghost_pirate",
+        "creature_barnacle_zombie"
+      ]
+    },
+    "by_district": {
+      "astilleros_navales": [
+        "astillero_crown"
+      ],
+      "barrio_velas": [
+        "mercado_especias"
+      ],
+      "cuartel_naval": [
+        "cuartel_almirez",
+        "cantina_mosquito"
+      ],
+      "malecon_dorado": [
+        "templo_mareas",
+        "malecon_faro"
+      ],
+      "mercado_perlas": [
+        "taberna_perla",
+        "casa_cambio_perla"
+      ],
+      "muelle_viejo": [
+        "taberna_ancla_podrida",
+        "astillero_negro"
+      ],
+      "muralla_colonial": [
+        "aduana_sombrio",
+        "fortin_colonial"
+      ],
+      "plaza_armas": [
+        "palacio_gobernador"
+      ]
+    },
+    "by_faction": {
+      "coven_tides": [
+        "npc_marisela_bruma",
+        "npc_coral_priestess"
+      ],
+      "crown_armada": [
+        "npc_mateo_almirez",
+        "npc_almirante_ribera",
+        "npc_envoy_sombrio"
+      ],
+      "free_corsair_council": [
+        "npc_valeria_storm",
+        "npc_garfio_reyes",
+        "npc_cuervo_salazar"
+      ]
+    },
+    "npc_location_index": {
+      "npc_almirante_ribera": "cuartel_almirez",
+      "npc_cartografo_mir": "malecon_faro",
+      "npc_coral_priestess": "templo_mareas",
+      "npc_cuervo_salazar": "taberna_ancla_podrida",
+      "npc_envoy_sombrio": "aduana_sombrio",
+      "npc_garfio_reyes": "cala_contrabandistas",
+      "npc_isla_marinera": "taberna_ancla_podrida",
+      "npc_marisela_bruma": "choza_bruja_mar",
+      "npc_mateo_almirez": "palacio_gobernador",
+      "npc_paco_tabernero": "taberna_ancla_podrida",
+      "npc_toro_contramaestre": "astillero_negro",
+      "npc_valeria_storm": "taberna_ancla_podrida"
+    },
+    "location_content_index": {
+      "aduana_sombrio": "aduana_sombrio",
+      "arrecife_coral": "arrecife_coral",
+      "astillero_negro": "astillero_negro",
+      "cala_contrabandistas": "cala_contrabandistas",
+      "choza_bruja_mar": "choza_bruja_mar",
+      "cuartel_almirez": "cuartel_almirez",
+      "faro_tormenta": "faro_tormenta",
+      "fortin_colonial": "fortin_colonial",
+      "fosa_abisal": "fosa_abisal",
+      "naufragio_espectral": "naufragio_espectral",
+      "palacio_gobernador": "palacio_gobernador",
+      "taberna_ancla_podrida": "taberna_ancla_podrida",
+      "templo_mareas": "templo_mareas",
+      "templo_sumergido": "templo_sumergido"
+    }
+  },
+  "tools": [
+    {
+      "canonical_id": "get_region",
+      "enabled": true,
+      "name": "Get Region",
+      "description": "Fetch a region by ID with cities and wilderness locations.",
+      "parameters": {
+        "region_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_city",
+      "enabled": true,
+      "name": "Get City",
+      "description": "Fetch a city by ID with districts and location list.",
+      "parameters": {
+        "city_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_district",
+      "enabled": true,
+      "name": "Get District",
+      "description": "Fetch a district within a city.",
+      "parameters": {
+        "city_id": "string",
+        "district_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_location",
+      "enabled": true,
+      "name": "Get Location",
+      "description": "Fetch a location with description, tags, and connections.",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "list_city_locations",
+      "enabled": true,
+      "name": "List City Locations",
+      "description": "List all locations in a city, optionally filtered by district.",
+      "parameters": {
+        "city_id": "string",
+        "district_id": "string (optional)"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "list_location_npcs",
+      "enabled": true,
+      "name": "List Location NPCs",
+      "description": "List NPCs present at a location (from location contents and default locations).",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "population"
+    },
+    {
+      "canonical_id": "list_location_creatures",
+      "enabled": true,
+      "name": "List Location Creatures",
+      "description": "List weighted creatures associated with a location.",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "encounters"
+    },
+    {
+      "canonical_id": "list_location_items",
+      "enabled": true,
+      "name": "List Location Items",
+      "description": "List items found or sold at a location.",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "treasure"
+    },
+    {
+      "canonical_id": "get_npc",
+      "enabled": true,
+      "name": "Get NPC",
+      "description": "Fetch an NPC with roleplay notes, stat block, and default location.",
+      "parameters": {
+        "npc_id": "string"
+      },
+      "category": "population"
+    },
+    {
+      "canonical_id": "get_creature",
+      "enabled": true,
+      "name": "Get Creature",
+      "description": "Fetch a bestiary entry with full stat block and habitat notes.",
+      "parameters": {
+        "creature_id": "string"
+      },
+      "category": "bestiary"
+    },
+    {
+      "canonical_id": "get_item",
+      "enabled": true,
+      "name": "Get Item",
+      "description": "Fetch an item with description and mechanics.",
+      "parameters": {
+        "item_id": "string"
+      },
+      "category": "treasure"
+    },
+    {
+      "canonical_id": "search_world",
+      "enabled": true,
+      "name": "Search World",
+      "description": "Full-text search across locations, NPCs, items, and lore.",
+      "parameters": {
+        "kinds": "array (optional)",
+        "limit": "number (optional)",
+        "query": "string"
+      },
+      "category": "reference"
+    },
+    {
+      "canonical_id": "roll_encounter_table",
+      "enabled": true,
+      "name": "Roll Encounter Table",
+      "description": "Roll on an encounter table by ID or context (biome, district, depth).",
+      "parameters": {
+        "context": "string (optional)",
+        "roll": "number (optional)",
+        "table_id": "string (optional)"
+      },
+      "category": "encounters"
+    },
+    {
+      "canonical_id": "find_nearby_locations",
+      "enabled": true,
+      "name": "Find Nearby Locations",
+      "description": "List locations connected to or near a given location.",
+      "parameters": {
+        "location_id": "string",
+        "max_hops": "number (optional)"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_faction",
+      "enabled": true,
+      "name": "Get Faction",
+      "description": "Fetch a faction with goals and member NPC hints.",
+      "parameters": {
+        "faction_id": "string"
+      },
+      "category": "politics"
+    },
+    {
+      "canonical_id": "get_lore",
+      "enabled": true,
+      "name": "Get Lore",
+      "description": "Fetch a lore entry by ID or title.",
+      "parameters": {
+        "lore_id": "string"
+      },
+      "category": "reference"
+    },
+    {
+      "canonical_id": "list_bestiary",
+      "enabled": true,
+      "name": "List Bestiary",
+      "description": "List all creatures in the pack, optionally filtered by CR or tag.",
+      "parameters": {
+        "cr_max": "string (optional)",
+        "tag": "string (optional)"
+      },
+      "category": "bestiary"
+    },
+    {
+      "canonical_id": "filter_creatures_by_habitat",
+      "enabled": true,
+      "name": "Filter Creatures By Habitat",
+      "description": "Return creature IDs matching a habitat (forest, urban, dungeon, coast, etc.).",
+      "parameters": {
+        "habitat": "string"
+      },
+      "category": "bestiary"
+    },
+    {
+      "canonical_id": "get_map",
+      "enabled": true,
+      "name": "Get Map",
+      "description": "Fetch map metadata for a region, city, or location.",
+      "parameters": {
+        "map_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "describe_travel",
+      "enabled": true,
+      "name": "Describe Travel",
+      "description": "Summarize travel between two regions or cities with hazards and duration.",
+      "parameters": {
+        "from_id": "string",
+        "mode": "string (optional)",
+        "to_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_city",
+      "enabled": true,
+      "name": "Puerto Sombrío Overview",
+      "description": "Fetch Puerto Sombrío city record.",
+      "parameters": {
+        "city_id": "string"
+      },
+      "category": "geography",
+      "examples": [
+        {
+          "title": "Party docks",
+          "input": {
+            "city_id": "puerto_sombrio"
+          },
+          "output": "Districts, population, harbor locations."
+        }
+      ]
+    },
+    {
+      "canonical_id": "list_city_locations",
+      "enabled": true,
+      "name": "List Sombrío Docks",
+      "description": "Locations in Muelle Viejo.",
+      "parameters": {
+        "city_id": "string",
+        "district_id": "string (optional)"
+      },
+      "category": "geography",
+      "examples": [
+        {
+          "title": "Find tavern",
+          "input": {
+            "city_id": "puerto_sombrio",
+            "district_id": "muelle_viejo"
+          },
+          "output": "taberna_ancla_podrida, astillero_negro"
+        }
+      ]
+    },
+    {
+      "canonical_id": "get_npc",
+      "enabled": true,
+      "name": "Meet Capitán Storm",
+      "description": "Load privateer captain NPC.",
+      "parameters": {
+        "npc_id": "string"
+      },
+      "category": "population",
+      "examples": [
+        {
+          "title": "Tavern contact",
+          "input": {
+            "npc_id": "npc_valeria_storm"
+          },
+          "output": "Personality, faction, stat block."
+        }
+      ]
+    },
+    {
+      "canonical_id": "roll_encounter_table",
+      "enabled": true,
+      "name": "Reef crossing roll",
+      "description": "Roll coral reef table.",
+      "parameters": {
+        "context": "string (optional)",
+        "roll": "number (optional)",
+        "table_id": "string (optional)"
+      },
+      "category": "encounters",
+      "examples": [
+        {
+          "title": "d10 = 7",
+          "input": {
+            "roll": 7,
+            "table_id": "encounter_reef"
+          },
+          "output": "1d4+1 reef sharks."
+        }
+      ]
+    },
+    {
+      "canonical_id": "search_world",
+      "enabled": true,
+      "name": "Search smugglers",
+      "description": "Find smuggler references.",
+      "parameters": {
+        "kinds": "array (optional)",
+        "limit": "number (optional)",
+        "query": "string"
+      },
+      "category": "reference",
+      "examples": [
+        {
+          "title": "Query smuggler",
+          "input": {
+            "limit": 5,
+            "query": "contrabandista"
+          },
+          "output": "npc_garfio_reyes, cala_contrabandistas, item_chart_shoals..."
+        }
+      ]
+    }
+  ],
+  "oracle_guide": {
+    "principles": [
+      "Query the world pack for established locations, NPCs, and encounters before inventing.",
+      "Invent only when the pack has no matching content or the party goes off the authored map.",
+      "Use encounter tables for random wilderness and urban night scenes."
+    ],
+    "tool_priority": [
+      "get_location",
+      "list_city_locations",
+      "get_npc",
+      "roll_encounter_table",
+      "search_world"
+    ],
+    "anti_patterns": [
+      "Inventing a named shopkeeper when list_location_npcs returns candidates.",
+      "Rolling custom random encounters when a biome table exists."
+    ],
+    "scenarios": [
+      {
+        "situation": "Party docks at Puerto Sombrío",
+        "use_tools": [
+          "get_city",
+          "list_city_locations",
+          "get_location",
+          "list_location_npcs",
+          "get_lore"
+        ],
+        "avoid": [
+          "Inventing a new harbor district",
+          "Replacing Taberna del Ancla Podrida with a generic tavern"
+        ],
+        "invent_when": "Players seek a shop type not listed — invent name but reuse market or dock tags."
+      },
+      {
+        "situation": "Random open-sea voyage day",
+        "use_tools": [
+          "roll_encounter_table",
+          "get_creature",
+          "describe_travel"
+        ],
+        "avoid": [
+          "Custom naval encounters when encounter_open_sea exists"
+        ]
+      },
+      {
+        "situation": "Party enters Ghost Shoals mist",
+        "use_tools": [
+          "get_region",
+          "roll_encounter_table",
+          "get_lore",
+          "get_creature"
+        ],
+        "avoid": [
+          "Ignoring curse lore from lore_shoal_bells"
+        ]
+      }
+    ]
+  },
+  "compatibility": {
+    "room_type": "domain.Room",
+    "npc_type": "domain.NPC",
+    "creature_type": "domain.StatBlock",
+    "tool_map": {
+      "List Sombrío Docks": "list_city_locations",
+      "Meet Capitán Storm": "get_npc",
+      "Puerto Sombrío Overview": "get_city",
+      "Reef crossing roll": "roll_encounter_table",
+      "Search smugglers": "search_world",
+      "get_creature": "lookup_creature",
+      "get_location": "get_room",
+      "get_npc": "get_npc",
+      "search_world": "search_module"
+    },
+    "notes": "Future engine wiring maps worldpack query tools to adventure module lookups."
+  },
+  "metadata": {
+    "generated_at": "2026-08-14T12:15:00Z",
+    "generator": "worldpack-gen"
+  }
+}

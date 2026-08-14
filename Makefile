@@ -102,9 +102,9 @@ build-worldpack-gen: ## Build the worldpack catalog generator CLI
 
 worldpack-examples: build-worldpack-gen ## Generate example worldpack catalogs
 	@echo "$(CYAN)Generating worldpack examples...$(RESET)"
-	@mkdir -p examples/worldpacks
-	$(BINARY_DIR)/$(WORLDPACK_BINARY_NAME) -all -out examples/worldpacks/
-	@echo "$(GREEN)Examples in examples/worldpacks/$(RESET)"
+	@mkdir -p examples/worlds
+	$(BINARY_DIR)/$(WORLDPACK_BINARY_NAME) -all -out examples/worlds/
+	@echo "$(GREEN)Examples in examples/worlds/$(RESET)"
 
 rulesystem-examples: build-rulesystem-gen ## Generate example rulesystem packs
 	@echo "$(CYAN)Generating rulesystem examples...$(RESET)"

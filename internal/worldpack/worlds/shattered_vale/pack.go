@@ -1,4 +1,4 @@
-package profiles
+package shattered_vale
 
 import (
 	"strings"
@@ -8,15 +8,32 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/worldpack"
 )
 
-// DnD5eShatteredVale returns a rich generic fantasy world pack for D&D 5e.
-func DnD5eShatteredVale() *worldpack.Pack {
-	p := NewBaseWorld("dnd5e_shattered_vale", "The Shattered Vale", "The Shattered Vale", "dnd5e")
-	SetSettingTone(p,
+// Build returns The Shattered Vale world pack.
+func Build() *worldpack.Pack {
+	p := worldpack.NewBaseWorld("shattered_vale", "The Shattered Vale", worldpack.WorldMeta{
+		SettingName: "The Shattered Vale",
+		SuggestedRulesystem: "dnd5e",
+		PlayableWith: []string{"dnd5e", "savage_worlds", "d100"},
+	})
+	worldpack.SetSettingTone(p,
 		"Late medieval fantasy, five years after the Shattering",
 		"Heroic with creeping dread; trade hubs bustle while wilderness grows feral",
 		"A river-valley region fractured by a magical cataclysm. City-states cling to roads and rivers while monsters reclaim the wilds.",
 		"fantasy", "riverlands", "sandbox",
 	)
+
+	worldpack.SetWorldRulesFull(p, worldpack.WorldRules{
+		Magic: "Common — divine clerics, arcane wizards, and druidic rites; ley-line scars from the Shattering cause wild surges.",
+		Technology: "Late medieval — castles, mills, crossbows; no gunpowder.",
+		DeathAndAfterlife: "Souls reach the Outer Planes unless trapped by necromancy.",
+		Travel: "Roads between city-states; river barges; wilderness is dangerous.",
+	})
+	worldpack.SetPoliticsFull(p, worldpack.Politics{
+		Summary: "Fragmented city-states, guild leagues, and feudal holds compete after the Shattering.",
+		MajorPowers: []string{"Merchants' League (Millhaven)", "Order of the Dawn", "Ironhold Wardenate", "Red Hand Bandits"},
+		Conflicts: []string{"League tariffs vs Ironhold tolls", "Dawn vs Undercrypt necromancy", "Red Hand vs town guards"},
+		LawAndOrder: "Town charters and temple courts in cities; wilderness is self-help.",
+	})
 
 	buildRegions(p)
 	buildMaps(p)
@@ -36,34 +53,34 @@ func DnD5eShatteredVale() *worldpack.Pack {
 }
 
 func buildRegions(p *worldpack.Pack) {
-	AddRegion(p, "northern_marches", "Northern Marches",
+	worldpack.AddRegion(p, "northern_marches", "Northern Marches",
 		"Rolling moorland and broken keeps north of the vale. Bandits and undead haunt the old imperial roads.",
 		"grassland", "cold", "ruins", "bandits")
 	p.Regions[0].CityIDs = []string{"thornwall"}
 	p.Regions[0].TravelNotes = "Two days from Millhaven by road; winter snows can close the pass for weeks."
 	p.Regions[0].MapID = "map_northern_marches"
 
-	AddRegion(p, "sunlit_coast", "Sunlit Coast",
+	worldpack.AddRegion(p, "sunlit_coast", "Sunlit Coast",
 		"Cliff-lined shores and fishing villages where smugglers and sahuagin rumors mix with salt spray.",
 		"coastal", "trade", "smuggling")
 	p.Regions[1].CityIDs = []string{"millhaven"}
 	p.Regions[1].TravelNotes = "Coastal road is well patrolled near Millhaven; ship travel to Ironhold takes half a day."
 	p.Regions[1].MapID = "map_sunlit_coast"
 
-	AddRegion(p, "whisperwood", "Whisperwood",
+	worldpack.AddRegion(p, "whisperwood", "Whisperwood",
 		"An ancient forest whose trees murmur at dusk. Fey trails and goblin warrens lurk beneath the canopy.",
 		"forest", "fey", "goblin")
 	p.Regions[2].TravelNotes = "Travelers should not leave the King's Road after dark."
 	p.Regions[2].MapID = "map_whisperwood"
 
-	AddRegion(p, "ironspine_mountains", "Ironspine Mountains",
+	worldpack.AddRegion(p, "ironspine_mountains", "Ironspine Mountains",
 		"Jagged peaks rich in ore. Hobgoblin legions drill in hidden valleys; ogres block high passes.",
 		"mountain", "mining", "hobgoblin")
 	p.Regions[3].CityIDs = []string{"ironhold"}
 	p.Regions[3].TravelNotes = "Mountain passes require Survival DC 12 in winter; avalanches are common."
 	p.Regions[3].MapID = "map_ironspine"
 
-	AddRegion(p, "undercrypt", "Undercrypt",
+	worldpack.AddRegion(p, "undercrypt", "Undercrypt",
 		"A buried necropolis opened by the Shattering. Cultists and undead swell its halls.",
 		"underground", "undead", "dungeon")
 	p.Regions[4].TravelNotes = "No safe overland route; entrances are scattered sinkholes and collapsed temples."
@@ -71,38 +88,38 @@ func buildRegions(p *worldpack.Pack) {
 }
 
 func buildMaps(p *worldpack.Pack) {
-	AddMap(p, "map_northern_marches", "Northern Marches Overview", "regional",
+	worldpack.AddMap(p, "map_northern_marches", "Northern Marches Overview", "regional",
 		"maps/northern_marches.png", "Moor roads, ruined towers, Thornwall marked at the frontier.", "1 hex = 6 miles")
-	AddMap(p, "map_sunlit_coast", "Sunlit Coast Chart", "regional",
+	worldpack.AddMap(p, "map_sunlit_coast", "Sunlit Coast Chart", "regional",
 		"maps/sunlit_coast.png", "River delta, Millhaven harbor, cliff paths.", "1 hex = 4 miles")
-	AddMap(p, "map_whisperwood", "Whisperwood Trails", "regional",
+	worldpack.AddMap(p, "map_whisperwood", "Whisperwood Trails", "regional",
 		"maps/whisperwood.png", "King's Road, grove shrines, goblin territory hatched in green.", "1 hex = 4 miles")
-	AddMap(p, "map_ironspine", "Ironspine Passes", "regional",
+	worldpack.AddMap(p, "map_ironspine", "Ironspine Passes", "regional",
 		"maps/ironspine.png", "Fortress Ironhold, mining camps, hobgoblin markers.", "1 hex = 5 miles")
-	AddMap(p, "map_undercrypt", "Undercrypt Levels", "dungeon",
+	worldpack.AddMap(p, "map_undercrypt", "Undercrypt Levels", "dungeon",
 		"maps/undercrypt.png", "Collapsed temple entrance and three known sub-levels.", "1 square = 10 ft")
-	AddMap(p, "map_millhaven", "Millhaven City Map", "city",
+	worldpack.AddMap(p, "map_millhaven", "Millhaven City Map", "city",
 		"maps/millhaven.png", "Districts: Harbor, Market, Temple Hill, Garrison, Undercroft.", "1 square = 100 ft")
-	AddMap(p, "map_ironhold", "Ironhold Fortress", "city",
+	worldpack.AddMap(p, "map_ironhold", "Ironhold Fortress", "city",
 		"maps/ironhold.png", "Keep, smith quarter, training yard, sally ports.", "1 square = 50 ft")
 }
 
 func buildCitiesAndLocations(p *worldpack.Pack) {
 	// --- Millhaven ---
 	millhavenDistricts := []worldpack.District{
-		AddDistrict("harbor", "Harbor District", "Salt-stained docks and warehouses.", nil, "trade", "docks"),
-		AddDistrict("market", "Market District", "Bustling bazaar and guild halls.", nil, "trade", "commerce"),
-		AddDistrict("temple_hill", "Temple Hill", "White stone temples overlooking the river.", nil, "holy"),
-		AddDistrict("garrison", "Garrison Quarter", "Barracks and the town wall's eastern gate.", nil, "military"),
-		AddDistrict("undercroft", "Undercroft", "Narrow alleys beneath Temple Hill; thieves and fences.", nil, "criminal"),
+		worldpack.AddDistrict("harbor", "Harbor District", "Salt-stained docks and warehouses.", nil, "trade", "docks"),
+		worldpack.AddDistrict("market", "Market District", "Bustling bazaar and guild halls.", nil, "trade", "commerce"),
+		worldpack.AddDistrict("temple_hill", "Temple Hill", "White stone temples overlooking the river.", nil, "holy"),
+		worldpack.AddDistrict("garrison", "Garrison Quarter", "Barracks and the town wall's eastern gate.", nil, "military"),
+		worldpack.AddDistrict("undercroft", "Undercroft", "Narrow alleys beneath Temple Hill; thieves and fences.", nil, "criminal"),
 	}
-	AddCity(p, "millhaven", "Millhaven", "sunlit_coast",
+	worldpack.AddCity(p, "millhaven", "Millhaven", "sunlit_coast",
 		"River-port trade hub of twenty thousand souls. The Merchants' League holds sway, but the Order of the Dawn keeps the peace.",
 		millhavenDistricts, "trade", "port", "hub")
 	p.Cities[0].Population = "~20,000"
 	p.Cities[0].Government = "Merchant Council chaired by Mayor Eldric Vane"
 	p.Cities[0].MapID = "map_millhaven"
-	LinkCityToRegion(p, "sunlit_coast", "millhaven")
+	worldpack.LinkCityToRegion(p, "sunlit_coast", "millhaven")
 
 	// Millhaven locations
 	addLoc(p, worldpack.Location{
@@ -170,16 +187,16 @@ func buildCitiesAndLocations(p *worldpack.Pack) {
 	})
 
 	// --- Ironhold ---
-	AddCity(p, "ironhold", "Ironhold", "ironspine_mountains",
+	worldpack.AddCity(p, "ironhold", "Ironhold", "ironspine_mountains",
 		"Mountain fortress-city controlling ore routes. Warden Gareth rules with military pragmatism.",
 		[]worldpack.District{
-			AddDistrict("keep", "High Keep", "Citadel and officer quarters.", nil, "military"),
-			AddDistrict("forge_quarter", "Forge Quarter", "Smelters and master smiths.", nil, "craft"),
+			worldpack.AddDistrict("keep", "High Keep", "Citadel and officer quarters.", nil, "military"),
+			worldpack.AddDistrict("forge_quarter", "Forge Quarter", "Smelters and master smiths.", nil, "craft"),
 		}, "fortress", "mining")
 	p.Cities[1].Population = "~8,000"
 	p.Cities[1].Government = "Military governorship under Warden Gareth"
 	p.Cities[1].MapID = "map_ironhold"
-	LinkCityToRegion(p, "ironspine_mountains", "ironhold")
+	worldpack.LinkCityToRegion(p, "ironspine_mountains", "ironhold")
 
 	addLoc(p, worldpack.Location{
 		ID: "ironhold_keep", Name: "Ironhold Keep", Kind: "keep",
@@ -207,14 +224,14 @@ func buildCitiesAndLocations(p *worldpack.Pack) {
 	})
 
 	// --- Thornwall ---
-	AddCity(p, "thornwall", "Thornwall", "northern_marches",
+	worldpack.AddCity(p, "thornwall", "Thornwall", "northern_marches",
 		"Palisade frontier town guarding the moor road. Last respectable stop before the wild marches.",
 		[]worldpack.District{
-			AddDistrict("gate", "Gate Town", "Inns and traders serving caravan traffic.", nil, "frontier"),
+			worldpack.AddDistrict("gate", "Gate Town", "Inns and traders serving caravan traffic.", nil, "frontier"),
 		}, "frontier", "caravan")
 	p.Cities[2].Population = "~2,500"
 	p.Cities[2].Government = "Frontier charter; Scout-Captain Jessa Marrow holds practical authority"
-	LinkCityToRegion(p, "northern_marches", "thornwall")
+	worldpack.LinkCityToRegion(p, "northern_marches", "thornwall")
 
 	addLoc(p, worldpack.Location{
 		ID: "thornwall_gatehouse", Name: "Thornwall Gatehouse", Kind: "gate",
@@ -318,7 +335,7 @@ func buildCitiesAndLocations(p *worldpack.Pack) {
 	}
 	for _, loc := range wildLocs {
 		addLoc(p, loc)
-		LinkWildernessLocation(p, loc.RegionID, loc.ID)
+		worldpack.LinkWildernessLocation(p, loc.RegionID, loc.ID)
 	}
 
 	// Link city locations
@@ -326,13 +343,13 @@ func buildCitiesAndLocations(p *worldpack.Pack) {
 		"millhaven_market", "the_gilded_anchor", "temple_of_dawn", "millhaven_barracks",
 		"river_docks", "cutpurse_alley", "millhaven_town_hall",
 	} {
-		LinkLocationToCity(p, "millhaven", districtForMillhaven(id), id)
+		worldpack.LinkLocationToCity(p, "millhaven", districtForMillhaven(id), id)
 	}
 	for _, id := range []string{"ironhold_keep", "ironhold_smithy", "ironhold_training_yard"} {
-		LinkLocationToCity(p, "ironhold", districtForIronhold(id), id)
+		worldpack.LinkLocationToCity(p, "ironhold", districtForIronhold(id), id)
 	}
 	for _, id := range []string{"thornwall_gatehouse", "thornwall_saloon"} {
-		LinkLocationToCity(p, "thornwall", "gate", id)
+		worldpack.LinkLocationToCity(p, "thornwall", "gate", id)
 	}
 }
 
@@ -360,35 +377,35 @@ func districtForIronhold(locID string) string {
 }
 
 func addLoc(p *worldpack.Pack, loc worldpack.Location) {
-	AddLocation(p, loc)
+	worldpack.AddLocation(p, loc)
 }
 
 func buildFactions(p *worldpack.Pack) {
-	AddFaction(p, "merchants_league", "Merchants' League",
+	worldpack.AddFaction(p, "merchants_league", "Merchants' League",
 		"Cartel of trade guilds controlling river tariffs and warehouse licenses.",
 		"Maximize profit, monopolize grain routes, keep the vale politically fragmented.")
-	AddFaction(p, "order_of_dawn", "Order of the Dawn",
+	worldpack.AddFaction(p, "order_of_dawn", "Order of the Dawn",
 		"Militant faith dedicated to holding back undeath and abyssal corruption from the Shattering.",
 		"Seal Undercrypt breaches, support temples, recruit paladins and clerics.")
-	AddFaction(p, "red_hand", "Red Hand Bandits",
+	worldpack.AddFaction(p, "red_hand", "Red Hand Bandits",
 		"Loose confederation of brigands marked by crimson hand graffiti.",
 		"Extort caravans, raid weak settlements, eventually control Thornwall pass.")
 }
 
 func buildLore(p *worldpack.Pack) {
-	AddLore(p, "lore_shattering", "The Shattering",
+	worldpack.AddLore(p, "lore_shattering", "The Shattering",
 		"Five years ago a failed archmage ritual cracked the vale's ley lines. Cities survived; the spaces between them turned hostile. Undead rise faster near fault lines.",
 		"", "history", "cataclysm")
-	AddLore(p, "lore_silverrun", "The Silverrun River",
+	worldpack.AddLore(p, "lore_silverrun", "The Silverrun River",
 		"Major trade artery from Ironhold ore barges to Millhaven's sea gates. River pirates are rare but smugglers common.",
 		"sunlit_coast", "trade", "geography")
-	AddLore(p, "lore_undercrypt", "Secrets of the Undercrypt",
+	worldpack.AddLore(p, "lore_undercrypt", "Secrets of the Undercrypt",
 		"The necropolis predates the empire. Cult of the Hollow Crown seeks a lich regent in the deepest vaults.",
 		"undercrypt", "undead", "plot")
-	AddLore(p, "lore_whisperwood", "Whispers in the Wood",
+	worldpack.AddLore(p, "lore_whisperwood", "Whispers in the Wood",
 		"Shepherds report trees repeating their secrets. Druids say the forest listens to the Shattering and learns fear.",
 		"whisperwood", "fey", "horror")
-	AddLore(p, "lore_red_hand", "Origins of the Red Hand",
+	worldpack.AddLore(p, "lore_red_hand", "Origins of the Red Hand",
 		"Bandit lord Cassian united outcast soldiers after the Shattering. The Hand taxes the moor road and fences stolen League goods in Millhaven's Undercroft.",
 		"northern_marches", "bandits", "politics")
 }
@@ -415,7 +432,7 @@ func buildBestiary(p *worldpack.Pack) {
 		{"creature_giant_spider", "giant spider", "Webs across Undercrypt antechambers; reuse Stealth +7.", "Web Sense makes bypassing webs tricky.", []string{"forest", "underground", "dungeon"}, []string{"cr:1", "beast"}},
 	}
 	for _, c := range srdCreatures {
-		AddCreatureFromSRD(p, c.id, c.name, c.habitats, c.notes, c.lore, c.tags...)
+		worldpack.AddCreatureFromSRD(p, c.id, c.name, c.habitats, c.notes, c.lore, c.tags...)
 	}
 	// Verify all 17 SRD names present — add any missing from srd.Names()
 	seen := map[string]bool{}
@@ -425,7 +442,7 @@ func buildBestiary(p *worldpack.Pack) {
 	for _, name := range srd.Names() {
 		if !seen[name] {
 			id := "creature_" + strings.ReplaceAll(name, " ", "_")
-			AddCreatureFromSRD(p, id, name,
+			worldpack.AddCreatureFromSRD(p, id, name,
 				[]string{"wilderness"}, "Generic wilderness encounter.", "Standard SRD creature.", "srd")
 		}
 	}
@@ -461,7 +478,7 @@ func buildItems(p *worldpack.Pack) {
 		{ID: "item_lighthouse_lens", Name: "Focusing Lens Shard", Kind: "magic", Rarity: "uncommon", Description: "Fractured lighthouse lens that catches starlight.", Mechanics: "Once/day cast light on an object for 1 hour.", ValueGP: 75, LocationIDs: []string{"sunlit_lighthouse"}},
 	}
 	for _, it := range items {
-		AddItem(p, it)
+		worldpack.AddItem(p, it)
 	}
 }
 
@@ -621,7 +638,7 @@ func buildNPCs(p *worldpack.Pack) {
 		},
 	}
 	for _, n := range npcs {
-		AddNPC(p, n)
+		worldpack.AddNPC(p, n)
 	}
 }
 
@@ -791,7 +808,7 @@ func buildLocationContents(p *worldpack.Pack) {
 		},
 	}
 	for _, lc := range contents {
-		AddLocationContents(p, lc)
+		worldpack.AddLocationContents(p, lc)
 	}
 }
 
@@ -891,20 +908,20 @@ func buildEncounterTables(p *worldpack.Pack) {
 		},
 	}
 	for _, t := range tables {
-		AddEncounterTable(p, t)
+		worldpack.AddEncounterTable(p, t)
 	}
 }
 
 func buildToolExamples(p *worldpack.Pack) {
-	BindToolFromCanonical(p, "get_city", "Millhaven Overview", "Fetch Millhaven city record.", "geography", nil,
+	worldpack.BindToolFromCanonical(p, "get_city", "Millhaven Overview", "Fetch Millhaven city record.", "geography", nil,
 		[]worldpack.ToolExample{{Title: "Party arrives", Input: map[string]any{"city_id": "millhaven"}, Output: "Returns districts, population, and location IDs."}})
-	BindToolFromCanonical(p, "list_city_locations", "List Millhaven Harbor", "Locations in harbor district.", "geography", nil,
+	worldpack.BindToolFromCanonical(p, "list_city_locations", "List Millhaven Harbor", "Locations in harbor district.", "geography", nil,
 		[]worldpack.ToolExample{{Title: "Find the docks", Input: map[string]any{"city_id": "millhaven", "district_id": "harbor"}, Output: "river_docks, sunlit_lighthouse"}})
-	BindToolFromCanonical(p, "get_npc", "Meet Captain Thorne", "Load guard captain NPC.", "population", nil,
+	worldpack.BindToolFromCanonical(p, "get_npc", "Meet Captain Thorne", "Load guard captain NPC.", "population", nil,
 		[]worldpack.ToolExample{{Title: "Report crime", Input: map[string]any{"npc_id": "npc_mira_thorne"}, Output: "Personality, stat block, barracks location."}})
-	BindToolFromCanonical(p, "roll_encounter_table", "Forest travel roll", "Roll Whisperwood table.", "encounters", nil,
+	worldpack.BindToolFromCanonical(p, "roll_encounter_table", "Forest travel roll", "Roll Whisperwood table.", "encounters", nil,
 		[]worldpack.ToolExample{{Title: "d12 = 5", Input: map[string]any{"table_id": "encounter_whisperwood", "roll": 5}, Output: "2d4 goblins ambush."}})
-	BindToolFromCanonical(p, "search_world", "Search for bandits", "Find Red Hand references.", "reference", nil,
+	worldpack.BindToolFromCanonical(p, "search_world", "Search for bandits", "Find Red Hand references.", "reference", nil,
 		[]worldpack.ToolExample{{Title: "Query red hand", Input: map[string]any{"query": "Red Hand", "limit": 5}, Output: "npc_cassian_red, lore_red_hand, cutpurse_alley..."}})
 }
 

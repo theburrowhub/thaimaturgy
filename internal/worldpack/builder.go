@@ -1,4 +1,4 @@
-package profiles
+package worldpack
 
 import (
 	"encoding/json"
@@ -6,23 +6,25 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/srd"
-	"github.com/theburrowhub/thaimaturgy/internal/worldpack"
 )
 
 // NewBaseWorld creates a worldpack/v1 skeleton with common defaults.
-func NewBaseWorld(id, name, settingName, rulesystemID string) *worldpack.Pack {
-	return &worldpack.Pack{
-		APIVersion: worldpack.APIVersion,
+func NewBaseWorld(id, name string, meta WorldMeta) *Pack {
+	return &Pack{
+		APIVersion: APIVersion,
 		ID:         id,
 		Name:       name,
 		Version:    "1.0.0",
 		Language:   "en",
-		Setting: worldpack.Setting{
-			Name:         settingName,
-			RulesystemID: rulesystemID,
+		Setting: Setting{
+			Name:                meta.SettingName,
+			Summary:             meta.Summary,
+			SuggestedRulesystem: meta.SuggestedRulesystem,
+			PlayableWith:        meta.PlayableWith,
+			RulesystemID:        meta.SuggestedRulesystem,
 		},
-		Tools: worldpack.DefaultToolBindings(),
-		OracleGuide: worldpack.OracleGuide{
+		Tools: DefaultToolBindings(),
+		OracleGuide: OracleGuide{
 			Principles: []string{
 				"Query the world pack for established locations, NPCs, and encounters before inventing.",
 				"Invent only when the pack has no matching content or the party goes off the authored map.",
@@ -36,7 +38,7 @@ func NewBaseWorld(id, name, settingName, rulesystemID string) *worldpack.Pack {
 				"Rolling custom random encounters when a biome table exists.",
 			},
 		},
-		Compatibility: worldpack.EngineCompat{
+		Compatibility: EngineCompat{
 			RoomType:     "domain.Room",
 			NPCType:      "domain.NPC",
 			CreatureType: "domain.StatBlock",
@@ -53,7 +55,7 @@ func NewBaseWorld(id, name, settingName, rulesystemID string) *worldpack.Pack {
 }
 
 // SetSettingTone assigns era and tone on the pack setting.
-func SetSettingTone(p *worldpack.Pack, era, tone, summary string, tags ...string) {
+func SetSettingTone(p *Pack, era, tone, summary string, tags ...string) {
 	p.Setting.Era = era
 	p.Setting.Tone = tone
 	p.Setting.Summary = summary
@@ -61,43 +63,43 @@ func SetSettingTone(p *worldpack.Pack, era, tone, summary string, tags ...string
 }
 
 // AddRegion appends a region.
-func AddRegion(p *worldpack.Pack, id, name, desc, biome string, tags ...string) {
-	p.Regions = append(p.Regions, worldpack.Region{
+func AddRegion(p *Pack, id, name, desc, biome string, tags ...string) {
+	p.Regions = append(p.Regions, Region{
 		ID: id, Name: name, Description: desc, Biome: biome, Tags: tags,
 	})
 }
 
 // AddCity appends a city with optional districts.
-func AddCity(p *worldpack.Pack, id, name, regionID, desc string, districts []worldpack.District, tags ...string) {
-	p.Cities = append(p.Cities, worldpack.City{
+func AddCity(p *Pack, id, name, regionID, desc string, districts []District, tags ...string) {
+	p.Cities = append(p.Cities, City{
 		ID: id, Name: name, RegionID: regionID, Description: desc, Districts: districts, Tags: tags,
 	})
 }
 
 // AddDistrict is a convenience constructor for districts.
-func AddDistrict(id, name, desc string, locationIDs []string, tags ...string) worldpack.District {
-	return worldpack.District{
+func AddDistrict(id, name, desc string, locationIDs []string, tags ...string) District {
+	return District{
 		ID: id, Name: name, Description: desc, LocationIDs: locationIDs, Tags: tags,
 	}
 }
 
 // AddLocation appends a location.
-func AddLocation(p *worldpack.Pack, loc worldpack.Location) {
+func AddLocation(p *Pack, loc Location) {
 	p.Locations = append(p.Locations, loc)
 }
 
 // AddNPC appends an NPC.
-func AddNPC(p *worldpack.Pack, npc worldpack.WorldNPC) {
+func AddNPC(p *Pack, npc WorldNPC) {
 	p.NPCs = append(p.NPCs, npc)
 }
 
 // AddCreatureFromSRD adds a bestiary entry from the embedded SRD lookup.
-func AddCreatureFromSRD(p *worldpack.Pack, id, srdName string, habitats []string, encounterNotes, lore string, tags ...string) {
+func AddCreatureFromSRD(p *Pack, id, srdName string, habitats []string, encounterNotes, lore string, tags ...string) {
 	sb, ok := srd.Lookup(srdName)
 	if !ok {
 		sb = domain.StatBlock{CR: "?"}
 	}
-	p.Creatures = append(p.Creatures, worldpack.CreatureEntry{
+	p.Creatures = append(p.Creatures, CreatureEntry{
 		ID:             id,
 		Name:           titleCase(srdName),
 		SRDName:        srdName,
@@ -112,44 +114,44 @@ func AddCreatureFromSRD(p *worldpack.Pack, id, srdName string, habitats []string
 }
 
 // AddItem appends an item.
-func AddItem(p *worldpack.Pack, item worldpack.WorldItem) {
+func AddItem(p *Pack, item WorldItem) {
 	p.Items = append(p.Items, item)
 }
 
 // AddFaction appends a faction.
-func AddFaction(p *worldpack.Pack, id, name, desc, goals string) {
+func AddFaction(p *Pack, id, name, desc, goals string) {
 	p.Factions = append(p.Factions, domain.Faction{ID: id, Name: name, Description: desc, Goals: goals})
 }
 
 // AddLore appends a lore entry.
-func AddLore(p *worldpack.Pack, id, title, content, regionID string, tags ...string) {
-	p.Lore = append(p.Lore, worldpack.LoreEntry{ID: id, Title: title, Content: content, RegionID: regionID, Tags: tags})
+func AddLore(p *Pack, id, title, content, regionID string, tags ...string) {
+	p.Lore = append(p.Lore, LoreEntry{ID: id, Title: title, Content: content, RegionID: regionID, Tags: tags})
 }
 
 // AddMap appends a map reference.
-func AddMap(p *worldpack.Pack, id, name, kind, path, desc, scale string) {
-	p.Maps = append(p.Maps, worldpack.MapRef{ID: id, Name: name, Kind: kind, Path: path, Description: desc, Scale: scale})
+func AddMap(p *Pack, id, name, kind, path, desc, scale string) {
+	p.Maps = append(p.Maps, MapRef{ID: id, Name: name, Kind: kind, Path: path, Description: desc, Scale: scale})
 }
 
 // AddEncounterTable appends an encounter table.
-func AddEncounterTable(p *worldpack.Pack, t worldpack.EncounterTable) {
+func AddEncounterTable(p *Pack, t EncounterTable) {
 	p.EncounterTables = append(p.EncounterTables, t)
 }
 
 // AddLocationContents appends location contents.
-func AddLocationContents(p *worldpack.Pack, lc worldpack.LocationContents) {
+func AddLocationContents(p *Pack, lc LocationContents) {
 	p.LocationContents = append(p.LocationContents, lc)
 }
 
 // BindToolFromCanonical creates and appends a tool binding.
-func BindToolFromCanonical(p *worldpack.Pack, canonicalID, name, description, category string, preconditions []string, examples []worldpack.ToolExample) {
-	ct, ok := worldpack.CanonicalByID(canonicalID)
+func BindToolFromCanonical(p *Pack, canonicalID, name, description, category string, preconditions []string, examples []ToolExample) {
+	ct, ok := CanonicalByID(canonicalID)
 	params := map[string]any{}
 	if ok {
 		params = ct.Parameters
 	}
 	raw, _ := json.Marshal(params)
-	p.Tools = append(p.Tools, worldpack.ToolBinding{
+	p.Tools = append(p.Tools, ToolBinding{
 		CanonicalID:   canonicalID,
 		Enabled:       true,
 		Name:          name,
@@ -166,7 +168,7 @@ func BindToolFromCanonical(p *worldpack.Pack, canonicalID, name, description, ca
 }
 
 // LinkCityToRegion adds city ID to region's city list.
-func LinkCityToRegion(p *worldpack.Pack, regionID, cityID string) {
+func LinkCityToRegion(p *Pack, regionID, cityID string) {
 	for i := range p.Regions {
 		if p.Regions[i].ID == regionID {
 			p.Regions[i].CityIDs = append(p.Regions[i].CityIDs, cityID)
@@ -176,7 +178,7 @@ func LinkCityToRegion(p *worldpack.Pack, regionID, cityID string) {
 }
 
 // LinkLocationToCity adds location to city and optional district.
-func LinkLocationToCity(p *worldpack.Pack, cityID, districtID, locationID string) {
+func LinkLocationToCity(p *Pack, cityID, districtID, locationID string) {
 	for i := range p.Cities {
 		if p.Cities[i].ID != cityID {
 			continue
@@ -194,7 +196,7 @@ func LinkLocationToCity(p *worldpack.Pack, cityID, districtID, locationID string
 }
 
 // LinkWildernessLocation adds a location ID to a region.
-func LinkWildernessLocation(p *worldpack.Pack, regionID, locationID string) {
+func LinkWildernessLocation(p *Pack, regionID, locationID string) {
 	for i := range p.Regions {
 		if p.Regions[i].ID == regionID {
 			p.Regions[i].LocationIDs = append(p.Regions[i].LocationIDs, locationID)
@@ -219,3 +221,23 @@ func titleCase(s string) string {
 func splitWords(s string) []string {
 	return strings.Fields(strings.ReplaceAll(s, "_", " "))
 }
+
+
+type WorldMeta struct {
+	SettingName         string
+	Summary             string
+	SuggestedRulesystem string
+	PlayableWith        []string
+}
+
+func SetWorldRules(p *Pack, magic, technology string) {
+	p.Setting.WorldRules = WorldRules{Magic: magic, Technology: technology}
+}
+
+func SetWorldRulesFull(p *Pack, wr WorldRules) { p.Setting.WorldRules = wr }
+
+func SetPolitics(p *Pack, summary string, majorPowers, conflicts []string) {
+	p.Setting.Politics = Politics{Summary: summary, MajorPowers: majorPowers, Conflicts: conflicts}
+}
+
+func SetPoliticsFull(p *Pack, pol Politics) { p.Setting.Politics = pol }

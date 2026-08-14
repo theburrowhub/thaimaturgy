@@ -40,8 +40,11 @@ func ValidatePack(p *Pack) []ValidationIssue {
 	if strings.TrimSpace(p.Setting.Name) == "" {
 		add("setting.name", "required")
 	}
-	if strings.TrimSpace(p.Setting.RulesystemID) == "" {
-		add("setting.rulesystem_id", "required")
+	if strings.TrimSpace(p.Setting.WorldRules.Magic) == "" {
+		add("setting.world_rules.magic", "required")
+	}
+	if strings.TrimSpace(p.Setting.Politics.Summary) == "" {
+		add("setting.politics.summary", "required")
 	}
 	if len(p.Regions) == 0 {
 		add("regions", "at least one region required")

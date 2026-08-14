@@ -1,6 +1,6 @@
 {
   "api_version": "worldpack/v1",
-  "id": "dnd5e_shattered_vale",
+  "id": "shattered_vale",
   "name": "The Shattered Vale",
   "version": "1.0.0",
   "language": "en",
@@ -8,13 +8,40 @@
     "name": "The Shattered Vale",
     "era": "Late medieval fantasy, five years after the Shattering",
     "tone": "Heroic with creeping dread; trade hubs bustle while wilderness grows feral",
-    "rulesystem_id": "dnd5e",
     "summary": "A river-valley region fractured by a magical cataclysm. City-states cling to roads and rivers while monsters reclaim the wilds.",
     "tags": [
       "fantasy",
       "riverlands",
       "sandbox"
-    ]
+    ],
+    "world_rules": {
+      "magic": "Common — divine clerics, arcane wizards, and druidic rites; ley-line scars from the Shattering cause wild surges.",
+      "technology": "Late medieval — castles, mills, crossbows; no gunpowder.",
+      "death_and_afterlife": "Souls reach the Outer Planes unless trapped by necromancy.",
+      "travel": "Roads between city-states; river barges; wilderness is dangerous."
+    },
+    "politics": {
+      "summary": "Fragmented city-states, guild leagues, and feudal holds compete after the Shattering.",
+      "major_powers": [
+        "Merchants' League (Millhaven)",
+        "Order of the Dawn",
+        "Ironhold Wardenate",
+        "Red Hand Bandits"
+      ],
+      "conflicts": [
+        "League tariffs vs Ironhold tolls",
+        "Dawn vs Undercrypt necromancy",
+        "Red Hand vs town guards"
+      ],
+      "law_and_order": "Town charters and temple courts in cities; wilderness is self-help."
+    },
+    "suggested_rulesystem": "dnd5e",
+    "playable_with": [
+      "dnd5e",
+      "savage_worlds",
+      "d100"
+    ],
+    "rulesystem_id": "dnd5e"
   },
   "regions": [
     {
@@ -4262,7 +4289,7 @@
     "notes": "Future engine wiring maps worldpack query tools to adventure module lookups."
   },
   "metadata": {
-    "generated_at": "2026-08-14T11:59:08Z",
+    "generated_at": "2026-08-14T12:15:00Z",
     "generator": "worldpack-gen"
   }
 }

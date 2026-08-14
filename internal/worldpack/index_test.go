@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/worldpack"
-	_ "github.com/theburrowhub/thaimaturgy/internal/worldpack/profiles"
+	_ "github.com/theburrowhub/thaimaturgy/internal/worldpack/worlds"
 )
 
 func TestBuildIndexes(t *testing.T) {

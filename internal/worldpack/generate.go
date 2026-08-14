@@ -1,6 +1,7 @@
 package worldpack
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ type GenerateOptions struct {
 func Generate(opts GenerateOptions) (*Pack, error) {
 	id := strings.TrimSpace(opts.TemplateID)
 	if id == "" {
-		id = "dnd5e_shattered_vale"
+		id = "shattered_vale"
 	}
 	p, err := Builtin(id)
 	if err != nil {
@@ -64,7 +65,11 @@ func GenerateToFile(opts GenerateOptions) (string, error) {
 	if outDir == "" {
 		outDir = "."
 	}
-	path := filepath.Join(outDir, pack.ID+"."+ext)
+	worldDir := filepath.Join(outDir, pack.ID)
+	if err := os.MkdirAll(worldDir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(worldDir, "world."+ext)
 	if err := SavePack(path, pack); err != nil {
 		return "", err
 	}

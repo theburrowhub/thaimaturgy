@@ -11,7 +11,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/theburrowhub/thaimaturgy/internal/worldpack"
-	_ "github.com/theburrowhub/thaimaturgy/internal/worldpack/profiles"
+	_ "github.com/theburrowhub/thaimaturgy/internal/worldpack/worlds"
 )
 
 func main() {
@@ -25,7 +25,7 @@ func run() error {
 	var (
 		list         = flag.Bool("list", false, "list built-in templates and exit")
 		template     = flag.String("template", "", "built-in template: dnd5e_shattered_vale | dnd5e")
-		out          = flag.String("out", "examples/worldpacks", "output directory or file path")
+		out          = flag.String("out", "examples/worlds", "output directory or file path")
 		name         = flag.String("name", "", "override pack display name")
 		lang         = flag.String("lang", "en", "language code")
 		format       = flag.String("format", "json", "output format: json | yaml")
@@ -55,7 +55,7 @@ func run() error {
 		return fmt.Errorf("provide -template, -all, or load a pack with -validate/-inspect via generation")
 	}
 	if tmpl == "" {
-		tmpl = "dnd5e_shattered_vale"
+		tmpl = "shattered_vale"
 	}
 	return generateOne(tmpl, *out, *name, *lang, *format, *inspect, *validate, *buildIndexes)
 }
@@ -125,6 +125,6 @@ func init() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", filepath.Base(os.Args[0]))
 		flag.PrintDefaults()
 		fmt.Fprintln(os.Stderr, "\nTemplates:", strings.Join(worldpack.BuiltinIDs(), ", "))
-		fmt.Fprintln(os.Stderr, "Aliases: dnd5e, shattered_vale -> dnd5e_shattered_vale")
+		fmt.Fprintln(os.Stderr, "Worlds: shattered_vale, caribdus (aliases: dnd5e, 50_brazas)")
 	}
 }

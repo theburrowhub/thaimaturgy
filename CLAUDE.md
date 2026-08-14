@@ -91,7 +91,7 @@ internal/
   cmd/rulesystem-gen/      CLI: -inspect -validate -pdf -all -diff
   worldpack/               World catalog schema v1 (cities, locations, NPCs,
                            bestiary, items, encounters); not wired yet
-  worldpack/profiles/      Built-in: dnd5e_shattered_vale (The Shattered Vale)
+  worldpack/worlds/        Built-in: shattered_vale, caribdus (one folder per setting)
   cmd/worldpack-gen/       CLI: -inspect -validate -all
 ```
 
