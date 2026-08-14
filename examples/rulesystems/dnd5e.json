@@ -1,0 +1,764 @@
+{
+  "api_version": "rulesystem/v1",
+  "id": "dnd5e",
+  "name": "Dungeons \u0026 Dragons 5th Edition",
+  "version": "5.24 (SRD subset)",
+  "language": "en",
+  "source": {
+    "type": "builtin",
+    "notes": "Starter profile aligned with thAImaturgy's current D\u0026D 5e assumptions (d20, six abilities, HP, spell slots)."
+  },
+  "dice": {
+    "primary": "d20",
+    "common": [
+      "d4",
+      "d6",
+      "d8",
+      "d10",
+      "d12",
+      "d20",
+      "d100"
+    ],
+    "notation": "standard",
+    "notes": "Advantage/disadvantage roll 2d20 and keep highest/lowest."
+  },
+  "attributes": [
+    {
+      "id": "str",
+      "label": "Strength",
+      "abbrev": "STR",
+      "scale": "score"
+    },
+    {
+      "id": "dex",
+      "label": "Dexterity",
+      "abbrev": "DEX",
+      "scale": "score"
+    },
+    {
+      "id": "con",
+      "label": "Constitution",
+      "abbrev": "CON",
+      "scale": "score"
+    },
+    {
+      "id": "int",
+      "label": "Intelligence",
+      "abbrev": "INT",
+      "scale": "score"
+    },
+    {
+      "id": "wis",
+      "label": "Wisdom",
+      "abbrev": "WIS",
+      "scale": "score"
+    },
+    {
+      "id": "cha",
+      "label": "Charisma",
+      "abbrev": "CHA",
+      "scale": "score"
+    }
+  ],
+  "skills": [
+    {
+      "id": "acrobatics",
+      "label": "Acrobatics",
+      "attribute": "dex",
+      "training": true
+    },
+    {
+      "id": "animal_handling",
+      "label": "Animal Handling",
+      "attribute": "wis",
+      "training": true
+    },
+    {
+      "id": "arcana",
+      "label": "Arcana",
+      "attribute": "int",
+      "training": true
+    },
+    {
+      "id": "athletics",
+      "label": "Athletics",
+      "attribute": "str",
+      "training": true
+    },
+    {
+      "id": "deception",
+      "label": "Deception",
+      "attribute": "cha",
+      "training": true
+    },
+    {
+      "id": "history",
+      "label": "History",
+      "attribute": "int",
+      "training": true
+    },
+    {
+      "id": "insight",
+      "label": "Insight",
+      "attribute": "wis",
+      "training": true
+    },
+    {
+      "id": "intimidation",
+      "label": "Intimidation",
+      "attribute": "cha",
+      "training": true
+    },
+    {
+      "id": "investigation",
+      "label": "Investigation",
+      "attribute": "int",
+      "training": true
+    },
+    {
+      "id": "medicine",
+      "label": "Medicine",
+      "attribute": "wis",
+      "training": true
+    },
+    {
+      "id": "nature",
+      "label": "Nature",
+      "attribute": "int",
+      "training": true
+    },
+    {
+      "id": "perception",
+      "label": "Perception",
+      "attribute": "wis",
+      "training": true
+    },
+    {
+      "id": "performance",
+      "label": "Performance",
+      "attribute": "cha",
+      "training": true
+    },
+    {
+      "id": "persuasion",
+      "label": "Persuasion",
+      "attribute": "cha",
+      "training": true
+    },
+    {
+      "id": "religion",
+      "label": "Religion",
+      "attribute": "int",
+      "training": true
+    },
+    {
+      "id": "sleight_of_hand",
+      "label": "Sleight of Hand",
+      "attribute": "dex",
+      "training": true
+    },
+    {
+      "id": "stealth",
+      "label": "Stealth",
+      "attribute": "dex",
+      "training": true
+    },
+    {
+      "id": "survival",
+      "label": "Survival",
+      "attribute": "wis",
+      "training": true
+    }
+  ],
+  "resources": [
+    {
+      "id": "hp",
+      "label": "Hit Points",
+      "kind": "pool",
+      "primary": true,
+      "default_max": "class_hit_die + con_mod * level"
+    },
+    {
+      "id": "spell_slots",
+      "label": "Spell Slots",
+      "kind": "track",
+      "notes": "Per spell level, restored on long rest for most casters."
+    },
+    {
+      "id": "hit_dice",
+      "label": "Hit Dice",
+      "kind": "counter",
+      "notes": "Spent on short rest to recover HP."
+    },
+    {
+      "id": "gold",
+      "label": "Gold",
+      "kind": "counter"
+    }
+  ],
+  "conditions": [
+    {
+      "id": "blinded",
+      "label": "Blinded"
+    },
+    {
+      "id": "charmed",
+      "label": "Charmed"
+    },
+    {
+      "id": "deafened",
+      "label": "Deafened"
+    },
+    {
+      "id": "exhaustion",
+      "label": "Exhaustion"
+    },
+    {
+      "id": "frightened",
+      "label": "Frightened"
+    },
+    {
+      "id": "grappled",
+      "label": "Grappled"
+    },
+    {
+      "id": "incapacitated",
+      "label": "Incapacitated"
+    },
+    {
+      "id": "invisible",
+      "label": "Invisible"
+    },
+    {
+      "id": "paralyzed",
+      "label": "Paralyzed"
+    },
+    {
+      "id": "petrified",
+      "label": "Petrified"
+    },
+    {
+      "id": "poisoned",
+      "label": "Poisoned"
+    },
+    {
+      "id": "prone",
+      "label": "Prone"
+    },
+    {
+      "id": "restrained",
+      "label": "Restrained"
+    },
+    {
+      "id": "stunned",
+      "label": "Stunned"
+    },
+    {
+      "id": "unconscious",
+      "label": "Unconscious"
+    }
+  ],
+  "resolution": {
+    "skill_check": {
+      "roll": "1d20 + skill_modifier",
+      "compare": "gte",
+      "target": "dc",
+      "success": "total \u003e= dc",
+      "critical": "natural 20",
+      "fumble": "natural 1",
+      "notes": "Proficiency adds PB when proficient; expertise doubles PB."
+    },
+    "ability_check": {
+      "roll": "1d20 + ability_modifier",
+      "compare": "gte",
+      "target": "dc"
+    },
+    "attack": {
+      "roll": "1d20 + attack_bonus",
+      "target": "ac",
+      "compare": "gte",
+      "notes": "Melee usually STR/DEX; ranged DEX; spells use spell attack bonus."
+    },
+    "defense": {
+      "stat": "ac",
+      "formula": "10 + dex_mod + armor + shield + misc"
+    },
+    "spell": {
+      "cost": "spell_slot",
+      "roll": "varies by spell",
+      "notes": "Cantrips cost no slot."
+    },
+    "damage": {
+      "roll": "weapon_or_spell_dice + mod",
+      "type": "bludgeoning|piercing|slashing|elemental…"
+    },
+    "initiative": {
+      "roll": "1d20 + dex_mod",
+      "compare": "descending_order"
+    }
+  },
+  "tools": [
+    {
+      "canonical_id": "roll_dice",
+      "enabled": true,
+      "name": "roll_dice",
+      "description": "Roll dice in standard notation (e.g. 1d20, 2d6+3).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "notation": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "notation"
+        ]
+      },
+      "engine_hook": "dice.roll"
+    },
+    {
+      "canonical_id": "ability_check",
+      "enabled": true,
+      "name": "ability_check",
+      "description": "Roll a d20 ability check against a DC.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attribute": {
+            "type": "string"
+          },
+          "modifier": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attribute",
+          "target"
+        ]
+      },
+      "engine_hook": "check.ability"
+    },
+    {
+      "canonical_id": "skill_check",
+      "enabled": true,
+      "name": "skill_check",
+      "description": "Roll a d20 skill check with proficiency if applicable.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "skill": {
+            "type": "string"
+          },
+          "modifier": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill",
+          "target"
+        ]
+      },
+      "engine_hook": "check.skill"
+    },
+    {
+      "canonical_id": "attack",
+      "enabled": true,
+      "name": "attack",
+      "description": "Resolve an attack roll vs AC and apply damage on a hit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attacker": {
+            "type": "string"
+          },
+          "defender": {
+            "type": "string"
+          },
+          "weapon_or_power": {
+            "type": "string"
+          },
+          "modifier": {
+            "type": "integer"
+          },
+          "damage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attacker",
+          "defender"
+        ]
+      },
+      "engine_hook": "combat.attack"
+    },
+    {
+      "canonical_id": "cast_spell",
+      "enabled": true,
+      "name": "cast_spell",
+      "description": "Expend a spell slot and resolve a spell.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "spell": {
+            "type": "string"
+          },
+          "level_or_cost": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character",
+          "spell"
+        ]
+      },
+      "engine_hook": "magic.cast"
+    },
+    {
+      "canonical_id": "update_health",
+      "enabled": true,
+      "name": "update_hp",
+      "description": "Change current HP via damage (negative delta) or healing.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "delta": {
+            "type": "integer"
+          },
+          "set": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character"
+        ]
+      },
+      "engine_hook": "character.health",
+      "notes": "Maps to update_hp in virtual-DM mode today."
+    },
+    {
+      "canonical_id": "apply_condition",
+      "enabled": true,
+      "name": "set_condition",
+      "description": "Apply a D\u0026D 5e condition (Poisoned, Prone…).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character",
+          "condition"
+        ]
+      },
+      "engine_hook": "character.condition.add"
+    },
+    {
+      "canonical_id": "remove_condition",
+      "enabled": true,
+      "name": "remove_condition",
+      "description": "Remove a condition.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character",
+          "condition"
+        ]
+      },
+      "engine_hook": "character.condition.remove"
+    },
+    {
+      "canonical_id": "rest",
+      "enabled": true,
+      "name": "rest",
+      "description": "Apply short or long rest recovery.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "short",
+              "long"
+            ]
+          },
+          "dice": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "character",
+          "kind"
+        ]
+      },
+      "engine_hook": "character.rest"
+    },
+    {
+      "canonical_id": "initiative",
+      "enabled": true,
+      "name": "initiative",
+      "description": "Roll initiative for combatants.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "participants"
+        ]
+      },
+      "engine_hook": "combat.initiative"
+    },
+    {
+      "canonical_id": "lookup_creature",
+      "enabled": true,
+      "name": "lookup_creature",
+      "description": "Look up an SRD creature stat block by name.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "engine_hook": "bestiary.lookup",
+      "notes": "Uses internal/srd today."
+    },
+    {
+      "canonical_id": "award_experience",
+      "enabled": true,
+      "name": "award_xp",
+      "description": "Grant XP to a character.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character",
+          "amount"
+        ]
+      },
+      "engine_hook": "character.xp"
+    },
+    {
+      "canonical_id": "inventory_add",
+      "enabled": true,
+      "name": "add_item",
+      "description": "Add an item to inventory.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "character",
+          "name"
+        ]
+      },
+      "engine_hook": "character.inventory.add"
+    },
+    {
+      "canonical_id": "inventory_remove",
+      "enabled": true,
+      "name": "remove_item",
+      "description": "Remove items from inventory.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "character",
+          "name"
+        ]
+      },
+      "engine_hook": "character.inventory.remove"
+    },
+    {
+      "canonical_id": "update_character",
+      "enabled": true,
+      "name": "update_party_member",
+      "description": "Track HP/AC/notes for a party member.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "value": {},
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character"
+        ]
+      },
+      "engine_hook": "character.update",
+      "notes": "Maps to update_party_member today."
+    }
+  ],
+  "character": {
+    "fields": [
+      {
+        "id": "name",
+        "label": "Name",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "id": "race",
+        "label": "Species/Race",
+        "kind": "string"
+      },
+      {
+        "id": "class",
+        "label": "Class",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "id": "level",
+        "label": "Level",
+        "kind": "int",
+        "required": true
+      },
+      {
+        "id": "abilities",
+        "label": "Ability scores",
+        "kind": "list"
+      },
+      {
+        "id": "hp",
+        "label": "Hit points",
+        "kind": "resource",
+        "required": true
+      },
+      {
+        "id": "ac",
+        "label": "Armor class",
+        "kind": "int",
+        "required": true
+      },
+      {
+        "id": "proficiency_bonus",
+        "label": "Proficiency bonus",
+        "kind": "int"
+      },
+      {
+        "id": "spells",
+        "label": "Spellbook",
+        "kind": "list"
+      },
+      {
+        "id": "inventory",
+        "label": "Inventory",
+        "kind": "list"
+      },
+      {
+        "id": "conditions",
+        "label": "Conditions",
+        "kind": "list"
+      }
+    ],
+    "notes": "Matches domain.Character in internal/domain/character.go."
+  },
+  "prompts": {
+    "oracle_context": "This adventure uses Dungeons \u0026 Dragons 5th Edition. Resolve checks with d20 + modifier vs DC. Attacks target AC. Use six abilities (STR, DEX, CON, INT, WIS, CHA), proficiency bonus, spell slots for casters, and standard 5e conditions. Prefer SRD terminology.",
+    "dm_notes": "Current thAImaturgy engine tools (update_hp, ability_check, lookup_creature) are 5e-shaped."
+  },
+  "rules_summary": [
+    "d20 + modifier vs DC for checks and saves.",
+    "Attack rolls vs Armor Class; crit on natural 20.",
+    "HP reach 0 → death saves unless instant kill.",
+    "Short rest spends hit dice; long rest restores HP, slots, and half hit dice."
+  ],
+  "metadata": {
+    "family": "d20",
+    "generated_at": "2026-08-14T11:45:45Z",
+    "generator": "rulesystem-gen",
+    "srd": "yes"
+  }
+}

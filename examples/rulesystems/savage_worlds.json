@@ -1,0 +1,694 @@
+{
+  "api_version": "rulesystem/v1",
+  "id": "savage_worlds",
+  "name": "Savage Worlds",
+  "version": "SWADE-inspired starter",
+  "language": "en",
+  "source": {
+    "type": "builtin",
+    "notes": "Generic SWADE-shaped profile (traits, wild die, bennies, raises). Not a licensed reproduction of Pinnacle text."
+  },
+  "dice": {
+    "primary": "trait_d6",
+    "common": [
+      "d4",
+      "d6",
+      "d8",
+      "d10",
+      "d12"
+    ],
+    "notation": "trait_plus_wild_die",
+    "notes": "Roll trait die and wild die (d6); keep highest. Aces (max on die) roll again and add."
+  },
+  "attributes": [
+    {
+      "id": "agility",
+      "label": "Agility",
+      "abbrev": "Agi",
+      "scale": "die_type"
+    },
+    {
+      "id": "smarts",
+      "label": "Smarts",
+      "abbrev": "Sma",
+      "scale": "die_type"
+    },
+    {
+      "id": "spirit",
+      "label": "Spirit",
+      "abbrev": "Spi",
+      "scale": "die_type"
+    },
+    {
+      "id": "strength",
+      "label": "Strength",
+      "abbrev": "Str",
+      "scale": "die_type"
+    },
+    {
+      "id": "vigor",
+      "label": "Vigor",
+      "abbrev": "Vig",
+      "scale": "die_type"
+    }
+  ],
+  "skills": [
+    {
+      "id": "athletics",
+      "label": "Athletics",
+      "attribute": "agility",
+      "training": true
+    },
+    {
+      "id": "fighting",
+      "label": "Fighting",
+      "attribute": "agility",
+      "training": true
+    },
+    {
+      "id": "shooting",
+      "label": "Shooting",
+      "attribute": "agility",
+      "training": true
+    },
+    {
+      "id": "stealth",
+      "label": "Stealth",
+      "attribute": "agility",
+      "training": true
+    },
+    {
+      "id": "thievery",
+      "label": "Thievery",
+      "attribute": "agility",
+      "training": true
+    },
+    {
+      "id": "notice",
+      "label": "Notice",
+      "attribute": "smarts",
+      "training": true
+    },
+    {
+      "id": "research",
+      "label": "Research",
+      "attribute": "smarts",
+      "training": true
+    },
+    {
+      "id": "repair",
+      "label": "Repair",
+      "attribute": "smarts",
+      "training": true
+    },
+    {
+      "id": "spellcasting",
+      "label": "Spellcasting",
+      "attribute": "smarts",
+      "training": true
+    },
+    {
+      "id": "taunt",
+      "label": "Taunt",
+      "attribute": "smarts",
+      "training": true
+    },
+    {
+      "id": "intimidation",
+      "label": "Intimidation",
+      "attribute": "spirit",
+      "training": true
+    },
+    {
+      "id": "persuasion",
+      "label": "Persuasion",
+      "attribute": "spirit",
+      "training": true
+    },
+    {
+      "id": "survival",
+      "label": "Survival",
+      "attribute": "spirit",
+      "training": true
+    },
+    {
+      "id": "healing",
+      "label": "Healing",
+      "attribute": "spirit",
+      "training": true
+    },
+    {
+      "id": "boating",
+      "label": "Boating",
+      "attribute": "strength",
+      "training": true
+    },
+    {
+      "id": "driving",
+      "label": "Driving",
+      "attribute": "agility",
+      "training": true
+    },
+    {
+      "id": "piloting",
+      "label": "Piloting",
+      "attribute": "agility",
+      "training": true
+    },
+    {
+      "id": "common_knowledge",
+      "label": "Common Knowledge",
+      "attribute": "smarts",
+      "training": true
+    }
+  ],
+  "resources": [
+    {
+      "id": "wounds",
+      "label": "Wounds",
+      "kind": "track",
+      "primary": true,
+      "default_max": "3 (+1 per size category for extras)"
+    },
+    {
+      "id": "fatigue",
+      "label": "Fatigue",
+      "kind": "track",
+      "default_max": "2 (incapacitated at 3)"
+    },
+    {
+      "id": "bennies",
+      "label": "Bennies",
+      "kind": "bennies",
+      "notes": "Meta-currency for rerolls and soak."
+    },
+    {
+      "id": "power_points",
+      "label": "Power Points",
+      "kind": "pool",
+      "notes": "For arcane/divine/psionic powers."
+    }
+  ],
+  "conditions": [
+    {
+      "id": "shaken",
+      "label": "Shaken"
+    },
+    {
+      "id": "stunned",
+      "label": "Stunned"
+    },
+    {
+      "id": "bound",
+      "label": "Bound"
+    },
+    {
+      "id": "entangled",
+      "label": "Entangled"
+    },
+    {
+      "id": "incapacitated",
+      "label": "Incapacitated"
+    }
+  ],
+  "resolution": {
+    "skill_check": {
+      "roll": "trait_die + wild_die",
+      "compare": "gte",
+      "target": "4",
+      "success": "highest die \u003e= 4",
+      "critical": "raise: each +4 above TN",
+      "notes": "Wild cards roll wild die; extras roll single die."
+    },
+    "ability_check": {
+      "roll": "attribute_die + wild_die",
+      "compare": "gte",
+      "target": "4"
+    },
+    "attack": {
+      "roll": "fighting_or_shooting + wild_die",
+      "target": "4",
+      "compare": "gte",
+      "notes": "Hit causes shaken; raise adds wound (after soak)."
+    },
+    "defense": {
+      "stat": "parry",
+      "formula": "2 + half fighting + shield"
+    },
+    "spell": {
+      "cost": "power_points",
+      "roll": "arcane_skill + wild_die vs 4",
+      "notes": "Powers list PP cost and range/duration."
+    },
+    "damage": {
+      "roll": "weapon_or_power_damage + raises",
+      "notes": "Soak roll vigor + wild; wound if fail."
+    },
+    "initiative": {
+      "roll": "action_card",
+      "compare": "suit_and_rank",
+      "notes": "Deal action cards each round; jokers go first."
+    }
+  },
+  "tools": [
+    {
+      "canonical_id": "roll_dice",
+      "enabled": true,
+      "name": "roll_trait",
+      "description": "Roll a trait die plus wild die (keep highest, aces explode).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "notation": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "notation"
+        ]
+      },
+      "engine_hook": "dice.roll"
+    },
+    {
+      "canonical_id": "skill_check",
+      "enabled": true,
+      "name": "skill_check",
+      "description": "Roll a skill (linked attribute) vs target number 4.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "skill": {
+            "type": "string"
+          },
+          "modifier": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill",
+          "target"
+        ]
+      },
+      "engine_hook": "check.skill"
+    },
+    {
+      "canonical_id": "ability_check",
+      "enabled": true,
+      "name": "attribute_check",
+      "description": "Roll a raw attribute vs 4.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attribute": {
+            "type": "string"
+          },
+          "modifier": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attribute",
+          "target"
+        ]
+      },
+      "engine_hook": "check.ability"
+    },
+    {
+      "canonical_id": "attack",
+      "enabled": true,
+      "name": "attack",
+      "description": "Resolve a fighting/shooting attack; apply shaken/wounds.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attacker": {
+            "type": "string"
+          },
+          "defender": {
+            "type": "string"
+          },
+          "weapon_or_power": {
+            "type": "string"
+          },
+          "modifier": {
+            "type": "integer"
+          },
+          "damage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attacker",
+          "defender"
+        ]
+      },
+      "engine_hook": "combat.attack"
+    },
+    {
+      "canonical_id": "use_power",
+      "enabled": true,
+      "name": "use_power",
+      "description": "Activate a power spending power points.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "power": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "modifier": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "character",
+          "power"
+        ]
+      },
+      "engine_hook": "power.use"
+    },
+    {
+      "canonical_id": "update_health",
+      "enabled": true,
+      "name": "update_wounds",
+      "description": "Apply wounds, fatigue, or healing/soak outcomes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "delta": {
+            "type": "integer"
+          },
+          "set": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character"
+        ]
+      },
+      "engine_hook": "character.health"
+    },
+    {
+      "canonical_id": "apply_condition",
+      "enabled": true,
+      "name": "apply_condition",
+      "description": "Apply shaken, stunned, bound…",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character",
+          "condition"
+        ]
+      },
+      "engine_hook": "character.condition.add"
+    },
+    {
+      "canonical_id": "remove_condition",
+      "enabled": true,
+      "name": "remove_condition",
+      "description": "Recover from conditions.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character",
+          "condition"
+        ]
+      },
+      "engine_hook": "character.condition.remove"
+    },
+    {
+      "canonical_id": "update_character",
+      "enabled": true,
+      "name": "update_character",
+      "description": "Track edges, hindrances, gear, and notes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "value": {},
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character"
+        ]
+      },
+      "engine_hook": "character.update"
+    },
+    {
+      "canonical_id": "rest",
+      "enabled": true,
+      "name": "rest",
+      "description": "Natural healing: one wound level per day of rest.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "short",
+              "long"
+            ]
+          },
+          "dice": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "character",
+          "kind"
+        ]
+      },
+      "engine_hook": "character.rest"
+    },
+    {
+      "canonical_id": "initiative",
+      "enabled": true,
+      "name": "initiative",
+      "description": "Deal action cards for the round.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "participants"
+        ]
+      },
+      "engine_hook": "combat.initiative"
+    },
+    {
+      "canonical_id": "award_experience",
+      "enabled": true,
+      "name": "award_advance",
+      "description": "Grant advances or rank-ups.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character",
+          "amount"
+        ]
+      },
+      "engine_hook": "character.xp",
+      "notes": "SW uses advances rather than XP in many settings."
+    },
+    {
+      "canonical_id": "inventory_add",
+      "enabled": true,
+      "name": "add_gear",
+      "description": "Add gear with weight/value.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "character",
+          "name"
+        ]
+      },
+      "engine_hook": "character.inventory.add"
+    },
+    {
+      "canonical_id": "inventory_remove",
+      "enabled": true,
+      "name": "remove_gear",
+      "description": "Remove or consume gear.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "character",
+          "name"
+        ]
+      },
+      "engine_hook": "character.inventory.remove"
+    }
+  ],
+  "character": {
+    "fields": [
+      {
+        "id": "name",
+        "label": "Name",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "id": "rank",
+        "label": "Rank",
+        "kind": "string"
+      },
+      {
+        "id": "attributes",
+        "label": "Attributes (die steps)",
+        "kind": "list",
+        "required": true
+      },
+      {
+        "id": "skills",
+        "label": "Skills (die steps)",
+        "kind": "list",
+        "required": true
+      },
+      {
+        "id": "edges",
+        "label": "Edges",
+        "kind": "list"
+      },
+      {
+        "id": "hindrances",
+        "label": "Hindrances",
+        "kind": "list"
+      },
+      {
+        "id": "wounds",
+        "label": "Wounds",
+        "kind": "resource",
+        "required": true
+      },
+      {
+        "id": "fatigue",
+        "label": "Fatigue",
+        "kind": "resource"
+      },
+      {
+        "id": "bennies",
+        "label": "Bennies",
+        "kind": "resource"
+      },
+      {
+        "id": "powers",
+        "label": "Powers",
+        "kind": "list"
+      },
+      {
+        "id": "gear",
+        "label": "Gear",
+        "kind": "list"
+      }
+    ]
+  },
+  "prompts": {
+    "oracle_context": "This adventure uses Savage Worlds (SWADE-style). Attributes and skills are dice steps (d4–d12). Wild cards roll a trait die plus a wild d6 and keep the highest; aces explode. Target number is usually 4. Success with a raise (+4) improves outcomes. Bennies allow rerolls and soak. Wounds and fatigue track harm; shaken is common.",
+    "dm_notes": "Not wired into thAImaturgy engine yet — pack generation only."
+  },
+  "rules_summary": [
+    "Trait + wild die vs TN 4; each raise is +4 over TN.",
+    "Shaken on hit; extra raise may cause wound after soak.",
+    "Bennies reroll or soak one wound.",
+    "Initiative via action cards each round."
+  ],
+  "metadata": {
+    "family": "savage_worlds",
+    "generated_at": "2026-08-14T11:45:45Z",
+    "generator": "rulesystem-gen"
+  }
+}

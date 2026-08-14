@@ -1,0 +1,779 @@
+{
+  "api_version": "rulesystem/v1",
+  "id": "d100",
+  "name": "Percentile (d100) System",
+  "version": "BRP-inspired starter",
+  "language": "en",
+  "source": {
+    "type": "builtin",
+    "notes": "Generic d100 profile for percentile skill systems (CoC, RuneQuest, BRP). Not a licensed reproduction of any single publisher text."
+  },
+  "dice": {
+    "primary": "d100",
+    "common": [
+      "d3",
+      "d4",
+      "d6",
+      "d8",
+      "d10",
+      "d12",
+      "d20",
+      "d100"
+    ],
+    "notation": "percentile",
+    "notes": "Roll d100 (or 1d100) aiming to roll under skill value unless noted. Hard/Extreme success tiers optional."
+  },
+  "attributes": [
+    {
+      "id": "str",
+      "label": "Strength",
+      "abbrev": "STR",
+      "scale": "score"
+    },
+    {
+      "id": "con",
+      "label": "Constitution",
+      "abbrev": "CON",
+      "scale": "score"
+    },
+    {
+      "id": "siz",
+      "label": "Size",
+      "abbrev": "SIZ",
+      "scale": "score"
+    },
+    {
+      "id": "dex",
+      "label": "Dexterity",
+      "abbrev": "DEX",
+      "scale": "score"
+    },
+    {
+      "id": "app",
+      "label": "Appearance",
+      "abbrev": "APP",
+      "scale": "score"
+    },
+    {
+      "id": "int",
+      "label": "Intelligence",
+      "abbrev": "INT",
+      "scale": "score"
+    },
+    {
+      "id": "pow",
+      "label": "Power",
+      "abbrev": "POW",
+      "scale": "score"
+    },
+    {
+      "id": "edu",
+      "label": "Education",
+      "abbrev": "EDU",
+      "scale": "score"
+    }
+  ],
+  "skills": [
+    {
+      "id": "accounting",
+      "label": "Accounting",
+      "training": true
+    },
+    {
+      "id": "anthropology",
+      "label": "Anthropology",
+      "training": true
+    },
+    {
+      "id": "archaeology",
+      "label": "Archaeology",
+      "training": true
+    },
+    {
+      "id": "art_craft",
+      "label": "Art/Craft",
+      "training": true
+    },
+    {
+      "id": "charm",
+      "label": "Charm",
+      "training": true
+    },
+    {
+      "id": "climb",
+      "label": "Climb",
+      "training": true
+    },
+    {
+      "id": "credit_rating",
+      "label": "Credit Rating",
+      "training": true
+    },
+    {
+      "id": "disguise",
+      "label": "Disguise",
+      "training": true
+    },
+    {
+      "id": "dodge",
+      "label": "Dodge",
+      "training": true
+    },
+    {
+      "id": "drive_auto",
+      "label": "Drive Auto",
+      "training": true
+    },
+    {
+      "id": "fast_talk",
+      "label": "Fast Talk",
+      "training": true
+    },
+    {
+      "id": "fighting",
+      "label": "Fighting",
+      "training": true
+    },
+    {
+      "id": "firearms",
+      "label": "Firearms",
+      "training": true
+    },
+    {
+      "id": "first_aid",
+      "label": "First Aid",
+      "training": true
+    },
+    {
+      "id": "history",
+      "label": "History",
+      "training": true
+    },
+    {
+      "id": "insight",
+      "label": "Insight",
+      "training": true
+    },
+    {
+      "id": "intimidate",
+      "label": "Intimidate",
+      "training": true
+    },
+    {
+      "id": "jump",
+      "label": "Jump",
+      "training": true
+    },
+    {
+      "id": "language",
+      "label": "Language",
+      "training": true
+    },
+    {
+      "id": "law",
+      "label": "Law",
+      "training": true
+    },
+    {
+      "id": "library_use",
+      "label": "Library Use",
+      "training": true
+    },
+    {
+      "id": "listen",
+      "label": "Listen",
+      "training": true
+    },
+    {
+      "id": "locksmith",
+      "label": "Locksmith",
+      "training": true
+    },
+    {
+      "id": "mechanical_repair",
+      "label": "Mechanical Repair",
+      "training": true
+    },
+    {
+      "id": "medicine",
+      "label": "Medicine",
+      "training": true
+    },
+    {
+      "id": "natural_world",
+      "label": "Natural World",
+      "training": true
+    },
+    {
+      "id": "navigate",
+      "label": "Navigate",
+      "training": true
+    },
+    {
+      "id": "occult",
+      "label": "Occult",
+      "training": true
+    },
+    {
+      "id": "operate_heavy_machinery",
+      "label": "Operate Heavy Machinery",
+      "training": true
+    },
+    {
+      "id": "persuade",
+      "label": "Persuade",
+      "training": true
+    },
+    {
+      "id": "pilot",
+      "label": "Pilot",
+      "training": true
+    },
+    {
+      "id": "psychology",
+      "label": "Psychology",
+      "training": true
+    },
+    {
+      "id": "psychoanalysis",
+      "label": "Psychoanalysis",
+      "training": true
+    },
+    {
+      "id": "ride",
+      "label": "Ride",
+      "training": true
+    },
+    {
+      "id": "science",
+      "label": "Science",
+      "training": true
+    },
+    {
+      "id": "sleight_of_hand",
+      "label": "Sleight of Hand",
+      "training": true
+    },
+    {
+      "id": "spot_hidden",
+      "label": "Spot Hidden",
+      "training": true
+    },
+    {
+      "id": "stealth",
+      "label": "Stealth",
+      "training": true
+    },
+    {
+      "id": "survival",
+      "label": "Survival",
+      "training": true
+    },
+    {
+      "id": "swim",
+      "label": "Swim",
+      "training": true
+    },
+    {
+      "id": "throw",
+      "label": "Throw",
+      "training": true
+    },
+    {
+      "id": "track",
+      "label": "Track",
+      "training": true
+    }
+  ],
+  "resources": [
+    {
+      "id": "hp",
+      "label": "Hit Points",
+      "kind": "pool",
+      "primary": true,
+      "default_max": "(con + siz) / 2"
+    },
+    {
+      "id": "mp",
+      "label": "Magic Points",
+      "kind": "pool",
+      "default_max": "pow"
+    },
+    {
+      "id": "san",
+      "label": "Sanity",
+      "kind": "pool",
+      "notes": "Optional; common in horror variants."
+    },
+    {
+      "id": "luck",
+      "label": "Luck",
+      "kind": "pool",
+      "notes": "Optional spendable luck points."
+    }
+  ],
+  "conditions": [
+    {
+      "id": "unconscious",
+      "label": "Unconscious"
+    },
+    {
+      "id": "dying",
+      "label": "Dying"
+    },
+    {
+      "id": "major_wound",
+      "label": "Major wound"
+    },
+    {
+      "id": "insane",
+      "label": "Insane"
+    }
+  ],
+  "resolution": {
+    "skill_check": {
+      "roll": "1d100",
+      "compare": "under",
+      "target": "skill_value",
+      "success": "roll \u003c= skill",
+      "critical": "roll \u003c= skill/5",
+      "fumble": "roll \u003e= 96",
+      "notes": "Opposed checks: both roll under skill; lower successful roll wins."
+    },
+    "ability_check": {
+      "roll": "1d100",
+      "compare": "under",
+      "target": "characteristic_x5",
+      "notes": "Untrained characteristic roll often uses score x5 as target."
+    },
+    "attack": {
+      "roll": "1d100",
+      "target": "fighting_skill",
+      "compare": "under",
+      "notes": "Opposed parry/dodge may apply; impale/critical on low rolls."
+    },
+    "defense": {
+      "stat": "armor_points",
+      "formula": "location-based armor reduces damage"
+    },
+    "spell": {
+      "cost": "magic_points",
+      "roll": "spell skill or POW vs POW",
+      "notes": "Casting often costs MP and requires a skill roll."
+    },
+    "damage": {
+      "roll": "weapon_damage_dice - armor",
+      "notes": "Major wounds when single hit exceeds half max HP."
+    },
+    "initiative": {
+      "roll": "1d10 + dex_bonus",
+      "compare": "descending_order"
+    }
+  },
+  "tools": [
+    {
+      "canonical_id": "roll_dice",
+      "enabled": true,
+      "name": "roll_dice",
+      "description": "Roll dice (d100 for skills, damage dice as needed).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "notation": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "notation"
+        ]
+      },
+      "engine_hook": "dice.roll"
+    },
+    {
+      "canonical_id": "skill_check",
+      "enabled": true,
+      "name": "skill_check",
+      "description": "Roll d100 under a skill value (with optional difficulty tiers).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "skill": {
+            "type": "string"
+          },
+          "modifier": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill",
+          "target"
+        ]
+      },
+      "engine_hook": "check.skill"
+    },
+    {
+      "canonical_id": "ability_check",
+      "enabled": true,
+      "name": "characteristic_check",
+      "description": "Roll d100 under a characteristic x5 value.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attribute": {
+            "type": "string"
+          },
+          "modifier": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attribute",
+          "target"
+        ]
+      },
+      "engine_hook": "check.ability"
+    },
+    {
+      "canonical_id": "attack",
+      "enabled": true,
+      "name": "attack",
+      "description": "Resolve a fighting attack with opposed defense if applicable.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attacker": {
+            "type": "string"
+          },
+          "defender": {
+            "type": "string"
+          },
+          "weapon_or_power": {
+            "type": "string"
+          },
+          "modifier": {
+            "type": "integer"
+          },
+          "damage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attacker",
+          "defender"
+        ]
+      },
+      "engine_hook": "combat.attack"
+    },
+    {
+      "canonical_id": "cast_spell",
+      "enabled": true,
+      "name": "cast_spell",
+      "description": "Spend MP and roll spell casting skill.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "spell": {
+            "type": "string"
+          },
+          "level_or_cost": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character",
+          "spell"
+        ]
+      },
+      "engine_hook": "magic.cast"
+    },
+    {
+      "canonical_id": "update_health",
+      "enabled": true,
+      "name": "update_health",
+      "description": "Apply damage, healing, or major wound tracking.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "delta": {
+            "type": "integer"
+          },
+          "set": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character"
+        ]
+      },
+      "engine_hook": "character.health"
+    },
+    {
+      "canonical_id": "apply_condition",
+      "enabled": true,
+      "name": "apply_condition",
+      "description": "Apply shock, unconscious, insanity, etc.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character",
+          "condition"
+        ]
+      },
+      "engine_hook": "character.condition.add"
+    },
+    {
+      "canonical_id": "remove_condition",
+      "enabled": true,
+      "name": "remove_condition",
+      "description": "Remove a condition when recovered.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character",
+          "condition"
+        ]
+      },
+      "engine_hook": "character.condition.remove"
+    },
+    {
+      "canonical_id": "update_character",
+      "enabled": true,
+      "name": "update_character",
+      "description": "Track characteristics, skills, and notes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "value": {},
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "character"
+        ]
+      },
+      "engine_hook": "character.update"
+    },
+    {
+      "canonical_id": "rest",
+      "enabled": true,
+      "name": "rest",
+      "description": "Natural healing over days/weeks of rest.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "short",
+              "long"
+            ]
+          },
+          "dice": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "character",
+          "kind"
+        ]
+      },
+      "engine_hook": "character.rest",
+      "notes": "Recovery is slower than D\u0026D."
+    },
+    {
+      "canonical_id": "initiative",
+      "enabled": true,
+      "name": "initiative",
+      "description": "Set combat order.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "participants"
+        ]
+      },
+      "engine_hook": "combat.initiative"
+    },
+    {
+      "canonical_id": "inventory_add",
+      "enabled": true,
+      "name": "add_gear",
+      "description": "Add equipment or tomes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "character",
+          "name"
+        ]
+      },
+      "engine_hook": "character.inventory.add"
+    },
+    {
+      "canonical_id": "inventory_remove",
+      "enabled": true,
+      "name": "remove_gear",
+      "description": "Lose or spend gear.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "character",
+          "name"
+        ]
+      },
+      "engine_hook": "character.inventory.remove"
+    }
+  ],
+  "character": {
+    "fields": [
+      {
+        "id": "name",
+        "label": "Name",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "id": "occupation",
+        "label": "Occupation",
+        "kind": "string"
+      },
+      {
+        "id": "characteristics",
+        "label": "Characteristics",
+        "kind": "list",
+        "required": true
+      },
+      {
+        "id": "skills",
+        "label": "Skills (percentile)",
+        "kind": "list",
+        "required": true
+      },
+      {
+        "id": "hp",
+        "label": "Hit points",
+        "kind": "resource",
+        "required": true
+      },
+      {
+        "id": "mp",
+        "label": "Magic points",
+        "kind": "resource"
+      },
+      {
+        "id": "san",
+        "label": "Sanity",
+        "kind": "resource"
+      },
+      {
+        "id": "armor",
+        "label": "Armor by location",
+        "kind": "list"
+      },
+      {
+        "id": "weapons",
+        "label": "Weapons",
+        "kind": "list"
+      }
+    ]
+  },
+  "prompts": {
+    "oracle_context": "This adventure uses a percentile d100 ruleset. Skills are percentages: roll d100 equal to or under the skill to succeed. Characteristics are typically 3–18 (or 3d6). Combat uses fighting skills, opposed parry/dodge, armor points, and location-based hits. Magic costs magic points. Prefer BRP/CoC terminology unless the module specifies otherwise.",
+    "dm_notes": "Not wired into thAImaturgy engine yet — pack generation only."
+  },
+  "rules_summary": [
+    "Roll d100 under skill value to succeed.",
+    "Hard success at half skill; extreme at fifth (optional tiers).",
+    "HP often (CON+SIZ)/2; major wound if single hit \u003e half max HP.",
+    "Sanity and luck are optional horror resources."
+  ],
+  "metadata": {
+    "family": "d100",
+    "generated_at": "2026-08-14T11:45:45Z",
+    "generator": "rulesystem-gen"
+  }
+}
