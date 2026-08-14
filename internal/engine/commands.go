@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -42,6 +43,7 @@ const (
 	CmdTrigger // mark a scripted event as triggered
 	CmdTable   // roll on a random table
 	CmdBegin   // (virtual-DM) start the game: the DM narrates the opening scene
+	CmdRecap   // instant "previously on…" recap built from session state
 	CmdOracle  // free-form query to the oracle (no slash prefix)
 )
 
@@ -134,6 +136,8 @@ func ParseCommand(input string) *Command {
 		cmd.Type = CmdTable
 	case "begin", "start":
 		cmd.Type = CmdBegin
+	case "recap", "previously":
+		cmd.Type = CmdRecap
 	default:
 		cmd.Type = CmdUnknown
 	}
@@ -243,6 +247,8 @@ func (h *CommandHandler) Execute(cmd *Command) *CommandResult {
 		h.handleTable(cmd, r)
 	case CmdBegin:
 		h.handleBegin(cmd, r)
+	case CmdRecap:
+		r.Response = h.recapText()
 	case CmdUnknown:
 		r.Success = false
 		r.Message = "Unknown command: " + cmd.Raw + ". Type /help."
@@ -660,6 +666,122 @@ func (h *CommandHandler) partyText() string {
 	return sb.String()
 }
 
+// recapText builds an instant, deterministic "previously on…" recap from the
+// session state: the AI-maintained running summary, the structured progress
+// (location, party, known NPCs, events, quests) and the recent narrative
+// timeline. It calls no model — so it works on every frontend with no latency
+// or cost — and draws only on session state (what happened at the table), never
+// on the module's authored DM notes/secrets, so it is safe to show players.
+func (h *CommandHandler) recapText() string {
+	st := h.state()
+	adv := h.adv()
+	var sb strings.Builder
+	sb.WriteString("=== RECAP ===\n")
+	fmt.Fprintf(&sb, "Adventure: %s\n", adv.Title)
+
+	switch room, zone := adv.Room(st.CurrentRoom); {
+	case room != nil && zone != nil:
+		fmt.Fprintf(&sb, "Where you are: %s — %s\n", zone.Name, room.Name)
+	case room != nil:
+		fmt.Fprintf(&sb, "Where you are: %s\n", room.Name)
+	default:
+		sb.WriteString("Where you are: not yet placed\n")
+	}
+
+	if len(st.Party) > 0 {
+		names := make([]string, 0, len(st.Party))
+		for _, p := range st.Party {
+			names = append(names, p.Name)
+		}
+		fmt.Fprintf(&sb, "Party: %s\n", strings.Join(names, ", "))
+	}
+
+	sb.WriteString("\nStory so far:\n")
+	if s := strings.TrimSpace(st.Summary); s != "" {
+		sb.WriteString(s + "\n")
+	} else {
+		sb.WriteString("The session is just beginning.\n")
+	}
+
+	if met := h.metNPCNames(); len(met) > 0 {
+		fmt.Fprintf(&sb, "\nKnown NPCs: %s\n", strings.Join(met, ", "))
+	}
+	if evs := h.triggeredEventNames(); len(evs) > 0 {
+		fmt.Fprintf(&sb, "Events so far: %s\n", strings.Join(evs, ", "))
+	}
+	if len(st.Quests) > 0 {
+		quests := make([]string, 0, len(st.Quests))
+		for _, q := range st.Quests {
+			quests = append(quests, fmt.Sprintf("%s [%s]", q.Name, q.Status))
+		}
+		fmt.Fprintf(&sb, "Quests: %s\n", strings.Join(quests, "; "))
+	}
+
+	if recent := recentNarrative(st.RecentLog(0), 8); len(recent) > 0 {
+		sb.WriteString("\nRecent events:\n")
+		for _, line := range recent {
+			sb.WriteString("  - " + line + "\n")
+		}
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// metNPCNames returns, sorted, the names of NPCs the party has met, resolved to
+// module names where possible.
+func (h *CommandHandler) metNPCNames() []string {
+	var names []string
+	for id, ns := range h.state().KnownNPCs {
+		if ns == nil || !ns.Met {
+			continue
+		}
+		name := id
+		if n := h.adv().NPC(id); n != nil {
+			name = n.Name
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// triggeredEventNames returns, sorted, the names of events that have fired.
+func (h *CommandHandler) triggeredEventNames() []string {
+	var names []string
+	for id, done := range h.state().TriggeredEvents {
+		if !done {
+			continue
+		}
+		name := id
+		if e := h.adv().Event(id); e != nil {
+			name = e.Name
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// recentNarrative returns up to max recent timeline messages, dropping pure
+// mechanics (rolls, flags, party/system bookkeeping) so the recap reads as a
+// story rather than a log dump. Order (oldest→newest) is preserved.
+func recentNarrative(entries []domain.LogEntry, max int) []string {
+	var out []string
+	for _, e := range entries {
+		switch e.Type {
+		case domain.LogRoll, domain.LogFlag, domain.LogParty, domain.LogSystem:
+			continue
+		}
+		if msg := strings.TrimSpace(e.Message); msg != "" {
+			out = append(out, msg)
+		}
+	}
+	if len(out) > max {
+		out = out[len(out)-max:]
+	}
+	return out
+}
+
 func (h *CommandHandler) statusText() string {
 	st := h.state()
 	room, zone := h.adv().Room(st.CurrentRoom)
@@ -702,6 +824,7 @@ SESSION STATE:
   /met <npc_id>        Mark an NPC as met (known)
   /trigger <event_id>  Mark a scripted event as triggered
   /quests              Show tracked quests
+  /recap               Quick "previously on…" recap of the session so far
   /party               Show tracked player characters
   /roll <dice>         Roll dice (e.g. /roll 2d6+3)
   /status              Session status
