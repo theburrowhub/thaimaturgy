@@ -482,6 +482,25 @@ func TestImportJobEndpoints(t *testing.T) {
 	}
 }
 
+func TestNovelJobEndpoints(t *testing.T) {
+	ts := newTestServer(t, "")
+	_, out := doJSON(t, "POST", ts.URL+"/api/sessions", `{"adventure_id":"crypt"}`)
+	name := out["name"].(string)
+
+	// No AI provider configured (nil in tests) → 400, not a crash.
+	if resp, _ := doJSON(t, "POST", ts.URL+"/api/sessions/"+name+"/novel", ""); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("novel without provider = %d; want 400", resp.StatusCode)
+	}
+	// Unknown novel job → 404.
+	if resp, _ := doJSON(t, "GET", ts.URL+"/api/novel-jobs/nope", ""); resp.StatusCode != 404 {
+		t.Errorf("unknown novel job = %d; want 404", resp.StatusCode)
+	}
+	if nr, _ := http.Get(ts.URL + "/api/novel-jobs/nope/download"); nr.StatusCode != 404 {
+		t.Errorf("unknown novel download = %d; want 404", nr.StatusCode)
+	}
+	doJSON(t, "POST", ts.URL+"/api/sessions/"+name+"/close", "")
+}
+
 func TestAuthToken(t *testing.T) {
 	ts := newTestServer(t, "s3cret")
 	// No token → 401.
