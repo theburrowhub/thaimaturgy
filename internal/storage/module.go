@@ -179,6 +179,40 @@ func (s *Storage) ResolveImagePath(adventureID, relPath string) (string, error) 
 	return p, nil
 }
 
+// SaveAdventure writes an edited adventure back to its imported module directory
+// (adventure.json), for the editors. The directory must already exist (the module
+// was imported). The write is atomic (temp file + rename) so a crash mid-write
+// can't leave a truncated adventure.json.
+func (s *Storage) SaveAdventure(id string, adv *domain.Adventure) error {
+	dir := s.AdventureDir(id)
+	if _, err := os.Stat(dir); err != nil {
+		return fmt.Errorf("adventure not found: %s", id)
+	}
+	data, err := json.MarshalIndent(adv, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".adventure-*.json")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, filepath.Join(dir, AdventureFile)); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
+}
+
 // AdventureExists reports whether an adventure with the given ID is imported.
 func (s *Storage) AdventureExists(id string) bool {
 	_, err := os.Stat(filepath.Join(s.AdventureDir(id), AdventureFile))

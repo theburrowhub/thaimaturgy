@@ -82,6 +82,40 @@
       </div>
     </section>
 
+    <!-- Editor -->
+    <section id="view-editor" class="view hidden">
+      <div class="session-head">
+        <button id="ed-back">← Library</button>
+        <span id="ed-title" class="pill"></span>
+        <span class="spacer"></span>
+        <button id="ed-validate" class="ghost">Validate</button>
+        <button id="ed-export" class="ghost">Export .tar.gz</button>
+        <button id="ed-dmbook" class="ghost">DM book (.md)</button>
+        <button id="ed-save">Save</button>
+      </div>
+      <div class="session-body">
+        <div class="col side">
+          <div class="panel-head">
+            <h3>Structure</h3><span class="spacer"></span>
+            <select id="ed-addtype">
+              <option value="zone">Zone</option>
+              <option value="room">Room</option>
+              <option value="npc">NPC</option>
+              <option value="event">Event</option>
+              <option value="item">Item</option>
+              <option value="table">Table</option>
+            </select>
+            <button id="ed-add" class="ghost small">+ Add</button>
+          </div>
+          <div id="ed-tree" class="tree"></div>
+        </div>
+        <div class="col grow">
+          <h3 id="ed-nodetitle">Adventure</h3>
+          <div id="ed-form" class="form"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- Roster -->
     <section id="view-roster" class="view hidden">
       <h2>Campaign roster</h2>

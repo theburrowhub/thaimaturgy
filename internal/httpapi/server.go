@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/appservice"
+	"github.com/theburrowhub/thaimaturgy/internal/bookpdf"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
 
@@ -45,6 +46,10 @@ const maxBodyBytes = 1 << 20 // 1 MiB
 // maxImportBytes bounds an uploaded adventure module (.tar.gz). Modules ship
 // their images, so this is generous, but still caps a runaway upload.
 const maxImportBytes = 256 << 20 // 256 MiB
+
+// maxAdventureBytes bounds an adventure.json payload (editor save/validate),
+// which is text-heavy and can exceed the default 1 MiB JSON cap.
+const maxAdventureBytes = 16 << 20 // 16 MiB
 
 // sseTicketTTL bounds how long an issued SSE ticket stays valid. It is a
 // reconnection WINDOW (not single-use), so native EventSource can reconnect with
@@ -92,7 +97,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/adventures", s.listAdventures)
 	mux.HandleFunc("POST /api/adventures/import", s.importAdventure)
 	mux.HandleFunc("GET /api/adventures/{id}", s.getAdventure)
+	mux.HandleFunc("PUT /api/adventures/{id}", s.saveAdventure)
 	mux.HandleFunc("DELETE /api/adventures/{id}", s.deleteAdventure)
+	mux.HandleFunc("POST /api/adventures/{id}/validate", s.validateAdventure)
+	mux.HandleFunc("GET /api/adventures/{id}/export", s.exportAdventure)
+	mux.HandleFunc("GET /api/adventures/{id}/dmbook", s.dmbookAdventure)
 	mux.HandleFunc("GET /api/adventures/{id}/asset", s.adventureAsset)
 	mux.HandleFunc("GET /api/sessions", s.listSessions)
 	mux.HandleFunc("POST /api/sessions", s.newSession)
@@ -302,6 +311,108 @@ func (s *Server) importAdventure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": adv.ID, "title": adv.Title})
+}
+
+// saveAdventure persists an edited adventure.json for the web editor. The id is
+// pinned to the module folder by appservice, so the body can't move the module.
+func (s *Server) saveAdventure(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !s.svc.AdventureExists(id) {
+		httpError(w, http.StatusNotFound, "adventure not found")
+		return
+	}
+	var adv domain.Adventure
+	if !readJSONLimited(w, r, &adv, maxAdventureBytes) {
+		return
+	}
+	if strings.TrimSpace(adv.Title) == "" {
+		httpError(w, http.StatusBadRequest, "the adventure needs a title")
+		return
+	}
+	if err := s.svc.SaveAdventure(id, &adv); err != nil {
+		log.Printf("httpapi: save adventure %q: %v", id, err)
+		httpError(w, http.StatusInternalServerError, "could not save the adventure")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+}
+
+// validateAdventure runs full validation over a candidate adventure and returns
+// the list of problems (empty when valid), so the editor can surface them.
+func (s *Server) validateAdventure(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !s.svc.AdventureExists(id) {
+		httpError(w, http.StatusNotFound, "adventure not found")
+		return
+	}
+	var adv domain.Adventure
+	if !readJSONLimited(w, r, &adv, maxAdventureBytes) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"errors": s.svc.ValidateAdventure(id, &adv)})
+}
+
+// exportAdventure streams the adventure packaged as a .tar.gz download. A missing
+// adventure is a 404; a packaging/temp-file failure is an operational 500 (with
+// the detail logged, not returned, so internal paths aren't exposed).
+func (s *Server) exportAdventure(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !s.svc.AdventureExists(id) {
+		httpError(w, http.StatusNotFound, "adventure not found")
+		return
+	}
+	path, err := s.svc.ExportModule(id)
+	if err != nil {
+		log.Printf("httpapi: export adventure %q: %v", id, err)
+		httpError(w, http.StatusInternalServerError, "could not export the adventure")
+		return
+	}
+	defer os.Remove(path)
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+safeFilename(id)+".tar.gz\"")
+	http.ServeFile(w, r, path)
+}
+
+// dmbookAdventure renders the deterministic DM book as Markdown (default) or PDF
+// (?format=pdf) and streams it as a download.
+func (s *Server) dmbookAdventure(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	md, adv, err := s.svc.DMBookMarkdown(id)
+	if err != nil {
+		httpError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if r.URL.Query().Get("format") == "pdf" {
+		pdf, err := bookpdf.FromMarkdown(adv.Title, "DM book", md)
+		if err != nil {
+			log.Printf("httpapi: dmbook pdf %q: %v", id, err)
+			httpError(w, http.StatusInternalServerError, "could not render the PDF")
+			return
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+safeFilename(id)+"-dmbook.pdf\"")
+		_, _ = w.Write(pdf)
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+safeFilename(id)+"-dmbook.md\"")
+	_, _ = w.Write([]byte(md))
+}
+
+// safeFilename reduces an id to a filename-safe token for Content-Disposition.
+func safeFilename(id string) string {
+	id = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			return r
+		default:
+			return '-'
+		}
+	}, id)
+	if id == "" {
+		return "adventure"
+	}
+	return id
 }
 
 // deleteAdventure removes an imported adventure and its assets. A missing
@@ -782,11 +893,17 @@ func httpError(w http.ResponseWriter, status int, msg string) {
 // body larger than maxBodyBytes (413) or with trailing data, and 400s other
 // decode failures. Returns false (having written the response) on any failure.
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	return readJSONLimited(w, r, v, maxBodyBytes)
+}
+
+// readJSONLimited is readJSON with a caller-chosen size cap, for endpoints whose
+// payload (a whole adventure) legitimately exceeds the default 1 MiB JSON limit.
+func readJSONLimited(w http.ResponseWriter, r *http.Request, v any, max int64) bool {
 	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != "application/json" {
 		httpError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
 		return false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, max)
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(v); err != nil {
 		var mbe *http.MaxBytesError

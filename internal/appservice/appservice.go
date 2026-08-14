@@ -16,9 +16,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
+	"github.com/theburrowhub/thaimaturgy/internal/dmbook"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
@@ -184,6 +186,63 @@ func (s *Service) DeleteAdventure(id string) error { return s.store.DeleteAdvent
 // a transport can tell "not found" (404) apart from an operational delete failure
 // (5xx).
 func (s *Service) AdventureExists(id string) bool { return s.store.AdventureExists(id) }
+
+// SaveAdventure persists an edited adventure back to its module directory. It
+// pins adv.ID to the folder id so the editor can't move/rename the module by
+// changing the field. Full validation is a separate step (ValidateAdventure), so
+// a work-in-progress with, say, a not-yet-uploaded image can still be saved —
+// mirroring the desktop editor.
+func (s *Service) SaveAdventure(id string, adv *domain.Adventure) error {
+	if adv == nil {
+		return fmt.Errorf("no adventure supplied")
+	}
+	if strings.TrimSpace(adv.Title) == "" {
+		return fmt.Errorf("the adventure needs a title")
+	}
+	adv.ID = id
+	return s.store.SaveAdventure(id, adv)
+}
+
+// ValidateAdventure runs full validation (required fields, referential integrity,
+// referenced images present) against a candidate adventure and returns the errors
+// as strings (empty when valid).
+func (s *Service) ValidateAdventure(id string, adv *domain.Adventure) []string {
+	imageExists := func(rel string) bool { _, err := s.store.ResolveImagePath(id, rel); return err == nil }
+	errs := domain.ValidateAdventure(adv, imageExists)
+	out := make([]string, 0, len(errs))
+	for _, e := range errs {
+		out = append(out, e.Error())
+	}
+	return out
+}
+
+// ExportModule packages an imported adventure into a temporary .tar.gz and
+// returns its path; the caller serves and then removes it.
+func (s *Service) ExportModule(id string) (string, error) {
+	if !s.store.AdventureExists(id) {
+		return "", fmt.Errorf("adventure not found: %s", id)
+	}
+	tmp, err := os.CreateTemp("", "thaim-export-*.tar.gz")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmp.Name()
+	tmp.Close()
+	if err := storage.PackageModule(s.store.AdventureDir(id), tmpPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", err
+	}
+	return tmpPath, nil
+}
+
+// DMBookMarkdown renders the deterministic DM book (no AI) for an adventure.
+func (s *Service) DMBookMarkdown(id string) (string, *domain.Adventure, error) {
+	adv, err := s.store.LoadAdventure(id)
+	if err != nil {
+		return "", nil, err
+	}
+	return dmbook.Markdown(adv), adv, nil
+}
 
 // AdventureAsset resolves a module-relative image path to its absolute on-disk
 // path, verifying it stays within the adventure's directory (path-traversal
