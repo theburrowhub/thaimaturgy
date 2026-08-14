@@ -214,7 +214,8 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 		}()
 	})
 
-	head := container.NewHBox(back, widget.NewLabelWithStyle(name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), layoutSpacer(), save)
+	novelBtn := widget.NewButtonWithIcon("Novel", theme.DocumentCreateIcon(), g.openNovelEditor)
+	head := container.NewHBox(back, widget.NewLabelWithStyle(name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), layoutSpacer(), novelBtn, save)
 	left := modernPanel("Party", "", container.NewVScroll(party))
 	center := modernPanel("Transcript", "", transScroll)
 	right := modernPanel("Live log", "", logScroll)

@@ -22,7 +22,6 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/apiclient"
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
-	"github.com/theburrowhub/thaimaturgy/internal/bookpdf"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/guitheme"
@@ -30,7 +29,6 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/mcpserve"
 	"github.com/theburrowhub/thaimaturgy/internal/mcptools"
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
-	"github.com/theburrowhub/thaimaturgy/internal/novel"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 	"github.com/theburrowhub/thaimaturgy/internal/tgbot"
@@ -520,7 +518,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	g.telegramBtn.Hide() // shown only in virtual-DM mode (applyMode)
 	g.libraryBtn = widget.NewButtonWithIcon("Library", theme.NavigateBackIcon(), g.showLibrary)
 	g.saveBtn = widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), g.save)
-	g.exportBtn = widget.NewButtonWithIcon("Export novel", theme.DocumentCreateIcon(), g.exportNovel)
+	g.exportBtn = widget.NewButtonWithIcon("Novel", theme.DocumentCreateIcon(), g.openNovelEditor)
 	toolbar := modernSessionToolbar(adv.Title,
 		g.locLabel,
 		g.libraryBtn,
@@ -1074,67 +1072,6 @@ func (g *gui) save() {
 
 // exportNovel novelizes the session (via the LLM) and saves it as Markdown or a
 // print-ready PDF, chosen from a native dialog.
-func (g *gui) exportNovel() {
-	if g.session == nil {
-		return
-	}
-	if g.prov == nil {
-		g.showErr(fmt.Errorf("no AI provider configured; set an API key or use the Claude CLI backend"))
-		return
-	}
-	adv, st, model := g.session.Adventure, g.session.State, g.config.Model
-	subtitle := "A novelization of the play session"
-	if strings.HasPrefix(strings.ToLower(adv.Language), "es") {
-		subtitle = "Una novelización de la partida"
-	}
-	go func() {
-		choice := nativeui.Choice("Export novel", "Export the session as a novel — which format?", "Markdown (.md)", "PDF (.pdf)")
-		if choice == 0 {
-			return
-		}
-		fyne.Do(func() { g.appendTranscript("_Writing the novel from the session… this can take a minute._") })
-
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-		defer cancel()
-		md, err := novel.Generate(ctx, g.prov, model, adv, st)
-		if err != nil {
-			g.showErr(fmt.Errorf("novel generation failed: %w", err))
-			return
-		}
-
-		switch choice {
-		case 1: // Markdown
-			dest, ok := nativeui.SaveFile("Save novel", adv.ID+"-novel.md",
-				nativeui.Filter{Name: "Markdown", Patterns: []string{"*.md"}})
-			if !ok {
-				return
-			}
-			if err := os.WriteFile(dest, []byte(md), 0644); err != nil {
-				g.showErr(err)
-				return
-			}
-			nativeui.Info("Novel exported", "Saved:\n"+dest)
-			fyne.Do(func() { g.appendTranscript("_Novel exported to " + dest + "_") })
-		case 2: // PDF
-			dest, ok := nativeui.SaveFile("Save novel", adv.ID+"-novel.pdf",
-				nativeui.Filter{Name: "PDF", Patterns: []string{"*.pdf"}})
-			if !ok {
-				return
-			}
-			pdfBytes, err := bookpdf.FromMarkdown(adv.Title, subtitle, md)
-			if err != nil {
-				g.showErr(err)
-				return
-			}
-			if err := os.WriteFile(dest, pdfBytes, 0644); err != nil {
-				g.showErr(err)
-				return
-			}
-			nativeui.Info("Novel exported", "Saved:\n"+dest)
-			fyne.Do(func() { g.appendTranscript("_Novel exported to " + dest + "_") })
-		}
-	}()
-}
 
 // appendTranscript adds one chat message to the log as a selectable Label, styled
 // by role (bold question, italic status, plain narration), and scrolls to it.
