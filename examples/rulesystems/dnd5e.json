@@ -1,0 +1,1990 @@
+{
+  "api_version": "rulesystem/v2",
+  "id": "dnd5e",
+  "name": "Dungeons \u0026 Dragons 5th Edition",
+  "version": "2024.1",
+  "language": "en",
+  "family": "d20_fantasy",
+  "source": {
+    "type": "builtin",
+    "templates": [
+      "SRD",
+      "PHB"
+    ],
+    "notes": "Built-in SRD-aligned profile for thAImaturgy oracle wiring.",
+    "confidence": 1
+  },
+  "dice": {
+    "primary": "d20",
+    "common": [
+      "d4",
+      "d6",
+      "d8",
+      "d10",
+      "d12",
+      "d20",
+      "d100"
+    ],
+    "notation": "NdS+M",
+    "keep": "advantage/disadvantage",
+    "notes": "d20 tests with advantage/disadvantage; damage uses variable dice pools."
+  },
+  "attributes": [
+    {
+      "id": "str",
+      "label": "Strength",
+      "abbrev": "STR",
+      "scale": "score",
+      "min": 1,
+      "max": 30,
+      "default_roll": "1d20+STR_mod",
+      "modifier_formula": "floor((score-10)/2)"
+    },
+    {
+      "id": "dex",
+      "label": "Dexterity",
+      "abbrev": "DEX",
+      "scale": "score",
+      "min": 1,
+      "max": 30,
+      "default_roll": "1d20+DEX_mod",
+      "modifier_formula": "floor((score-10)/2)"
+    },
+    {
+      "id": "con",
+      "label": "Constitution",
+      "abbrev": "CON",
+      "scale": "score",
+      "min": 1,
+      "max": 30,
+      "default_roll": "1d20+CON_mod",
+      "modifier_formula": "floor((score-10)/2)"
+    },
+    {
+      "id": "int",
+      "label": "Intelligence",
+      "abbrev": "INT",
+      "scale": "score",
+      "min": 1,
+      "max": 30,
+      "default_roll": "1d20+INT_mod",
+      "modifier_formula": "floor((score-10)/2)"
+    },
+    {
+      "id": "wis",
+      "label": "Wisdom",
+      "abbrev": "WIS",
+      "scale": "score",
+      "min": 1,
+      "max": 30,
+      "default_roll": "1d20+WIS_mod",
+      "modifier_formula": "floor((score-10)/2)"
+    },
+    {
+      "id": "cha",
+      "label": "Charisma",
+      "abbrev": "CHA",
+      "scale": "score",
+      "min": 1,
+      "max": 30,
+      "default_roll": "1d20+CHA_mod",
+      "modifier_formula": "floor((score-10)/2)"
+    }
+  ],
+  "skills": [
+    {
+      "id": "athletics",
+      "label": "Athletics",
+      "attribute": "str",
+      "category": "physical",
+      "training": true
+    },
+    {
+      "id": "acrobatics",
+      "label": "Acrobatics",
+      "attribute": "dex",
+      "category": "physical",
+      "training": true
+    },
+    {
+      "id": "sleight_of_hand",
+      "label": "Sleight of Hand",
+      "attribute": "dex",
+      "category": "physical",
+      "training": true
+    },
+    {
+      "id": "stealth",
+      "label": "Stealth",
+      "attribute": "dex",
+      "category": "physical",
+      "training": true
+    },
+    {
+      "id": "arcana",
+      "label": "Arcana",
+      "attribute": "int",
+      "category": "knowledge",
+      "training": true
+    },
+    {
+      "id": "history",
+      "label": "History",
+      "attribute": "int",
+      "category": "knowledge",
+      "training": true
+    },
+    {
+      "id": "investigation",
+      "label": "Investigation",
+      "attribute": "int",
+      "category": "knowledge",
+      "training": true
+    },
+    {
+      "id": "nature",
+      "label": "Nature",
+      "attribute": "int",
+      "category": "knowledge",
+      "training": true
+    },
+    {
+      "id": "religion",
+      "label": "Religion",
+      "attribute": "int",
+      "category": "knowledge",
+      "training": true
+    },
+    {
+      "id": "animal_handling",
+      "label": "Animal Handling",
+      "attribute": "wis",
+      "category": "social",
+      "training": true
+    },
+    {
+      "id": "insight",
+      "label": "Insight",
+      "attribute": "wis",
+      "category": "social",
+      "training": true
+    },
+    {
+      "id": "medicine",
+      "label": "Medicine",
+      "attribute": "wis",
+      "category": "social",
+      "training": true
+    },
+    {
+      "id": "perception",
+      "label": "Perception",
+      "attribute": "wis",
+      "category": "social",
+      "training": true
+    },
+    {
+      "id": "survival",
+      "label": "Survival",
+      "attribute": "wis",
+      "category": "social",
+      "training": true
+    },
+    {
+      "id": "deception",
+      "label": "Deception",
+      "attribute": "cha",
+      "category": "social",
+      "training": true
+    },
+    {
+      "id": "intimidation",
+      "label": "Intimidation",
+      "attribute": "cha",
+      "category": "social",
+      "training": true
+    },
+    {
+      "id": "performance",
+      "label": "Performance",
+      "attribute": "cha",
+      "category": "social",
+      "training": true
+    },
+    {
+      "id": "persuasion",
+      "label": "Persuasion",
+      "attribute": "cha",
+      "category": "social",
+      "training": true
+    }
+  ],
+  "resources": [
+    {
+      "id": "hp",
+      "label": "Hit Points",
+      "kind": "pool",
+      "primary": true,
+      "max_formula": "hit_die_max + con_mod + (level-1)*(hit_die_avg + con_mod)",
+      "reset_on": [
+        "long_rest_partial"
+      ],
+      "overflow": "death_saves"
+    },
+    {
+      "id": "spell_slots",
+      "label": "Spell Slots",
+      "kind": "slots",
+      "max_formula": "slots_by_level",
+      "reset_on": [
+        "long_rest"
+      ]
+    },
+    {
+      "id": "hit_dice",
+      "label": "Hit Dice",
+      "kind": "pool",
+      "max_formula": "level",
+      "reset_on": [
+        "long_rest"
+      ]
+    }
+  ],
+  "conditions": [
+    {
+      "id": "blinded",
+      "label": "Blinded",
+      "severity": 2,
+      "effects": [
+        "auto_fail_sight_checks",
+        "attacks_against_have_advantage",
+        "your_attacks_have_disadvantage"
+      ]
+    },
+    {
+      "id": "charmed",
+      "label": "Charmed",
+      "severity": 1,
+      "effects": [
+        "cannot_attack_charmer",
+        "charmer_has_advantage_on_social_vs_you"
+      ]
+    },
+    {
+      "id": "deafened",
+      "label": "Deafened",
+      "severity": 1,
+      "effects": [
+        "auto_fail_hearing_checks"
+      ]
+    },
+    {
+      "id": "frightened",
+      "label": "Frightened",
+      "severity": 2,
+      "effects": [
+        "disadvantage_while_source_visible",
+        "cannot_move_closer_to_source"
+      ]
+    },
+    {
+      "id": "grappled",
+      "label": "Grappled",
+      "severity": 2,
+      "effects": [
+        "speed_zero",
+        "escape_dc=strength_athletics_or_dex_acrobatics"
+      ],
+      "ends_on": [
+        "escape",
+        "grappler_incapacitated"
+      ]
+    },
+    {
+      "id": "incapacitated",
+      "label": "Incapacitated",
+      "severity": 3,
+      "effects": [
+        "no_actions_or_reactions"
+      ]
+    },
+    {
+      "id": "invisible",
+      "label": "Invisible",
+      "severity": 2,
+      "effects": [
+        "heavily_obscured_for_hiding",
+        "attacks_against_have_disadvantage",
+        "your_attacks_have_advantage"
+      ]
+    },
+    {
+      "id": "paralyzed",
+      "label": "Paralyzed",
+      "severity": 4,
+      "effects": [
+        "incapacitated",
+        "auto_fail_str_dex_saves",
+        "attacks_within_5ft_are_crits"
+      ]
+    },
+    {
+      "id": "petrified",
+      "label": "Petrified",
+      "severity": 5,
+      "effects": [
+        "incapacitated",
+        "resist_all_damage",
+        "immune_poison_disease"
+      ]
+    },
+    {
+      "id": "poisoned",
+      "label": "Poisoned",
+      "severity": 2,
+      "effects": [
+        "disadvantage_on_attacks_and_ability_checks"
+      ]
+    },
+    {
+      "id": "prone",
+      "label": "Prone",
+      "severity": 1,
+      "effects": [
+        "melee_attacks_against_advantage",
+        "ranged_attacks_against_disadvantage",
+        "your_attacks_disadvantage"
+      ],
+      "ends_on": [
+        "stand_up_costs_half_movement"
+      ]
+    },
+    {
+      "id": "restrained",
+      "label": "Restrained",
+      "severity": 2,
+      "effects": [
+        "speed_zero",
+        "disadvantage_on_attacks_and_dex_saves",
+        "attacks_against_have_advantage"
+      ]
+    },
+    {
+      "id": "stunned",
+      "label": "Stunned",
+      "severity": 3,
+      "effects": [
+        "incapacitated",
+        "auto_fail_str_dex_saves",
+        "attacks_against_have_advantage"
+      ]
+    },
+    {
+      "id": "unconscious",
+      "label": "Unconscious",
+      "severity": 4,
+      "effects": [
+        "incapacitated",
+        "prone",
+        "auto_fail_str_dex_saves",
+        "attacks_within_5ft_are_crits"
+      ]
+    },
+    {
+      "id": "exhaustion",
+      "label": "Exhaustion",
+      "severity": 3,
+      "effects": [
+        "level_1_disadvantage_ability_checks",
+        "level_3_disadvantage_attacks_saves",
+        "level_6_death"
+      ]
+    }
+  ],
+  "damage_types": [
+    {
+      "id": "bludgeoning",
+      "label": "Bludgeoning"
+    },
+    {
+      "id": "piercing",
+      "label": "Piercing"
+    },
+    {
+      "id": "slashing",
+      "label": "Slashing"
+    },
+    {
+      "id": "fire",
+      "label": "Fire"
+    },
+    {
+      "id": "cold",
+      "label": "Cold"
+    },
+    {
+      "id": "lightning",
+      "label": "Lightning"
+    },
+    {
+      "id": "acid",
+      "label": "Acid"
+    },
+    {
+      "id": "poison",
+      "label": "Poison"
+    },
+    {
+      "id": "necrotic",
+      "label": "Necrotic"
+    },
+    {
+      "id": "radiant",
+      "label": "Radiant"
+    },
+    {
+      "id": "psychic",
+      "label": "Psychic"
+    },
+    {
+      "id": "force",
+      "label": "Force"
+    },
+    {
+      "id": "thunder",
+      "label": "Thunder"
+    }
+  ],
+  "equipment": {
+    "weapon_categories": [
+      {
+        "id": "simple_melee",
+        "label": "Simple Melee"
+      },
+      {
+        "id": "simple_ranged",
+        "label": "Simple Ranged"
+      },
+      {
+        "id": "martial_melee",
+        "label": "Martial Melee"
+      },
+      {
+        "id": "martial_ranged",
+        "label": "Martial Ranged"
+      }
+    ],
+    "armor_categories": [
+      {
+        "id": "light",
+        "label": "Light Armor"
+      },
+      {
+        "id": "medium",
+        "label": "Medium Armor"
+      },
+      {
+        "id": "heavy",
+        "label": "Heavy Armor"
+      },
+      {
+        "id": "shield",
+        "label": "Shield"
+      }
+    ],
+    "properties": [
+      {
+        "id": "finesse",
+        "label": "Finesse"
+      },
+      {
+        "id": "heavy",
+        "label": "Heavy"
+      },
+      {
+        "id": "light",
+        "label": "Light"
+      },
+      {
+        "id": "loading",
+        "label": "Loading"
+      },
+      {
+        "id": "reach",
+        "label": "Reach"
+      },
+      {
+        "id": "two_handed",
+        "label": "Two-Handed"
+      },
+      {
+        "id": "versatile",
+        "label": "Versatile"
+      },
+      {
+        "id": "thrown",
+        "label": "Thrown"
+      }
+    ],
+    "templates": [
+      {
+        "id": "longsword",
+        "label": "Longsword",
+        "kind": "weapon",
+        "stats": {
+          "damage": "1d8 slashing",
+          "properties": "versatile"
+        }
+      },
+      {
+        "id": "chain_mail",
+        "label": "Chain Mail",
+        "kind": "armor",
+        "stats": {
+          "ac": "16",
+          "category": "heavy",
+          "stealth_disadvantage": "true"
+        }
+      },
+      {
+        "id": "shortbow",
+        "label": "Shortbow",
+        "kind": "weapon",
+        "stats": {
+          "damage": "1d6 piercing",
+          "properties": "ammunition,two_handed",
+          "range": "80/320"
+        }
+      }
+    ]
+  },
+  "resolution": {
+    "skill_check": {
+      "roll": "1d20+mod",
+      "compare": "\u003e=",
+      "target": "dc",
+      "difficulty": [
+        {
+          "id": "very_easy",
+          "label": "Very Easy",
+          "target": 5
+        },
+        {
+          "id": "easy",
+          "label": "Easy",
+          "target": 10
+        },
+        {
+          "id": "medium",
+          "label": "Medium",
+          "target": 15
+        },
+        {
+          "id": "hard",
+          "label": "Hard",
+          "target": 20
+        },
+        {
+          "id": "very_hard",
+          "label": "Very Hard",
+          "target": 25
+        },
+        {
+          "id": "nearly_impossible",
+          "label": "Nearly Impossible",
+          "target": 30
+        }
+      ],
+      "success": "meet_or_exceed_dc",
+      "failure": "below_dc",
+      "critical": "natural_20",
+      "fumble": "natural_1",
+      "workflow_id": "skill_check"
+    },
+    "ability_check": {
+      "roll": "1d20+ability_mod",
+      "compare": "\u003e=",
+      "target": "dc",
+      "workflow_id": "skill_check"
+    },
+    "saving_throw": {
+      "roll": "1d20+save_mod",
+      "compare": "\u003e=",
+      "target": "effect_dc",
+      "success": "half_or_none",
+      "failure": "full_effect",
+      "workflow_id": "skill_check"
+    },
+    "opposed_check": {
+      "attacker_roll": "1d20+mod",
+      "defender_roll": "1d20+mod",
+      "win": "higher",
+      "tie": "reroll_or_dm"
+    },
+    "attack": {
+      "roll": "1d20+attack_bonus",
+      "target": "target_ac",
+      "compare": "\u003e=",
+      "on_hit": [
+        "damage_roll"
+      ],
+      "on_miss": [
+        "no_damage"
+      ],
+      "on_crit": [
+        "double_damage_dice"
+      ],
+      "workflow_id": "attack"
+    },
+    "defense": {
+      "stat": "armor_class",
+      "formula": "10+dex_mod+armor+shield"
+    },
+    "spell": {
+      "cost": "spell_slot",
+      "roll": "spell_attack_or_save_dc",
+      "components": [
+        "verbal",
+        "somatic",
+        "material"
+      ],
+      "workflow_id": "spell_cast"
+    },
+    "power": {
+      "cost": "none",
+      "roll": "varies"
+    },
+    "damage": {
+      "roll": "weapon_or_spell_dice",
+      "resistance": "halve",
+      "on_apply": [
+        "update_health",
+        "concentration_check"
+      ]
+    },
+    "initiative": {
+      "roll": "1d20+dex_mod",
+      "compare": "order_desc"
+    },
+    "death": {
+      "at_zero": [
+        "death_save",
+        "stable_at_3_successes",
+        "dead_at_3_failures"
+      ],
+      "recovery": [
+        "healing_above_zero",
+        "stabilize_medicine_dc10"
+      ],
+      "workflow_id": "death_save"
+    }
+  },
+  "combat": {
+    "mode": "turn_based",
+    "round_steps": [
+      "1. Determine surprise (if any)",
+      "2. Roll initiative and establish order",
+      "3. Take turns: move, action, bonus action, reaction, free object interaction",
+      "4. End of round: duration ticks, concentration checks"
+    ],
+    "action_economy": {
+      "actions": [
+        {
+          "id": "action",
+          "label": "Action",
+          "per_turn": 1,
+          "examples": [
+            "Attack",
+            "Cast a Spell",
+            "Dash",
+            "Dodge",
+            "Help",
+            "Hide",
+            "Ready"
+          ]
+        },
+        {
+          "id": "bonus",
+          "label": "Bonus Action",
+          "per_turn": 1,
+          "examples": [
+            "Off-hand attack",
+            "Class feature",
+            "Some spells"
+          ]
+        },
+        {
+          "id": "reaction",
+          "label": "Reaction",
+          "per_turn": 1,
+          "examples": [
+            "Opportunity attack",
+            "Shield",
+            "Counterspell"
+          ]
+        },
+        {
+          "id": "movement",
+          "label": "Movement",
+          "examples": [
+            "Up to speed",
+            "Split across action"
+          ]
+        },
+        {
+          "id": "free",
+          "label": "Free",
+          "examples": [
+            "Draw/stow one object",
+            "Speak briefly"
+          ]
+        }
+      ],
+      "notes": "On your turn you get one action, one bonus action, movement up to speed, and one reaction per round."
+    },
+    "positioning": "grid_or_theater_of_mind"
+  },
+  "progression": {
+    "kind": "xp_level",
+    "levels": [
+      {
+        "level": 1,
+        "advance": "class_features_level_1",
+        "notes": "Proficiency +2, starting equipment"
+      },
+      {
+        "level": 2,
+        "xp": 300,
+        "advance": "class_features_level_2"
+      },
+      {
+        "level": 3,
+        "xp": 900,
+        "advance": "subclass_choice"
+      },
+      {
+        "level": 4,
+        "xp": 2700,
+        "advance": "ability_score_improvement_or_feat"
+      },
+      {
+        "level": 5,
+        "xp": 6500,
+        "advance": "extra_attack_or_3rd_level_spells"
+      }
+    ],
+    "milestones": [
+      "Session award 50-200 XP",
+      "Quest completion lump sum"
+    ]
+  },
+  "magic": {
+    "traditions": [
+      {
+        "id": "arcane",
+        "label": "Arcane"
+      },
+      {
+        "id": "divine",
+        "label": "Divine"
+      },
+      {
+        "id": "primal",
+        "label": "Primal"
+      },
+      {
+        "id": "psionic",
+        "label": "Psionic"
+      }
+    ],
+    "casting": [
+      "Expend spell slot of spell level or higher",
+      "Verbal, somatic, material components unless replaced",
+      "Concentration limits one concentration spell"
+    ],
+    "recovery": [
+      "Long rest restores spell slots per class table",
+      "Some features restore on short rest"
+    ]
+  },
+  "social": {},
+  "formulas": [
+    {
+      "id": "max_hp",
+      "label": "Maximum Hit Points",
+      "expression": "hit_die_max + con_mod + (level-1)*(hit_die_avg + con_mod)",
+      "variables": {
+        "con_mod": "CON modifier",
+        "level": "character level"
+      }
+    },
+    {
+      "id": "proficiency",
+      "label": "Proficiency Bonus",
+      "expression": "2 + floor((level-1)/4)",
+      "variables": {
+        "level": "character level"
+      }
+    },
+    {
+      "id": "spell_save_dc",
+      "label": "Spell Save DC",
+      "expression": "8 + proficiency + spellcasting_mod"
+    },
+    {
+      "id": "spell_attack",
+      "label": "Spell Attack Bonus",
+      "expression": "proficiency + spellcasting_mod"
+    }
+  ],
+  "workflows": [
+    {
+      "id": "attack",
+      "label": "Attack",
+      "category": "combat",
+      "trigger": "actor_declares_attack",
+      "steps": [
+        {
+          "id": "declare",
+          "label": "Declare target and weapon",
+          "kind": "input",
+          "next": "roll"
+        },
+        {
+          "id": "roll",
+          "label": "Roll attack",
+          "kind": "roll",
+          "roll": "1d20+attack_bonus",
+          "next": "compare"
+        },
+        {
+          "id": "compare",
+          "label": "Compare to AC",
+          "kind": "branch",
+          "next": "damage"
+        },
+        {
+          "id": "damage",
+          "label": "Roll damage on hit",
+          "kind": "roll",
+          "roll": "damage_dice",
+          "next": "apply"
+        },
+        {
+          "id": "apply",
+          "label": "Apply damage and conditions",
+          "kind": "effect"
+        }
+      ],
+      "outputs": [
+        "hit",
+        "miss",
+        "critical",
+        "damage_total"
+      ],
+      "related_tools": [
+        "attack",
+        "damage_roll",
+        "update_health"
+      ]
+    },
+    {
+      "id": "spell_cast",
+      "label": "Cast Spell",
+      "category": "magic",
+      "trigger": "caster_declares_spell",
+      "steps": [
+        {
+          "id": "validate",
+          "label": "Validate slot and components",
+          "kind": "check",
+          "next": "resolve"
+        },
+        {
+          "id": "resolve",
+          "label": "Resolve spell attack or save",
+          "kind": "roll",
+          "roll": "spell_resolution",
+          "next": "effect"
+        },
+        {
+          "id": "effect",
+          "label": "Apply spell effects",
+          "kind": "effect",
+          "next": "concentration"
+        },
+        {
+          "id": "concentration",
+          "label": "Begin or maintain concentration",
+          "kind": "state"
+        }
+      ],
+      "related_tools": [
+        "cast_spell",
+        "saving_throw",
+        "damage_roll",
+        "apply_condition"
+      ]
+    },
+    {
+      "id": "death_save",
+      "label": "Death Saving Throw",
+      "category": "combat",
+      "trigger": "hp_at_zero",
+      "steps": [
+        {
+          "id": "roll",
+          "label": "Roll d20 death save",
+          "kind": "roll",
+          "roll": "1d20",
+          "next": "track"
+        },
+        {
+          "id": "track",
+          "label": "Track successes/failures",
+          "kind": "state"
+        }
+      ],
+      "related_tools": [
+        "death_save",
+        "update_health"
+      ]
+    },
+    {
+      "id": "concentration",
+      "label": "Concentration Check",
+      "category": "magic",
+      "trigger": "damage_while_concentrating",
+      "steps": [
+        {
+          "id": "compute_dc",
+          "label": "DC = max(10, damage/2)",
+          "kind": "expression",
+          "roll": "max(10,damage/2)",
+          "next": "roll"
+        },
+        {
+          "id": "roll",
+          "label": "CON save vs DC",
+          "kind": "roll",
+          "roll": "1d20+con_mod",
+          "next": "result"
+        },
+        {
+          "id": "result",
+          "label": "Maintain or drop concentration",
+          "kind": "branch"
+        }
+      ],
+      "related_tools": [
+        "concentration_check",
+        "remove_condition"
+      ]
+    },
+    {
+      "id": "short_rest",
+      "label": "Short Rest",
+      "category": "exploration",
+      "trigger": "party_short_rest",
+      "steps": [
+        {
+          "id": "duration",
+          "label": "Rest 1 hour",
+          "kind": "narrative",
+          "next": "spend_hd"
+        },
+        {
+          "id": "spend_hd",
+          "label": "Spend hit dice for healing",
+          "kind": "roll",
+          "roll": "hit_die+con_mod",
+          "next": "features"
+        },
+        {
+          "id": "features",
+          "label": "Recover short-rest features",
+          "kind": "state"
+        }
+      ],
+      "related_tools": [
+        "rest",
+        "update_health"
+      ]
+    },
+    {
+      "id": "long_rest",
+      "label": "Long Rest",
+      "category": "exploration",
+      "trigger": "party_long_rest",
+      "steps": [
+        {
+          "id": "duration",
+          "label": "Rest 8 hours",
+          "kind": "narrative",
+          "next": "recover"
+        },
+        {
+          "id": "recover",
+          "label": "Restore HP, slots, hit dice (half level)",
+          "kind": "state"
+        }
+      ],
+      "related_tools": [
+        "rest",
+        "update_health",
+        "update_character"
+      ]
+    },
+    {
+      "id": "skill_check",
+      "label": "Skill / Ability Check",
+      "category": "resolution",
+      "trigger": "ability_or_skill_test",
+      "steps": [
+        {
+          "id": "declare",
+          "label": "Choose skill and DC",
+          "kind": "input",
+          "next": "roll"
+        },
+        {
+          "id": "roll",
+          "label": "Roll d20 + modifiers",
+          "kind": "roll",
+          "roll": "1d20+mod",
+          "next": "compare"
+        },
+        {
+          "id": "compare",
+          "label": "Success or failure",
+          "kind": "branch"
+        }
+      ],
+      "related_tools": [
+        "skill_check",
+        "ability_check",
+        "roll_dice"
+      ]
+    },
+    {
+      "id": "initiative",
+      "label": "Initiative",
+      "category": "combat",
+      "trigger": "combat_start",
+      "steps": [
+        {
+          "id": "roll_all",
+          "label": "Each combatant rolls initiative",
+          "kind": "roll",
+          "roll": "1d20+dex_mod",
+          "next": "order"
+        },
+        {
+          "id": "order",
+          "label": "Sort descending",
+          "kind": "state"
+        }
+      ],
+      "related_tools": [
+        "initiative",
+        "roll_dice"
+      ]
+    },
+    {
+      "id": "social_persuade",
+      "label": "Social Interaction",
+      "category": "social",
+      "trigger": "social_encounter",
+      "steps": [
+        {
+          "id": "approach",
+          "label": "Choose skill approach",
+          "kind": "input",
+          "next": "roll"
+        },
+        {
+          "id": "roll",
+          "label": "Roll opposed or DC check",
+          "kind": "roll",
+          "roll": "1d20+cha_mod",
+          "next": "outcome"
+        },
+        {
+          "id": "outcome",
+          "label": "Apply attitude shift",
+          "kind": "narrative"
+        }
+      ],
+      "related_tools": [
+        "social_conflict",
+        "skill_check"
+      ]
+    }
+  ],
+  "mechanics": [
+    {
+      "id": "advantage",
+      "label": "Advantage / Disadvantage",
+      "category": "core",
+      "summary": "Roll 2d20, take higher (advantage) or lower (disadvantage).",
+      "tags": [
+        "d20"
+      ]
+    },
+    {
+      "id": "proficiency",
+      "label": "Proficiency Bonus",
+      "category": "core",
+      "summary": "Add proficiency bonus when proficient with skill, save, or attack.",
+      "workflow_id": "skill_check"
+    },
+    {
+      "id": "critical_hit",
+      "label": "Critical Hit",
+      "category": "combat",
+      "summary": "Natural 20 on attack roll hits and doubles damage dice.",
+      "workflow_id": "attack",
+      "related_tools": [
+        "attack",
+        "damage_roll"
+      ]
+    },
+    {
+      "id": "cover",
+      "label": "Cover",
+      "category": "combat",
+      "summary": "Half +2 AC, Three-quarters +5 AC, Total blocks direct attacks."
+    },
+    {
+      "id": "opportunity_attack",
+      "label": "Opportunity Attack",
+      "category": "combat",
+      "summary": "Reaction melee attack when hostile leaves reach.",
+      "workflow_id": "attack"
+    },
+    {
+      "id": "concentration_rules",
+      "label": "Concentration",
+      "category": "magic",
+      "summary": "One concentration spell; CON save when damaged.",
+      "workflow_id": "concentration",
+      "related_tools": [
+        "concentration_check"
+      ]
+    },
+    {
+      "id": "death_saves",
+      "label": "Death Saves",
+      "category": "combat",
+      "summary": "At 0 HP roll d20: 10+ success, \u003c10 failure, nat1 two failures, nat20 regain 1 HP.",
+      "workflow_id": "death_save"
+    },
+    {
+      "id": "exhaustion_track",
+      "label": "Exhaustion",
+      "category": "exploration",
+      "summary": "Six levels of escalating penalties; long rest removes one level in some campaigns."
+    },
+    {
+      "id": "ready_action",
+      "label": "Ready Action",
+      "category": "combat",
+      "summary": "Use action to trigger later with reaction."
+    },
+    {
+      "id": "help_action",
+      "label": "Help Action",
+      "category": "combat",
+      "summary": "Grant ally advantage on next ability check or attack against adjacent foe."
+    },
+    {
+      "id": "spell_components",
+      "label": "Spell Components",
+      "category": "magic",
+      "summary": "V, S, M required unless feature replaces; somatic needs free hand."
+    },
+    {
+      "id": "inspiration",
+      "label": "Inspiration",
+      "category": "social",
+      "summary": "DM-granted reroll or advantage on one roll."
+    }
+  ],
+  "tables": [
+    {
+      "id": "dc_guidance",
+      "label": "Typical DCs",
+      "roll": "n/a",
+      "columns": [
+        "Difficulty",
+        "DC"
+      ],
+      "rows": [
+        {
+          "key": "very_easy",
+          "result": "5"
+        },
+        {
+          "key": "easy",
+          "result": "10"
+        },
+        {
+          "key": "medium",
+          "result": "15"
+        },
+        {
+          "key": "hard",
+          "result": "20"
+        },
+        {
+          "key": "very_hard",
+          "result": "25"
+        },
+        {
+          "key": "nearly_impossible",
+          "result": "30"
+        }
+      ]
+    },
+    {
+      "id": "death_save_outcomes",
+      "label": "Death Save Outcomes",
+      "roll": "1d20",
+      "rows": [
+        {
+          "key": "1",
+          "result": "Two failures"
+        },
+        {
+          "key": "2-9",
+          "result": "Failure"
+        },
+        {
+          "key": "10-19",
+          "result": "Success"
+        },
+        {
+          "key": "20",
+          "result": "Regain 1 HP"
+        }
+      ]
+    },
+    {
+      "id": "proficiency_by_level",
+      "label": "Proficiency by Level",
+      "roll": "n/a",
+      "columns": [
+        "Level",
+        "Bonus"
+      ],
+      "rows": [
+        {
+          "key": "1-4",
+          "result": "+2"
+        },
+        {
+          "key": "5-8",
+          "result": "+3"
+        },
+        {
+          "key": "9-12",
+          "result": "+4"
+        },
+        {
+          "key": "13-16",
+          "result": "+5"
+        },
+        {
+          "key": "17-20",
+          "result": "+6"
+        }
+      ]
+    },
+    {
+      "id": "wild_magic_surge",
+      "label": "Wild Magic Surge (sample)",
+      "roll": "1d20",
+      "rows": [
+        {
+          "key": "1",
+          "result": "Roll on Wild Magic table"
+        },
+        {
+          "key": "2-19",
+          "result": "No surge"
+        },
+        {
+          "key": "20",
+          "result": "Regain 1 sorcery point"
+        }
+      ],
+      "notes": "Optional; for sorcerer tables."
+    }
+  ],
+  "chapters": [
+    {
+      "id": "combat",
+      "title": "Combat",
+      "summary": "Turn-based combat, attacks, damage, and death.",
+      "sections": [
+        {
+          "id": "overview",
+          "title": "Combat Overview",
+          "body": "Combat proceeds in rounds. Each participant acts on their initiative count.",
+          "bullets": [
+            "Surprise",
+            "Initiative",
+            "Actions in combat"
+          ]
+        },
+        {
+          "id": "attacks",
+          "title": "Making an Attack",
+          "body": "Roll d20 + modifiers vs target AC. On hit, roll damage.",
+          "bullets": [
+            "Critical hits on natural 20",
+            "Unseen attackers have advantage"
+          ]
+        },
+        {
+          "id": "damage",
+          "title": "Damage and Healing",
+          "body": "Subtract damage from HP. At 0 HP, death saves begin.",
+          "bullets": [
+            "Damage types and resistance",
+            "Healing restores HP up to maximum"
+          ]
+        }
+      ],
+      "tags": [
+        "combat"
+      ]
+    },
+    {
+      "id": "magic",
+      "title": "Magic",
+      "summary": "Spellcasting, slots, components, and concentration.",
+      "sections": [
+        {
+          "id": "casting",
+          "title": "Casting a Spell",
+          "body": "Choose spell, expend slot, resolve effect.",
+          "bullets": [
+            "Spell attack vs save",
+            "Upcasting"
+          ]
+        },
+        {
+          "id": "concentration",
+          "title": "Concentration",
+          "body": "Maintain one spell; CON save when damaged.",
+          "bullets": [
+            "Breaking concentration ends spell effects"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "exploration",
+      "title": "Exploration \u0026 Skills",
+      "summary": "Ability checks, skills, rests, and travel.",
+      "sections": [
+        {
+          "id": "checks",
+          "title": "Ability Checks",
+          "body": "d20 + relevant modifier vs DC.",
+          "bullets": [
+            "Group checks",
+            "Passive scores"
+          ]
+        },
+        {
+          "id": "rests",
+          "title": "Rests",
+          "body": "Short rest: 1 hour, spend hit dice. Long rest: 8 hours, restore most resources."
+        }
+      ]
+    },
+    {
+      "id": "character",
+      "title": "Character Creation",
+      "summary": "Abilities, skills, classes, and advancement.",
+      "sections": [
+        {
+          "id": "abilities",
+          "title": "Ability Scores",
+          "body": "Six abilities define modifiers used across the game.",
+          "bullets": [
+            "Standard array or point buy"
+          ]
+        },
+        {
+          "id": "advancement",
+          "title": "Leveling",
+          "body": "Gain XP, increase level, unlock class features.",
+          "bullets": [
+            "ASI at levels 4, 8, 12, 16, 19"
+          ]
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "canonical_id": "attack",
+      "enabled": true,
+      "name": "Melee/Ranged Attack",
+      "description": "Resolve an attack roll and damage against AC.",
+      "parameters": {
+        "attacker_id": "string",
+        "target_id": "string",
+        "weapon_id": "string"
+      },
+      "category": "combat",
+      "preconditions": [
+        "attacker_has_action",
+        "target_in_range"
+      ],
+      "effects": [
+        "may_consume_action",
+        "may_apply_damage"
+      ],
+      "examples": [
+        {
+          "title": "Fighter attacks goblin",
+          "input": {
+            "attacker_id": "pc_1",
+            "target_id": "goblin_1",
+            "weapon_id": "longsword"
+          },
+          "output": "Hit for 9 slashing"
+        }
+      ],
+      "workflow_id": "attack"
+    },
+    {
+      "canonical_id": "cast_spell",
+      "enabled": true,
+      "name": "Cast Spell",
+      "description": "Expend slot and resolve spell.",
+      "parameters": {
+        "caster_id": "string",
+        "slot_level": "number",
+        "spell_id": "string",
+        "targets": "array"
+      },
+      "category": "magic",
+      "preconditions": [
+        "caster_has_slot",
+        "components_available"
+      ],
+      "effects": [
+        "consumes_slot",
+        "may_require_concentration"
+      ],
+      "examples": [
+        {
+          "title": "Wizard casts Magic Missile",
+          "input": {
+            "caster_id": "pc_wiz",
+            "slot_level": 1,
+            "spell_id": "magic_missile"
+          },
+          "output": "3 darts auto-hit for 3d4+3 force"
+        }
+      ],
+      "workflow_id": "spell_cast"
+    },
+    {
+      "canonical_id": "skill_check",
+      "enabled": true,
+      "name": "Skill Check",
+      "description": "Roll d20 + skill modifier vs DC.",
+      "parameters": {
+        "actor_id": "string",
+        "advantage": "boolean",
+        "dc": "number",
+        "skill": "string"
+      },
+      "category": "resolution",
+      "preconditions": [
+        "skill_declared"
+      ],
+      "examples": [
+        {
+          "title": "Rogue hides",
+          "input": {
+            "actor_id": "pc_rogue",
+            "dc": 15,
+            "skill": "stealth"
+          },
+          "output": "Stealth 18 vs DC 15 — success"
+        }
+      ],
+      "workflow_id": "skill_check"
+    },
+    {
+      "canonical_id": "saving_throw",
+      "enabled": true,
+      "name": "Saving Throw",
+      "description": "Roll save vs effect DC.",
+      "parameters": {
+        "ability": "string",
+        "actor_id": "string",
+        "dc": "number"
+      },
+      "category": "resolution",
+      "effects": [
+        "apply_effect_on_failure"
+      ],
+      "workflow_id": "skill_check"
+    },
+    {
+      "canonical_id": "ability_check",
+      "enabled": true,
+      "name": "Ability Check",
+      "description": "Raw ability check without skill proficiency.",
+      "parameters": {
+        "ability": "string",
+        "actor_id": "string",
+        "dc": "number"
+      },
+      "category": "resolution",
+      "workflow_id": "skill_check"
+    },
+    {
+      "canonical_id": "damage_roll",
+      "enabled": true,
+      "name": "Damage Roll",
+      "description": "Roll weapon or spell damage.",
+      "parameters": {
+        "critical": "boolean",
+        "damage_type": "string",
+        "notation": "string"
+      },
+      "category": "combat",
+      "effects": [
+        "feeds_update_health"
+      ],
+      "workflow_id": "attack"
+    },
+    {
+      "canonical_id": "update_health",
+      "enabled": true,
+      "name": "Apply Damage/Healing",
+      "description": "Modify HP track.",
+      "parameters": {
+        "actor_id": "string",
+        "delta": "number",
+        "resource": "string",
+        "source": "string"
+      },
+      "category": "state",
+      "effects": [
+        "updates_hp"
+      ]
+    },
+    {
+      "canonical_id": "apply_condition",
+      "enabled": true,
+      "name": "Apply Condition",
+      "description": "Add blinded, prone, etc.",
+      "parameters": {
+        "actor_id": "string",
+        "condition_id": "string",
+        "duration": "string"
+      },
+      "category": "state",
+      "effects": [
+        "adds_condition"
+      ]
+    },
+    {
+      "canonical_id": "remove_condition",
+      "enabled": true,
+      "name": "Remove Condition",
+      "description": "End a condition.",
+      "parameters": {
+        "actor_id": "string",
+        "condition_id": "string"
+      },
+      "category": "state"
+    },
+    {
+      "canonical_id": "death_save",
+      "enabled": true,
+      "name": "Death Saving Throw",
+      "description": "Roll death save at 0 HP.",
+      "parameters": {
+        "actor_id": "string"
+      },
+      "category": "combat",
+      "preconditions": [
+        "hp_is_zero"
+      ],
+      "effects": [
+        "tracks_success_failure"
+      ],
+      "workflow_id": "death_save"
+    },
+    {
+      "canonical_id": "concentration_check",
+      "enabled": true,
+      "name": "Concentration Save",
+      "description": "CON save to maintain spell.",
+      "parameters": {
+        "caster_id": "string",
+        "damage_taken": "number"
+      },
+      "category": "magic",
+      "preconditions": [
+        "caster_is_concentrating",
+        "damage_taken"
+      ],
+      "workflow_id": "concentration"
+    },
+    {
+      "canonical_id": "initiative",
+      "enabled": true,
+      "name": "Roll Initiative",
+      "description": "Establish combat order.",
+      "parameters": {
+        "participants": "array"
+      },
+      "category": "combat",
+      "workflow_id": "initiative"
+    },
+    {
+      "canonical_id": "rest",
+      "enabled": true,
+      "name": "Short/Long Rest",
+      "description": "Apply rest recovery.",
+      "parameters": {
+        "actor_id": "string",
+        "rest_type": "string"
+      },
+      "category": "exploration",
+      "workflow_id": "long_rest"
+    },
+    {
+      "canonical_id": "award_experience",
+      "enabled": true,
+      "name": "Award XP",
+      "description": "Grant experience points.",
+      "parameters": {
+        "actor_ids": "array",
+        "amount": "number",
+        "reason": "string"
+      },
+      "category": "progression",
+      "effects": [
+        "increments_xp"
+      ]
+    },
+    {
+      "canonical_id": "inventory_add",
+      "enabled": true,
+      "name": "Add Inventory",
+      "description": "Add items to character.",
+      "parameters": {
+        "actor_id": "string",
+        "items": "array"
+      },
+      "category": "inventory"
+    },
+    {
+      "canonical_id": "inventory_remove",
+      "enabled": true,
+      "name": "Remove Inventory",
+      "description": "Remove items from character.",
+      "parameters": {
+        "actor_id": "string",
+        "items": "array"
+      },
+      "category": "inventory"
+    },
+    {
+      "canonical_id": "lookup_creature",
+      "enabled": true,
+      "name": "Lookup Monster",
+      "description": "Fetch SRD creature stat block.",
+      "parameters": {
+        "scale": "string",
+        "template_id": "string"
+      },
+      "category": "reference"
+    },
+    {
+      "canonical_id": "social_conflict",
+      "enabled": true,
+      "name": "Social Interaction",
+      "description": "Resolve persuasion/intimidation.",
+      "parameters": {
+        "actor_id": "string",
+        "approach": "string",
+        "stakes": "string",
+        "target_id": "string"
+      },
+      "category": "social",
+      "workflow_id": "social_persuade"
+    },
+    {
+      "canonical_id": "roll_dice",
+      "enabled": true,
+      "name": "Roll Dice",
+      "description": "Generic dice roll.",
+      "parameters": {
+        "notation": "string",
+        "reason": "string"
+      },
+      "category": "core"
+    },
+    {
+      "canonical_id": "update_character",
+      "enabled": true,
+      "name": "Update Character",
+      "description": "Patch character sheet fields.",
+      "parameters": {
+        "actor_id": "string",
+        "patch": "object"
+      },
+      "category": "state"
+    },
+    {
+      "canonical_id": "roll_on_table",
+      "enabled": true,
+      "name": "Roll on Table",
+      "description": "Use pack random tables.",
+      "parameters": {
+        "modifier": "number",
+        "table_id": "string"
+      },
+      "category": "reference"
+    }
+  ],
+  "character": {
+    "sections": [
+      {
+        "id": "identity",
+        "label": "Identity"
+      },
+      {
+        "id": "abilities",
+        "label": "Abilities"
+      },
+      {
+        "id": "combat",
+        "label": "Combat"
+      },
+      {
+        "id": "spells",
+        "label": "Spells"
+      }
+    ],
+    "fields": [
+      {
+        "id": "name",
+        "label": "Name",
+        "section": "identity",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "id": "level",
+        "label": "Level",
+        "section": "identity",
+        "kind": "number",
+        "required": true
+      },
+      {
+        "id": "class",
+        "label": "Class",
+        "section": "identity",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "id": "race",
+        "label": "Species/Race",
+        "section": "identity",
+        "kind": "string"
+      },
+      {
+        "id": "hp",
+        "label": "Hit Points",
+        "section": "combat",
+        "kind": "resource",
+        "formula": "max_hp"
+      },
+      {
+        "id": "ac",
+        "label": "Armor Class",
+        "section": "combat",
+        "kind": "number",
+        "formula": "10+dex_mod+armor"
+      },
+      {
+        "id": "proficiency",
+        "label": "Proficiency Bonus",
+        "section": "combat",
+        "kind": "number",
+        "formula": "2 + floor((level-1)/4)"
+      }
+    ]
+  },
+  "creature": {
+    "fields": [
+      {
+        "id": "name",
+        "label": "Name",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "id": "ac",
+        "label": "Armor Class",
+        "kind": "number"
+      },
+      {
+        "id": "hp",
+        "label": "Hit Points",
+        "kind": "resource"
+      },
+      {
+        "id": "cr",
+        "label": "Challenge Rating",
+        "kind": "string"
+      }
+    ],
+    "sections": [
+      {
+        "id": "stat_block",
+        "label": "Stat Block"
+      }
+    ],
+    "templates": [
+      {
+        "id": "goblin",
+        "label": "Goblin",
+        "stats": {
+          "ac": "15",
+          "cr": "1/4",
+          "hp": "7"
+        }
+      },
+      {
+        "id": "ogre",
+        "label": "Ogre",
+        "stats": {
+          "ac": "11",
+          "cr": "2",
+          "hp": "59"
+        }
+      }
+    ]
+  },
+  "prompts": {
+    "oracle_context": "D\u0026D 5e SRD: d20 + modifier vs DC/AC. Use attack, skill_check, cast_spell, and death_save tools for mechanics.",
+    "dm_notes": "Apply advantage/disadvantage when fiction warrants. Track concentration and conditions explicitly.",
+    "glossary": [
+      {
+        "id": "ac",
+        "label": "Armor Class"
+      },
+      {
+        "id": "dc",
+        "label": "Difficulty Class"
+      }
+    ]
+  },
+  "oracle_guide": {
+    "principles": [
+      "Never narrate HP changes without update_health or damage_roll.",
+      "Spell effects that last require apply_condition or concentration tracking.",
+      "At 0 HP, switch to death_save workflow."
+    ],
+    "tool_priority": [
+      "attack",
+      "skill_check",
+      "cast_spell",
+      "death_save",
+      "initiative"
+    ],
+    "anti_patterns": [
+      "Guessing DC without table reference",
+      "Applying damage without type"
+    ],
+    "scenarios": [
+      {
+        "situation": "Player attacks goblin with sword",
+        "use_tools": [
+          "attack",
+          "damage_roll",
+          "update_health"
+        ],
+        "avoid": [
+          "freeform_damage"
+        ]
+      },
+      {
+        "situation": "Wizard damaged while concentrating",
+        "use_tools": [
+          "concentration_check"
+        ],
+        "avoid": [
+          "auto_drop_concentration"
+        ]
+      },
+      {
+        "situation": "Party completes quest",
+        "use_tools": [
+          "award_experience",
+          "advance_quest"
+        ],
+        "avoid": [
+          "level_up_without_xp"
+        ]
+      },
+      {
+        "situation": "Rogue attempts stealth",
+        "use_tools": [
+          "skill_check"
+        ],
+        "avoid": [
+          "ability_check_when_skill_applies"
+        ]
+      }
+    ]
+  },
+  "compatibility": {
+    "character_type": "dnd5e_character",
+    "stat_block_type": "dnd5e_creature",
+    "tool_map": {
+      "attack": "attack",
+      "check": "skill_check",
+      "condition": "apply_condition",
+      "damage": "damage_roll",
+      "heal": "update_health",
+      "roll": "roll_dice",
+      "save": "saving_throw",
+      "spell": "cast_spell"
+    },
+    "notes": "Maps legacy engine hooks to canonical v2 tools."
+  },
+  "enrichment": {
+    "enabled": false,
+    "objective": "",
+    "input_fields": null,
+    "output_fields": null
+  },
+  "rules_summary": [
+    "d20 + modifier vs DC or AC; natural 20/1 matter on attacks.",
+    "Six abilities, eighteen skills, fifteen standard conditions.",
+    "Action + bonus + movement + one reaction per round.",
+    "Spell slots, components, concentration; death saves at 0 HP."
+  ],
+  "metadata": {
+    "generated_at": "2026-08-14T11:54:17Z",
+    "generator": "rulesystem-gen"
+  }
+}

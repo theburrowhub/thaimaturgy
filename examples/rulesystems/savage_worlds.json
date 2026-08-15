@@ -1,0 +1,1448 @@
+{
+  "api_version": "rulesystem/v2",
+  "id": "savage_worlds",
+  "name": "Savage Worlds Adventure Edition",
+  "version": "5.0",
+  "language": "en",
+  "family": "swade",
+  "source": {
+    "type": "builtin",
+    "templates": [
+      "SWADE Core Rules"
+    ],
+    "notes": "Fast! Furious! Fun! — trait rolls, wild die, bennies, wounds.",
+    "confidence": 1
+  },
+  "dice": {
+    "primary": "trait",
+    "common": [
+      "d4",
+      "d6",
+      "d8",
+      "d10",
+      "d12"
+    ],
+    "notation": "trait_die + wild_die",
+    "exploding": true,
+    "keep": "wild_die_for_wildcards",
+    "modifiers": [
+      {
+        "id": "wild_die",
+        "label": "Wild Die",
+        "roll": "d6",
+        "notes": "Extra d6 for Wild Cards; take best."
+      }
+    ],
+    "notes": "Target Number 4; raises every +4 over TN."
+  },
+  "attributes": [
+    {
+      "id": "agi",
+      "label": "Agility",
+      "abbrev": "Agi",
+      "scale": "die_step"
+    },
+    {
+      "id": "sma",
+      "label": "Smarts",
+      "abbrev": "Sma",
+      "scale": "die_step"
+    },
+    {
+      "id": "spi",
+      "label": "Spirit",
+      "abbrev": "Spi",
+      "scale": "die_step"
+    },
+    {
+      "id": "str",
+      "label": "Strength",
+      "abbrev": "Str",
+      "scale": "die_step"
+    },
+    {
+      "id": "vig",
+      "label": "Vigor",
+      "abbrev": "Vig",
+      "scale": "die_step"
+    }
+  ],
+  "skills": [
+    {
+      "id": "athletics",
+      "label": "Athletics",
+      "attribute": "agi",
+      "training": true
+    },
+    {
+      "id": "fighting",
+      "label": "Fighting",
+      "attribute": "agi",
+      "training": true
+    },
+    {
+      "id": "shooting",
+      "label": "Shooting",
+      "attribute": "agi",
+      "training": true
+    },
+    {
+      "id": "stealth",
+      "label": "Stealth",
+      "attribute": "agi",
+      "training": true
+    },
+    {
+      "id": "thievery",
+      "label": "Thievery",
+      "attribute": "agi",
+      "training": true
+    },
+    {
+      "id": "notice",
+      "label": "Notice",
+      "attribute": "sma",
+      "training": true
+    },
+    {
+      "id": "research",
+      "label": "Research",
+      "attribute": "sma",
+      "training": true
+    },
+    {
+      "id": "repair",
+      "label": "Repair",
+      "attribute": "sma",
+      "training": true
+    },
+    {
+      "id": "taunt",
+      "label": "Taunt",
+      "attribute": "sma",
+      "training": true
+    },
+    {
+      "id": "persuasion",
+      "label": "Persuasion",
+      "attribute": "spi",
+      "training": true
+    },
+    {
+      "id": "intimidation",
+      "label": "Intimidation",
+      "attribute": "spi",
+      "training": true
+    },
+    {
+      "id": "spellcasting",
+      "label": "Spellcasting",
+      "attribute": "spi",
+      "training": true
+    },
+    {
+      "id": "faith",
+      "label": "Faith",
+      "attribute": "spi",
+      "training": true
+    },
+    {
+      "id": "survival",
+      "label": "Survival",
+      "attribute": "spi",
+      "training": true
+    },
+    {
+      "id": "healing",
+      "label": "Healing",
+      "attribute": "spi",
+      "training": true
+    },
+    {
+      "id": "common_knowledge",
+      "label": "Common Knowledge",
+      "attribute": "sma",
+      "training": true
+    }
+  ],
+  "resources": [
+    {
+      "id": "wounds",
+      "label": "Wounds",
+      "kind": "track",
+      "primary": true,
+      "max_formula": "3",
+      "overflow": "incapacitated",
+      "track_steps": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "id": "fatigue",
+      "label": "Fatigue",
+      "kind": "track",
+      "max_formula": "2"
+    },
+    {
+      "id": "bennies",
+      "label": "Bennies",
+      "kind": "pool",
+      "reset_on": [
+        "session_start"
+      ]
+    },
+    {
+      "id": "power_points",
+      "label": "Power Points",
+      "kind": "pool",
+      "max_formula": "power_points_by_rank",
+      "reset_on": [
+        "hour_rest"
+      ]
+    }
+  ],
+  "conditions": [
+    {
+      "id": "shaken",
+      "label": "Shaken",
+      "severity": 2,
+      "effects": [
+        "cannot_actions_except_unshake",
+        "free_move_away"
+      ],
+      "ends_on": [
+        "unshake_roll"
+      ]
+    },
+    {
+      "id": "stunned",
+      "label": "Stunned",
+      "severity": 2,
+      "effects": [
+        "shaken_plus_no_reactions"
+      ],
+      "ends_on": [
+        "end_of_next_turn"
+      ]
+    },
+    {
+      "id": "bound",
+      "label": "Bound",
+      "severity": 3,
+      "effects": [
+        "cannot_move",
+        "attacks_against_have_bonus"
+      ]
+    },
+    {
+      "id": "entangled",
+      "label": "Entangled",
+      "severity": 2,
+      "effects": [
+        "cannot_move",
+        "escape_roll_required"
+      ]
+    },
+    {
+      "id": "vulnerable",
+      "label": "Vulnerable",
+      "severity": 2,
+      "effects": [
+        "enemies_gain_plus2_to_hit"
+      ]
+    },
+    {
+      "id": "distracted",
+      "label": "Distracted",
+      "severity": 1,
+      "effects": [
+        "minus2_to_all_rolls"
+      ]
+    },
+    {
+      "id": "incapacitated",
+      "label": "Incapacitated",
+      "severity": 5,
+      "effects": [
+        "out_of_fight",
+        "roll_on_injury_table"
+      ]
+    }
+  ],
+  "damage_types": [
+    {
+      "id": "physical",
+      "label": "physical"
+    },
+    {
+      "id": "fire",
+      "label": "fire"
+    },
+    {
+      "id": "cold",
+      "label": "cold"
+    },
+    {
+      "id": "electricity",
+      "label": "electricity"
+    },
+    {
+      "id": "poison",
+      "label": "poison"
+    },
+    {
+      "id": "holy",
+      "label": "holy"
+    },
+    {
+      "id": "magic",
+      "label": "magic"
+    }
+  ],
+  "equipment": {
+    "weapon_categories": [
+      {
+        "id": "melee",
+        "label": "Melee"
+      },
+      {
+        "id": "ranged",
+        "label": "Ranged"
+      }
+    ],
+    "templates": [
+      {
+        "id": "long_sword",
+        "label": "Long Sword",
+        "kind": "weapon",
+        "stats": {
+          "damage": "Str+d8",
+          "notes": "Parry +1"
+        }
+      },
+      {
+        "id": "leather",
+        "label": "Leather Armor",
+        "kind": "armor",
+        "stats": {
+          "armor": "+2"
+        }
+      }
+    ]
+  },
+  "resolution": {
+    "skill_check": {
+      "roll": "trait+wild",
+      "compare": "\u003e=",
+      "target": "4",
+      "success": "meet_tn",
+      "failure": "below_tn",
+      "critical": "raise_every_4",
+      "fumble": "double_1_on_both_dice",
+      "workflow_id": "trait_roll"
+    },
+    "ability_check": {
+      "roll": "attribute+wild",
+      "compare": "\u003e=",
+      "target": "4",
+      "workflow_id": "trait_roll"
+    },
+    "saving_throw": {
+      "roll": "attribute+wild",
+      "compare": "\u003e=",
+      "target": "4",
+      "workflow_id": "trait_roll"
+    },
+    "opposed_check": {
+      "attacker_roll": "trait+wild",
+      "defender_roll": "trait+wild",
+      "win": "higher_or_more_raises"
+    },
+    "attack": {
+      "roll": "fighting_or_shooting+wild",
+      "target": "4",
+      "compare": "\u003e=",
+      "on_hit": [
+        "damage_roll",
+        "possible_shaken"
+      ],
+      "on_miss": [
+        "no_effect"
+      ],
+      "on_crit": [
+        "extra_raise_effects"
+      ],
+      "workflow_id": "attack"
+    },
+    "defense": {
+      "stat": "parry",
+      "formula": "2+half_fighting+shield"
+    },
+    "spell": {
+      "cost": "power_points",
+      "roll": "spellcasting",
+      "components": [
+        "verbal",
+        "somatic"
+      ],
+      "workflow_id": "power"
+    },
+    "power": {
+      "cost": "power_points",
+      "roll": "arcane_skill",
+      "workflow_id": "power"
+    },
+    "damage": {
+      "roll": "Str+weapon",
+      "on_apply": [
+        "soak_damage",
+        "apply_shaken"
+      ]
+    },
+    "initiative": {
+      "roll": "notice_or_deal",
+      "compare": "order_desc"
+    },
+    "death": {
+      "at_zero": [
+        "incapacitated_not_dead"
+      ],
+      "recovery": [
+        "natural_healing",
+        "magical_healing"
+      ],
+      "permanent": "three_wounds_incapacitated",
+      "workflow_id": "incapacitation"
+    }
+  },
+  "combat": {
+    "mode": "fast_turn_based",
+    "round_steps": [
+      "1. Deal action cards / roll initiative",
+      "2. Act in order; 3 squares movement typical",
+      "3. Resolve hits -\u003e damage -\u003e shaken/wounds -\u003e soak",
+      "4. Discard unused cards at end of round"
+    ],
+    "action_economy": {
+      "actions": [
+        {
+          "id": "action",
+          "label": "Action",
+          "per_turn": 1,
+          "examples": [
+            "Attack",
+            "Cast power",
+            "Run",
+            "Test"
+          ]
+        },
+        {
+          "id": "movement",
+          "label": "Movement",
+          "examples": [
+            "Move your Pace",
+            "Run with penalty"
+          ]
+        },
+        {
+          "id": "free",
+          "label": "Free",
+          "examples": [
+            "Drop item",
+            "Speak",
+            "Unshake attempt"
+          ]
+        }
+      ],
+      "notes": "Multi-action penalty: -2 per extra action."
+    },
+    "positioning": "grid_or_abstract"
+  },
+  "progression": {
+    "kind": "advances",
+    "levels": [
+      {
+        "level": 1,
+        "advance": "Novice rank",
+        "notes": "4 advances"
+      },
+      {
+        "level": 2,
+        "xp": 4,
+        "advance": "Seasoned rank"
+      },
+      {
+        "level": 3,
+        "xp": 8,
+        "advance": "Veteran rank"
+      },
+      {
+        "level": 4,
+        "xp": 12,
+        "advance": "Heroic rank"
+      },
+      {
+        "level": 5,
+        "xp": 16,
+        "advance": "Legendary rank"
+      }
+    ],
+    "milestones": [
+      "5 XP per advance",
+      "Rank gates power points and edges"
+    ]
+  },
+  "magic": {
+    "traditions": [
+      {
+        "id": "arcane",
+        "label": "Arcane"
+      },
+      {
+        "id": "divine",
+        "label": "Divine"
+      },
+      {
+        "id": "psionics",
+        "label": "Psionics"
+      }
+    ],
+    "casting": [
+      "Spend PP",
+      "Roll arcane skill",
+      "Maintained powers cost ongoing"
+    ],
+    "recovery": [
+      "1 PP per hour rest",
+      "Full restore on daily rest for many settings"
+    ]
+  },
+  "social": {},
+  "formulas": [
+    {
+      "id": "parry",
+      "label": "Parry",
+      "expression": "2 + fighting/2 + shield"
+    },
+    {
+      "id": "toughness",
+      "label": "Toughness",
+      "expression": "2 + vigor/2 + armor"
+    }
+  ],
+  "workflows": [
+    {
+      "id": "trait_roll",
+      "label": "Trait Roll",
+      "category": "resolution",
+      "steps": [
+        {
+          "id": "roll",
+          "label": "Roll trait + wild die",
+          "kind": "roll",
+          "roll": "trait+wild",
+          "next": "compare"
+        },
+        {
+          "id": "compare",
+          "label": "Success vs TN 4",
+          "kind": "branch",
+          "next": "raises"
+        },
+        {
+          "id": "raises",
+          "label": "Count raises (+4 each)",
+          "kind": "expression"
+        }
+      ],
+      "related_tools": [
+        "skill_check",
+        "roll_dice"
+      ]
+    },
+    {
+      "id": "attack",
+      "label": "Attack",
+      "category": "combat",
+      "steps": [
+        {
+          "id": "roll",
+          "label": "Fighting/Shooting roll",
+          "kind": "roll",
+          "roll": "trait+wild",
+          "next": "hit"
+        },
+        {
+          "id": "hit",
+          "label": "Raise on hit?",
+          "kind": "branch",
+          "next": "damage"
+        },
+        {
+          "id": "damage",
+          "label": "Roll damage",
+          "kind": "roll",
+          "roll": "Str+weapon",
+          "next": "result"
+        },
+        {
+          "id": "result",
+          "label": "Shaken or wound",
+          "kind": "branch"
+        }
+      ],
+      "related_tools": [
+        "attack",
+        "damage_roll"
+      ]
+    },
+    {
+      "id": "soak",
+      "label": "Soak Roll",
+      "category": "combat",
+      "trigger": "would_take_wound",
+      "steps": [
+        {
+          "id": "offer_benny",
+          "label": "Offer benny reroll",
+          "kind": "choice",
+          "next": "roll"
+        },
+        {
+          "id": "roll",
+          "label": "Roll Vigor",
+          "kind": "roll",
+          "roll": "vigor+wild",
+          "next": "result"
+        },
+        {
+          "id": "result",
+          "label": "Soak wound or take it",
+          "kind": "branch"
+        }
+      ],
+      "related_tools": [
+        "soak_damage",
+        "spend_benny"
+      ]
+    },
+    {
+      "id": "unshake",
+      "label": "Unshake",
+      "category": "combat",
+      "trigger": "shaken",
+      "steps": [
+        {
+          "id": "roll",
+          "label": "Spirit roll TN 4",
+          "kind": "roll",
+          "roll": "spi+wild",
+          "next": "clear"
+        },
+        {
+          "id": "clear",
+          "label": "Remove shaken on success",
+          "kind": "state"
+        }
+      ],
+      "related_tools": [
+        "remove_condition",
+        "skill_check"
+      ]
+    },
+    {
+      "id": "power",
+      "label": "Activate Power",
+      "category": "magic",
+      "steps": [
+        {
+          "id": "pay",
+          "label": "Spend PP",
+          "kind": "state",
+          "next": "roll"
+        },
+        {
+          "id": "roll",
+          "label": "Arcane skill roll",
+          "kind": "roll",
+          "roll": "spellcasting+wild",
+          "next": "effect"
+        },
+        {
+          "id": "effect",
+          "label": "Apply power",
+          "kind": "effect"
+        }
+      ],
+      "related_tools": [
+        "use_power",
+        "cast_spell"
+      ]
+    },
+    {
+      "id": "incapacitation",
+      "label": "Incapacitation",
+      "category": "combat",
+      "trigger": "wounds_exceed_limit",
+      "steps": [
+        {
+          "id": "check",
+          "label": "Wounds \u003e= limit?",
+          "kind": "branch",
+          "next": "table"
+        },
+        {
+          "id": "table",
+          "label": "Roll injury table",
+          "kind": "roll",
+          "roll": "1d20"
+        }
+      ],
+      "related_tools": [
+        "roll_on_table",
+        "apply_condition"
+      ]
+    },
+    {
+      "id": "short_rest",
+      "label": "Rest \u0026 Recovery",
+      "category": "exploration",
+      "steps": [
+        {
+          "id": "rest",
+          "label": "Rest period",
+          "kind": "narrative",
+          "next": "heal"
+        },
+        {
+          "id": "heal",
+          "label": "Natural healing roll",
+          "kind": "roll",
+          "roll": "vigor"
+        }
+      ],
+      "related_tools": [
+        "rest",
+        "update_health"
+      ]
+    },
+    {
+      "id": "benny",
+      "label": "Spend Benny",
+      "category": "meta",
+      "steps": [
+        {
+          "id": "spend",
+          "label": "Spend benny",
+          "kind": "state",
+          "next": "reroll"
+        },
+        {
+          "id": "reroll",
+          "label": "Reroll trait roll",
+          "kind": "roll",
+          "roll": "trait+wild"
+        }
+      ],
+      "related_tools": [
+        "spend_benny",
+        "draw_benny"
+      ]
+    },
+    {
+      "id": "social",
+      "label": "Social Test",
+      "category": "social",
+      "steps": [
+        {
+          "id": "roll",
+          "label": "Persuasion/Taunt/Intimidation",
+          "kind": "roll",
+          "roll": "trait+wild"
+        }
+      ],
+      "related_tools": [
+        "social_conflict",
+        "skill_check"
+      ]
+    }
+  ],
+  "mechanics": [
+    {
+      "id": "wild_die",
+      "label": "Wild Die",
+      "category": "core",
+      "summary": "Wild Cards roll skill/attribute die plus d6 wild; take best.",
+      "related_tools": [
+        "roll_dice"
+      ]
+    },
+    {
+      "id": "raises",
+      "label": "Raises",
+      "category": "core",
+      "summary": "Every +4 over TN 4 is a raise for extra effects."
+    },
+    {
+      "id": "bennies",
+      "label": "Bennies",
+      "category": "meta",
+      "summary": "Spend bennies to reroll, soak, or resist.",
+      "related_tools": [
+        "spend_benny",
+        "draw_benny"
+      ]
+    },
+    {
+      "id": "shaken",
+      "label": "Shaken",
+      "category": "combat",
+      "summary": "Any hit without wound causes shaken; must unshake.",
+      "workflow_id": "unshake",
+      "related_tools": [
+        "apply_condition"
+      ]
+    },
+    {
+      "id": "wounds",
+      "label": "Wounds",
+      "category": "combat",
+      "summary": "Raises on damage cause wounds; soak with Vigor.",
+      "workflow_id": "soak",
+      "related_tools": [
+        "soak_damage"
+      ]
+    },
+    {
+      "id": "multi_action",
+      "label": "Multi-Action Penalty",
+      "category": "combat",
+      "summary": "-2 to all rolls when taking multiple actions."
+    },
+    {
+      "id": "edges",
+      "label": "Edges \u0026 Hindrances",
+      "category": "character",
+      "summary": "Edges grant bonuses; Hindrances impose limits or bennies."
+    },
+    {
+      "id": "power_points",
+      "label": "Power Points",
+      "category": "magic",
+      "summary": "Powers cost PP based on rank and modifiers.",
+      "workflow_id": "power"
+    },
+    {
+      "id": "tricks",
+      "label": "Tricks \u0026 Tests of Will",
+      "category": "combat",
+      "summary": "Test opposed skills to distract or disarm."
+    },
+    {
+      "id": "chase",
+      "label": "Chase Rules",
+      "category": "exploration",
+      "summary": "Extended chase using opposed rolls."
+    },
+    {
+      "id": "mass_battle",
+      "label": "Mass Battle",
+      "category": "combat",
+      "summary": "Scale battles with tokens and battle die."
+    }
+  ],
+  "tables": [
+    {
+      "id": "injury_incap",
+      "label": "Incapacitation Injury",
+      "roll": "1d20",
+      "rows": [
+        {
+          "key": "1-3",
+          "result": "Minor scar"
+        },
+        {
+          "key": "4-6",
+          "result": "Permanent limp"
+        },
+        {
+          "key": "7-9",
+          "result": "Broken limb"
+        },
+        {
+          "key": "10+",
+          "result": "Serious injury"
+        }
+      ]
+    },
+    {
+      "id": "random_encounter",
+      "label": "Random Encounter Severity",
+      "roll": "2d6",
+      "rows": [
+        {
+          "key": "2-4",
+          "result": "Easy"
+        },
+        {
+          "key": "5-9",
+          "result": "Medium"
+        },
+        {
+          "key": "10-12",
+          "result": "Hard"
+        }
+      ]
+    },
+    {
+      "id": "power_modifiers",
+      "label": "Power Modifiers (sample)",
+      "roll": "n/a",
+      "columns": [
+        "Modifier",
+        "Cost"
+      ],
+      "rows": [
+        {
+          "key": "range",
+          "result": "+1 PP"
+        },
+        {
+          "key": "duration",
+          "result": "+2 PP"
+        },
+        {
+          "key": "area",
+          "result": "+2 PP"
+        }
+      ]
+    }
+  ],
+  "chapters": [
+    {
+      "id": "combat",
+      "title": "Combat",
+      "summary": "Fast cinematic combat with bennies.",
+      "sections": [
+        {
+          "id": "basics",
+          "title": "Basics",
+          "body": "Roll trait + wild vs TN 4.",
+          "bullets": [
+            "Raises every +4",
+            "Shaken vs wounds"
+          ]
+        },
+        {
+          "id": "soak",
+          "title": "Soaking Wounds",
+          "body": "Vigor roll to soak; benny for reroll.",
+          "bullets": [
+            "Three wounds incapacitate Wild Cards"
+          ]
+        }
+      ],
+      "tags": [
+        "combat"
+      ]
+    },
+    {
+      "id": "magic",
+      "title": "Powers",
+      "summary": "Arcane and divine powers using PP.",
+      "sections": [
+        {
+          "id": "casting",
+          "title": "Activating Powers",
+          "body": "Spend PP, roll arcane skill.",
+          "bullets": [
+            "Maintained powers"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "exploration",
+      "title": "Exploration",
+      "summary": "Chases, travel, social challenges.",
+      "sections": [
+        {
+          "id": "tests",
+          "title": "Tests",
+          "body": "Standard trait rolls for challenges.",
+          "bullets": [
+            "Support rolls grant +1"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "character",
+      "title": "Character",
+      "summary": "Attributes, skills, edges, hindrances.",
+      "sections": [
+        {
+          "id": "creation",
+          "title": "Creation",
+          "body": "Five attributes as die steps.",
+          "bullets": [
+            "Skills start at d4 if untrained"
+          ]
+        },
+        {
+          "id": "advances",
+          "title": "Advances",
+          "body": "Spend XP for rank and advances.",
+          "bullets": [
+            "Every 4 advances increase rank"
+          ]
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "canonical_id": "skill_check",
+      "enabled": true,
+      "name": "Trait Roll",
+      "description": "Roll attribute/skill + wild die vs TN.",
+      "parameters": {
+        "actor_id": "string",
+        "advantage": "boolean",
+        "dc": "number",
+        "skill": "string"
+      },
+      "category": "resolution",
+      "examples": [
+        {
+          "title": "Notice roll",
+          "input": {
+            "actor_id": "wc_1",
+            "skill": "notice"
+          },
+          "output": "9 vs TN 4 — success with 1 raise"
+        }
+      ],
+      "workflow_id": "trait_roll"
+    },
+    {
+      "canonical_id": "attack",
+      "enabled": true,
+      "name": "Attack",
+      "description": "Fighting or Shooting attack.",
+      "parameters": {
+        "attacker_id": "string",
+        "target_id": "string",
+        "weapon_id": "string"
+      },
+      "category": "combat",
+      "workflow_id": "attack"
+    },
+    {
+      "canonical_id": "damage_roll",
+      "enabled": true,
+      "name": "Damage",
+      "description": "Roll Str+weapon damage.",
+      "parameters": {
+        "critical": "boolean",
+        "damage_type": "string",
+        "notation": "string"
+      },
+      "category": "combat",
+      "workflow_id": "attack"
+    },
+    {
+      "canonical_id": "soak_damage",
+      "enabled": true,
+      "name": "Soak Wound",
+      "description": "Vigor roll to avoid wound.",
+      "parameters": {
+        "actor_id": "string",
+        "damage": "number",
+        "damage_type": "string"
+      },
+      "category": "combat",
+      "preconditions": [
+        "would_take_wound"
+      ],
+      "workflow_id": "soak"
+    },
+    {
+      "canonical_id": "spend_benny",
+      "enabled": true,
+      "name": "Spend Benny",
+      "description": "Reroll or soak.",
+      "parameters": {
+        "actor_id": "string",
+        "purpose": "string"
+      },
+      "category": "meta",
+      "workflow_id": "benny"
+    },
+    {
+      "canonical_id": "draw_benny",
+      "enabled": true,
+      "name": "Draw Benny",
+      "description": "Refresh bennies at milestones.",
+      "parameters": {
+        "actor_id": "string",
+        "count": "number"
+      },
+      "category": "meta",
+      "workflow_id": "benny"
+    },
+    {
+      "canonical_id": "apply_condition",
+      "enabled": true,
+      "name": "Apply Shaken/Stunned",
+      "description": "Apply combat conditions.",
+      "parameters": {
+        "actor_id": "string",
+        "condition_id": "string",
+        "duration": "string"
+      },
+      "category": "state",
+      "workflow_id": "unshake"
+    },
+    {
+      "canonical_id": "remove_condition",
+      "enabled": true,
+      "name": "Remove Condition",
+      "description": "Clear shaken etc.",
+      "parameters": {
+        "actor_id": "string",
+        "condition_id": "string"
+      },
+      "category": "state",
+      "workflow_id": "unshake"
+    },
+    {
+      "canonical_id": "use_power",
+      "enabled": true,
+      "name": "Activate Power",
+      "description": "Spend PP and roll arcane skill.",
+      "parameters": {
+        "actor_id": "string",
+        "power_id": "string",
+        "targets": "array"
+      },
+      "category": "magic",
+      "workflow_id": "power"
+    },
+    {
+      "canonical_id": "cast_spell",
+      "enabled": true,
+      "name": "Cast Spell",
+      "description": "Alias for arcane/divine power.",
+      "parameters": {
+        "caster_id": "string",
+        "slot_level": "number",
+        "spell_id": "string",
+        "targets": "array"
+      },
+      "category": "magic",
+      "workflow_id": "power"
+    },
+    {
+      "canonical_id": "update_health",
+      "enabled": true,
+      "name": "Adjust Wounds/Fatigue",
+      "description": "Modify wound/fatigue tracks.",
+      "parameters": {
+        "actor_id": "string",
+        "delta": "number",
+        "resource": "string",
+        "source": "string"
+      },
+      "category": "state"
+    },
+    {
+      "canonical_id": "initiative",
+      "enabled": true,
+      "name": "Initiative",
+      "description": "Deal cards or roll Notice.",
+      "parameters": {
+        "participants": "array"
+      },
+      "category": "combat"
+    },
+    {
+      "canonical_id": "social_conflict",
+      "enabled": true,
+      "name": "Social Conflict",
+      "description": "Taunt, Persuasion, Intimidation.",
+      "parameters": {
+        "actor_id": "string",
+        "approach": "string",
+        "stakes": "string",
+        "target_id": "string"
+      },
+      "category": "social",
+      "workflow_id": "social"
+    },
+    {
+      "canonical_id": "opposed_check",
+      "enabled": true,
+      "name": "Opposed Roll",
+      "description": "Opposed trait rolls.",
+      "parameters": {
+        "attacker_id": "string",
+        "defender_id": "string",
+        "skill": "string"
+      },
+      "category": "resolution",
+      "workflow_id": "trait_roll"
+    },
+    {
+      "canonical_id": "roll_on_table",
+      "enabled": true,
+      "name": "Roll on Table",
+      "description": "Injury/encounter tables.",
+      "parameters": {
+        "modifier": "number",
+        "table_id": "string"
+      },
+      "category": "reference",
+      "workflow_id": "incapacitation"
+    },
+    {
+      "canonical_id": "rest",
+      "enabled": true,
+      "name": "Rest",
+      "description": "Natural healing and PP recovery.",
+      "parameters": {
+        "actor_id": "string",
+        "rest_type": "string"
+      },
+      "category": "exploration",
+      "workflow_id": "short_rest"
+    },
+    {
+      "canonical_id": "award_experience",
+      "enabled": true,
+      "name": "Award XP",
+      "description": "Grant 1-3 XP for milestones.",
+      "parameters": {
+        "actor_ids": "array",
+        "amount": "number",
+        "reason": "string"
+      },
+      "category": "progression"
+    },
+    {
+      "canonical_id": "improve_skill",
+      "enabled": true,
+      "name": "Advance Skill",
+      "description": "Raise die step on advance.",
+      "parameters": {
+        "actor_id": "string",
+        "cost": "number",
+        "skill_id": "string"
+      },
+      "category": "progression"
+    },
+    {
+      "canonical_id": "roll_dice",
+      "enabled": true,
+      "name": "Roll Dice",
+      "description": "Generic exploding dice.",
+      "parameters": {
+        "notation": "string",
+        "reason": "string"
+      },
+      "category": "core"
+    },
+    {
+      "canonical_id": "lookup_creature",
+      "enabled": true,
+      "name": "Bestiary Lookup",
+      "description": "Fetch SWADE stat card.",
+      "parameters": {
+        "scale": "string",
+        "template_id": "string"
+      },
+      "category": "reference"
+    }
+  ],
+  "character": {
+    "sections": [
+      {
+        "id": "identity",
+        "label": "Identity"
+      },
+      {
+        "id": "attributes",
+        "label": "Attributes"
+      },
+      {
+        "id": "edges",
+        "label": "Edges"
+      }
+    ],
+    "fields": [
+      {
+        "id": "name",
+        "label": "Name",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "id": "rank",
+        "label": "Rank",
+        "kind": "string"
+      },
+      {
+        "id": "wounds",
+        "label": "Wounds",
+        "kind": "resource"
+      },
+      {
+        "id": "bennies",
+        "label": "Bennies",
+        "kind": "resource"
+      },
+      {
+        "id": "parry",
+        "label": "Parry",
+        "kind": "number",
+        "formula": "2 + fighting/2 + shield"
+      },
+      {
+        "id": "toughness",
+        "label": "Toughness",
+        "kind": "number",
+        "formula": "2 + vigor/2 + armor"
+      }
+    ]
+  },
+  "creature": {
+    "fields": [
+      {
+        "id": "name",
+        "label": "Name",
+        "kind": "string"
+      },
+      {
+        "id": "wild_card",
+        "label": "Wild Card",
+        "kind": "boolean"
+      },
+      {
+        "id": "toughness",
+        "label": "Toughness",
+        "kind": "number"
+      }
+    ],
+    "templates": [
+      {
+        "id": "orc",
+        "label": "Orc",
+        "stats": {
+          "fighting": "d8",
+          "toughness": "8"
+        }
+      },
+      {
+        "id": "dragon",
+        "label": "Young Dragon",
+        "stats": {
+          "toughness": "15",
+          "wild_card": "true"
+        }
+      }
+    ]
+  },
+  "prompts": {
+    "oracle_context": "Resolve actions using bound tools and pack workflows."
+  },
+  "oracle_guide": {
+    "principles": [
+      "Always roll trait + wild die for Wild Cards.",
+      "Apply shaken on any damaging hit without wound.",
+      "Offer soak_damage and spend_benny when a wound is inflicted."
+    ],
+    "tool_priority": [
+      "attack",
+      "damage_roll",
+      "soak_damage",
+      "spend_benny",
+      "skill_check"
+    ],
+    "anti_patterns": [
+      "Using d20 mechanics",
+      "Ignoring wild die"
+    ],
+    "scenarios": [
+      {
+        "situation": "Wild Card shoots bandit",
+        "use_tools": [
+          "attack",
+          "damage_roll",
+          "apply_condition"
+        ],
+        "avoid": [
+          "auto_wound_without_raises"
+        ]
+      },
+      {
+        "situation": "Hero would take wound",
+        "use_tools": [
+          "soak_damage",
+          "spend_benny"
+        ],
+        "avoid": [
+          "skip_soak"
+        ]
+      },
+      {
+        "situation": "Shaken warrior tries to act",
+        "use_tools": [
+          "remove_condition"
+        ],
+        "avoid": [
+          "full_actions_while_shaken"
+        ]
+      },
+      {
+        "situation": "Milestone completed",
+        "use_tools": [
+          "award_experience",
+          "draw_benny"
+        ],
+        "avoid": [
+          "forget_bennies"
+        ]
+      }
+    ]
+  },
+  "compatibility": {
+    "character_type": "swade_character",
+    "stat_block_type": "swade_creature",
+    "tool_map": {
+      "attack": "attack",
+      "benny": "spend_benny",
+      "power": "use_power",
+      "roll": "roll_dice",
+      "soak": "soak_damage",
+      "trait": "skill_check"
+    }
+  },
+  "enrichment": {
+    "enabled": false,
+    "objective": "",
+    "input_fields": null,
+    "output_fields": null
+  },
+  "rules_summary": [
+    "Target Number 4; trait + wild die; raises every +4.",
+    "Bennies for rerolls and soaking; shaken before wounds.",
+    "Three wounds incapacitate Wild Cards."
+  ],
+  "metadata": {
+    "generated_at": "2026-08-14T11:54:17Z",
+    "generator": "rulesystem-gen"
+  }
+}

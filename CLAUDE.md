@@ -85,6 +85,14 @@ internal/
                            for the Claude-CLI backend); used by the app and the bot
   tts/                     Optional OpenAI TTS (narrate read-aloud text)
   types/                   Shared tool types
+  rulesystem/              RPG system pack schema v2 + generator (workflows,
+                           mechanics, chapters, oracle guide); not wired yet
+  rulesystem/profiles/     Rich built-ins: dnd5e, d100, savage_worlds
+  cmd/rulesystem-gen/      CLI: -inspect -validate -pdf -all -diff
+  worldpack/               World catalog schema v1 (cities, locations, NPCs,
+                           bestiary, items, encounters); not wired yet
+  worldpack/worlds/        Built-in: shattered_vale, caribdus (one folder per setting)
+  cmd/worldpack-gen/       CLI: -inspect -validate -all
 ```
 
 ### Key Data Flow

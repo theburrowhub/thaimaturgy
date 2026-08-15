@@ -1,0 +1,2137 @@
+{
+  "api_version": "worldpack/v1",
+  "id": "mistfall_coast",
+  "name": "Mistfall Coast",
+  "version": "1.0.0",
+  "language": "en",
+  "setting": {
+    "name": "Mistfall Coast",
+    "era": "Late 19th century — gas lamps, telegrams, bolt-actions; superstition persists",
+    "tone": "Investigation and dread; polite society over rotten pilings",
+    "summary": "Mist clings to Harrowport year-round. Every storm washes up something that should have stayed down.",
+    "tags": [
+      "investigation",
+      "horror",
+      "coastal",
+      "d100"
+    ],
+    "world_rules": {
+      "magic": "Rare — folk charms, drowned-cult rites, relics that cost Sanity. No academies.",
+      "technology": "Late Victorian — rail to Brackenford; electric lights in Harrowport's promenade.",
+      "death_and_afterlife": "Church burial; cultists speak of minds adrift in the fog bank.",
+      "travel": "Steam packet between towns; moor roads unsafe at night."
+    },
+    "politics": {
+      "summary": "Harbor Board tariffs, inland landowners blocking reform, smugglers arming both sides, Drowned Lantern cult in the lighthouse service.",
+      "major_powers": [
+        "Harrowport Harbor Board",
+        "Brackenford Council",
+        "Mist Runners smugglers",
+        "Drowned Lantern cult"
+      ],
+      "conflicts": [
+        "Tariffs vs smuggling",
+        "Missing fishers vs cover-ups",
+        "Reform press vs corrupt officials"
+      ],
+      "law_and_order": "Constabulary in towns; fog moor is extralegal."
+    },
+    "suggested_rulesystem": "d100",
+    "playable_with": [
+      "d100",
+      "dnd5e"
+    ]
+  },
+  "regions": [
+    {
+      "id": "harrow_bay",
+      "name": "Harrow Bay",
+      "description": "Salt fog, busy docks, gaslit hills patrolled by paired constables.",
+      "biome": "coastal",
+      "city_ids": [
+        "harrowport"
+      ],
+      "tags": [
+        "urban",
+        "fog"
+      ],
+      "travel_notes": "Steam packet to Brackenford: 3 hours; fog delays night crossings."
+    },
+    {
+      "id": "blackwood_hills",
+      "name": "Blackwood Hills",
+      "description": "Peat moors, pine ridges, standing stones and sealed mines.",
+      "biome": "highland",
+      "city_ids": [
+        "brackenford"
+      ],
+      "location_ids": [
+        "standing_stones",
+        "sealed_mine_shaft"
+      ],
+      "tags": [
+        "wilderness"
+      ],
+      "travel_notes": "Coaches by day; Spot Hidden to avoid bog hazards at dusk."
+    },
+    {
+      "id": "salt_flats",
+      "name": "Salt Flats",
+      "description": "Tidal flats at low tide — wreck ribs, quicksand, glassy pools.",
+      "biome": "coastal",
+      "location_ids": [
+        "wreck_black_lantern",
+        "tidal_shrine"
+      ],
+      "tags": [
+        "tidal"
+      ],
+      "travel_notes": "Cross with a guide; tide tables mandatory."
+    }
+  ],
+  "cities": [
+    {
+      "id": "harrowport",
+      "name": "Harrowport",
+      "region_id": "harrow_bay",
+      "description": "Provincial port of forty thousand souls and one too many secrets.",
+      "population": "~40,000",
+      "government": "Harbor Board + elected mayor",
+      "districts": [
+        {
+          "id": "docks",
+          "name": "North Docks",
+          "description": "Tar smell, net menders, customs sheds.",
+          "tags": [
+            "maritime"
+          ]
+        },
+        {
+          "id": "promenade",
+          "name": "Gaslight Promenade",
+          "description": "Hotels, reform clubs, electric lamps.",
+          "tags": [
+            "wealthy"
+          ]
+        },
+        {
+          "id": "fogward",
+          "name": "Fogward Slums",
+          "description": "Boarding houses, gin shops, whispered deals.",
+          "tags": [
+            "poor"
+          ]
+        }
+      ],
+      "tags": [
+        "port",
+        "hub"
+      ],
+      "map_id": "map_harrowport"
+    },
+    {
+      "id": "brackenford",
+      "name": "Brackenford",
+      "region_id": "blackwood_hills",
+      "description": "Inland market town where landowners slow every reform bill.",
+      "districts": [
+        {
+          "id": "station",
+          "name": "Railway Quarter",
+          "description": "Steam terminus and coal yards.",
+          "tags": [
+            "trade"
+          ]
+        },
+        {
+          "id": "square",
+          "name": "Council Square",
+          "description": "Courthouse, papers, respectable inns.",
+          "tags": [
+            "civic"
+          ]
+        }
+      ],
+      "tags": [
+        "inland"
+      ]
+    }
+  ],
+  "locations": [
+    {
+      "id": "harrow_lighthouse",
+      "name": "Harrow Lighthouse",
+      "kind": "landmark",
+      "city_id": "harrowport",
+      "district_id": "docks",
+      "region_id": "harrow_bay",
+      "description": "Beam cuts fog nightly; keepers rotate weekly.",
+      "tags": [
+        "lighthouse",
+        "cult"
+      ]
+    },
+    {
+      "id": "constabulary_hq",
+      "name": "Constabulary Headquarters",
+      "kind": "civic",
+      "city_id": "harrowport",
+      "district_id": "promenade",
+      "region_id": "harrow_bay",
+      "description": "Gaslit offices; Inspector Vale's domain.",
+      "tags": [
+        "law"
+      ]
+    },
+    {
+      "id": "the_salt_ledger",
+      "name": "The Salt Ledger (newspaper)",
+      "kind": "shop",
+      "city_id": "harrowport",
+      "district_id": "promenade",
+      "region_id": "harrow_bay",
+      "description": "Reform paper probing disappearances.",
+      "tags": [
+        "investigation"
+      ]
+    },
+    {
+      "id": "anchor_and_needle",
+      "name": "Anchor \u0026 Needle",
+      "kind": "tavern",
+      "city_id": "harrowport",
+      "district_id": "docks",
+      "region_id": "harrow_bay",
+      "description": "Sailors' tavern; Mist Runners contacts.",
+      "tags": [
+        "social",
+        "smuggling"
+      ]
+    },
+    {
+      "id": "fogward_chapel",
+      "name": "Fogward Chapel of St. Elian",
+      "kind": "temple",
+      "city_id": "harrowport",
+      "district_id": "fogward",
+      "region_id": "harrow_bay",
+      "description": "Charity kitchen; Father Morse hears confessions.",
+      "tags": [
+        "faith"
+      ]
+    },
+    {
+      "id": "customs_house",
+      "name": "Customs House",
+      "kind": "civic",
+      "city_id": "harrowport",
+      "district_id": "docks",
+      "region_id": "harrow_bay",
+      "description": "Tariffs enforced with rifles.",
+      "tags": [
+        "law",
+        "trade"
+      ]
+    },
+    {
+      "id": "bracken_inn",
+      "name": "The Moor Cock Inn",
+      "kind": "tavern",
+      "city_id": "brackenford",
+      "district_id": "square",
+      "region_id": "blackwood_hills",
+      "description": "Coach stop; councilors drink upstairs.",
+      "tags": [
+        "social"
+      ]
+    },
+    {
+      "id": "standing_stones",
+      "name": "Blackwood Standing Stones",
+      "kind": "wilderness",
+      "region_id": "blackwood_hills",
+      "description": "Pre-Christian circle; locals avoid at new moon.",
+      "tags": [
+        "occult",
+        "ancient"
+      ]
+    },
+    {
+      "id": "sealed_mine_shaft",
+      "name": "Sealed Mine Shaft 7",
+      "kind": "dungeon",
+      "region_id": "blackwood_hills",
+      "description": "Collapsed tin mine; bricked after 1889 deaths.",
+      "tags": [
+        "horror"
+      ]
+    },
+    {
+      "id": "wreck_black_lantern",
+      "name": "Wreck of the Black Lantern",
+      "kind": "wilderness",
+      "region_id": "salt_flats",
+      "description": "Ribbed hull exposed at low tide; lanterns seen at night.",
+      "tags": [
+        "undead",
+        "cult"
+      ]
+    },
+    {
+      "id": "tidal_shrine",
+      "name": "Tidal Shrine",
+      "kind": "temple",
+      "region_id": "salt_flats",
+      "description": "Barnacled altar below high-water mark.",
+      "tags": [
+        "cult"
+      ]
+    }
+  ],
+  "npcs": [
+    {
+      "id": "npc_inspector_vale",
+      "name": "Inspector Cordelia Vale",
+      "role": "constabulary",
+      "appearance": "Sharp grey uniform, scarred knuckles, never unarmed.",
+      "personality": "Dry, relentless, hates the Board.",
+      "motivations": "Close the missing fishers case before the Mayor buries it.",
+      "secrets": "Took Mist Runner bribes once; repaid in double.",
+      "faction_id": "harbor_board",
+      "default_location": "constabulary_hq",
+      "tags": [
+        "law",
+        "ally"
+      ]
+    },
+    {
+      "id": "npc_elias_morse",
+      "name": "Father Elias Morse",
+      "role": "priest",
+      "appearance": "Tired eyes, soup-stained cassock.",
+      "personality": "Gentle public face, steel in private.",
+      "motivations": "Protect Fogward parishioners.",
+      "secrets": "Hides cult victims in crypt.",
+      "default_location": "fogward_chapel",
+      "tags": [
+        "faith"
+      ]
+    },
+    {
+      "id": "npc_nadia_croft",
+      "name": "Nadia Croft",
+      "role": "journalist",
+      "appearance": "Ink-stained fingers, practical boots.",
+      "personality": "Bold questions, faster feet.",
+      "motivations": "Publish proof of Board corruption.",
+      "secrets": "Source inside lighthouse service.",
+      "faction_id": "salt_ledger",
+      "default_location": "the_salt_ledger",
+      "tags": [
+        "investigation"
+      ]
+    },
+    {
+      "id": "npc_jonah_mist",
+      "name": "Jonah 'Two-Tide' Marsh",
+      "role": "smuggler",
+      "appearance": "Tarred coat, gold earring, fog-grey beard.",
+      "personality": "Jokes through threats.",
+      "motivations": "Keep runners free of Crown hangmen.",
+      "secrets": "Brother is a lighthouse keeper.",
+      "faction_id": "mist_runners",
+      "default_location": "anchor_and_needle",
+      "tags": [
+        "criminal"
+      ]
+    },
+    {
+      "id": "npc_keeper_holt",
+      "name": "Keeper Silas Holt",
+      "role": "lighthouse keeper",
+      "appearance": "Burned left hand, uniform always pressed.",
+      "personality": "Courteous, evasive.",
+      "motivations": "Maintain the beam.",
+      "secrets": "Drowned Lantern initiate.",
+      "faction_id": "drowned_lantern",
+      "default_location": "harrow_lighthouse",
+      "tags": [
+        "cult"
+      ]
+    },
+    {
+      "id": "npc_mayor_penn",
+      "name": "Mayor Aldous Penn",
+      "role": "politician",
+      "appearance": "Silk waistcoat, constant smile.",
+      "personality": "Charming, calculating.",
+      "motivations": "Re-election and Harbor Board donations.",
+      "secrets": "Signed disappearances as 'accidents'.",
+      "faction_id": "harbor_board",
+      "default_location": "customs_house",
+      "tags": [
+        "noble"
+      ]
+    },
+    {
+      "id": "npc_dr_sallow",
+      "name": "Dr. Irene Sallow",
+      "role": "physician",
+      "appearance": "Clinical apron, steady hands.",
+      "personality": "Clinical empathy.",
+      "motivations": "Document fog-related madness.",
+      "secrets": "Experimenting with nerve tonic doses.",
+      "default_location": "constabulary_hq",
+      "tags": [
+        "medicine"
+      ]
+    },
+    {
+      "id": "npc_lila_bracken",
+      "name": "Lila Bracken",
+      "role": "innkeeper",
+      "appearance": "Broad-shouldered, keys always jingling.",
+      "personality": "Gossip hub, loyal to paying guests.",
+      "motivations": "Keep Moor Cock profitable.",
+      "secrets": "Passes council minutes to Nadia.",
+      "default_location": "bracken_inn",
+      "tags": [
+        "social"
+      ]
+    }
+  ],
+  "creatures": [
+    {
+      "id": "creature_constable",
+      "name": "Constable",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "1/2",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
+          }
+        ]
+      },
+      "stat_blocks": {
+        "d100": {
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "type": "d100 profile",
+          "traits": [
+            "STR 55",
+            "CON 60",
+            "SIZ 65",
+            "DEX 50",
+            "HP 12",
+            "Firearms (Handgun) 50",
+            "Badge authority in city"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "damage": "1d10"
+            }
+          ]
+        },
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        }
+      },
+      "habitats": [
+        "urban"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "humanoid"
+      ],
+      "encounter_notes": "Pairs patrol promenade.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Standard Harrowport beat cop."
+    },
+    {
+      "id": "creature_smuggler",
+      "name": "Smuggler",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "1/2",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
+          }
+        ]
+      },
+      "stat_blocks": {
+        "d100": {
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "type": "d100 profile",
+          "traits": [
+            "STR 50",
+            "CON 55",
+            "SIZ 60",
+            "DEX 65",
+            "HP 11",
+            "Stealth 60",
+            "Knows fog channels"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "damage": "1d8+db knife"
+            }
+          ]
+        },
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        }
+      },
+      "habitats": [
+        "urban",
+        "coast"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "humanoid",
+        "criminal"
+      ],
+      "encounter_notes": "2d4 near docks at night.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Mist Runners rank-and-file."
+    },
+    {
+      "id": "creature_cultist",
+      "name": "Drowned Lantern Cultist",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "1/2",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
+          }
+        ]
+      },
+      "stat_blocks": {
+        "d100": {
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "type": "d100 profile",
+          "traits": [
+            "STR 45",
+            "CON 50",
+            "SIZ 55",
+            "DEX 55",
+            "HP 10",
+            "Occult 45",
+            "Sanity test on reveal"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "damage": "1d6 ritual knife"
+            }
+          ]
+        },
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        }
+      },
+      "habitats": [
+        "coast",
+        "temple"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "humanoid",
+        "cult"
+      ],
+      "encounter_notes": "1d6 at tidal shrine.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Hooded wax-coated robes."
+    },
+    {
+      "id": "creature_drowned_one",
+      "name": "Drowned One",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "1/2",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
+          }
+        ]
+      },
+      "stat_blocks": {
+        "d100": {
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "type": "d100 profile",
+          "traits": [
+            "STR 60",
+            "CON —",
+            "SIZ 65",
+            "DEX 40",
+            "HP 14",
+            "Fighting (Brawl) 55",
+            "Undead; fear first sight"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "damage": "1d8+db claw"
+            }
+          ]
+        },
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        }
+      },
+      "habitats": [
+        "coast",
+        "wreck"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "undead"
+      ],
+      "encounter_notes": "Rises from Black Lantern wreck.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Barnacled former fishers."
+    },
+    {
+      "id": "creature_fog_lurker",
+      "name": "Fog Lurker",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "1/2",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
+          }
+        ]
+      },
+      "stat_blocks": {
+        "d100": {
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "type": "d100 profile",
+          "traits": [
+            "STR 70",
+            "CON 50",
+            "SIZ 80",
+            "DEX 35",
+            "HP 16",
+            "Stealth 70",
+            "Invisible in fog"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "damage": "1d10 tentacle"
+            }
+          ]
+        },
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        }
+      },
+      "habitats": [
+        "fog",
+        "coast"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "monstrosity"
+      ],
+      "encounter_notes": "One per failed Navigate roll.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Not natural taxonomy."
+    },
+    {
+      "id": "creature_mine_thing",
+      "name": "Mine Tunnel Thing",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "1/2",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
+          }
+        ]
+      },
+      "stat_blocks": {
+        "d100": {
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "type": "d100 profile",
+          "traits": [
+            "STR 80",
+            "CON 60",
+            "SIZ 70",
+            "DEX 30",
+            "HP 18",
+            "Fighting (Brawl) 60",
+            "Darkness advantage"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "damage": "1d10+db"
+            }
+          ]
+        },
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        }
+      },
+      "habitats": [
+        "underground"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "aberration"
+      ],
+      "encounter_notes": "Shaft Seven if opened.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Sings with miners' voices."
+    },
+    {
+      "id": "creature_feral_dog",
+      "name": "Fogward Feral Pack",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "1/2",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
+          }
+        ]
+      },
+      "stat_blocks": {
+        "d100": {
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "type": "d100 profile",
+          "traits": [
+            "STR 35",
+            "CON 45",
+            "SIZ 40",
+            "DEX 55",
+            "HP 8",
+            "Fighting (Brawl) 40",
+            "Pack of 4–8"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "damage": "1d6 bite"
+            }
+          ]
+        },
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        }
+      },
+      "habitats": [
+        "urban"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "beast"
+      ],
+      "encounter_notes": "Slums after midnight.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Rabies fear in Fogward."
+    },
+    {
+      "id": "creature_lighthouse_keeper",
+      "name": "Corrupted Keeper",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "1/2",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
+          }
+        ]
+      },
+      "stat_blocks": {
+        "d100": {
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "type": "d100 profile",
+          "traits": [
+            "STR 50",
+            "CON 55",
+            "SIZ 60",
+            "DEX 50",
+            "HP 12",
+            "Occult 60",
+            "Knows service tunnels"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "damage": "1d8 lantern smash"
+            }
+          ]
+        },
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        }
+      },
+      "habitats": [
+        "lighthouse"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "humanoid",
+        "cult"
+      ],
+      "encounter_notes": "Solitary at Harrow Lighthouse.",
+      "tool_adapter": "lookup_creature",
+      "lore": "May still wear uniform."
+    },
+    {
+      "id": "creature_investigator",
+      "name": "Private Inquiry Agent",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "1/2",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
+          }
+        ]
+      },
+      "stat_blocks": {
+        "d100": {
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "type": "d100 profile",
+          "traits": [
+            "STR 45",
+            "CON 50",
+            "SIZ 55",
+            "DEX 60",
+            "HP 10",
+            "Psychology 55",
+            "Credit Rating 30"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "damage": "1d6 cane"
+            }
+          ]
+        },
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        }
+      },
+      "habitats": [
+        "urban"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "humanoid"
+      ],
+      "encounter_notes": "Social encounter.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Template for allied NPCs."
+    },
+    {
+      "id": "creature_deep_fish",
+      "name": "Deep Mist Fish",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "1/2",
+        "type": "Humanoid",
+        "actions": [
+          {
+            "name": "Attack",
+            "to_hit": "+3",
+            "damage": "1d6+1"
+          }
+        ]
+      },
+      "stat_blocks": {
+        "d100": {
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "type": "d100 profile",
+          "traits": [
+            "STR 65",
+            "CON 40",
+            "SIZ 50",
+            "DEX 60",
+            "HP 13",
+            "Swim 70",
+            "Amphibious"
+          ],
+          "actions": [
+            {
+              "name": "Attack",
+              "damage": "1d8 bite"
+            }
+          ]
+        },
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "abilities": {
+            "str": 0,
+            "dex": 0,
+            "con": 0,
+            "int": 0,
+            "wis": 0,
+            "cha": 0
+          },
+          "cr": "1/2",
+          "type": "Humanoid",
+          "actions": [
+            {
+              "name": "Attack",
+              "to_hit": "+3",
+              "damage": "1d6+1"
+            }
+          ]
+        }
+      },
+      "habitats": [
+        "coast",
+        "tidal"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "beast"
+      ],
+      "encounter_notes": "Washed up on flats.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Bioluminescent eyes."
+    }
+  ],
+  "items": [
+    {
+      "id": "item_webley",
+      "name": "Webley Revolver",
+      "kind": "weapon",
+      "rarity": "common",
+      "description": ".455 service revolver.",
+      "mechanics": "Handgun skill; 1d10+2 damage.",
+      "value_gp": 35,
+      "tags": [
+        "firearm"
+      ]
+    },
+    {
+      "id": "item_fog_lamp",
+      "name": "Brass Fog Lamp",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Hand lamp with green glass.",
+      "mechanics": "Navigate fog without penalty for 1 hour.",
+      "value_gp": 8,
+      "tags": [
+        "exploration"
+      ]
+    },
+    {
+      "id": "item_sanity_tonic",
+      "name": "Physician's Nerve Tonic",
+      "kind": "consumable",
+      "rarity": "uncommon",
+      "description": "Bitter laudanum blend.",
+      "mechanics": "Recover 1d3 Sanity; CON roll or drowsy.",
+      "value_gp": 12,
+      "tags": [
+        "medicine"
+      ]
+    },
+    {
+      "id": "item_lantern_badge",
+      "name": "Lighthouse Keeper Badge",
+      "kind": "gear",
+      "rarity": "uncommon",
+      "description": "Brass badge with lantern crest.",
+      "mechanics": "Access service ladders; cultists recognize symbol.",
+      "tags": [
+        "key"
+      ]
+    },
+    {
+      "id": "item_salt_ledger_press",
+      "name": "Salt Ledger Extra",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Damning article draft.",
+      "mechanics": "Persuade +1 vs Harbor Board once.",
+      "tags": [
+        "plot"
+      ]
+    },
+    {
+      "id": "item_drowned_idol",
+      "name": "Jade Drowned Idol",
+      "kind": "magic",
+      "rarity": "rare",
+      "description": "Warm figurine from tidal shrine.",
+      "mechanics": "POW roll or lose 1d4 Sanity on first touch.",
+      "value_gp": 200,
+      "tags": [
+        "cult",
+        "cursed"
+      ]
+    }
+  ],
+  "factions": [
+    {
+      "id": "harbor_board",
+      "name": "Harrowport Harbor Board",
+      "description": "Tariff-setting oligarchy of shipping magnates.",
+      "goals": "Maximize revenue and suppress scandal."
+    },
+    {
+      "id": "mist_runners",
+      "name": "Mist Runners",
+      "description": "Smuggler confederation using fog and bribed pilots.",
+      "goals": "Free trade and no Crown tariffs."
+    },
+    {
+      "id": "drowned_lantern",
+      "name": "Drowned Lantern",
+      "description": "Cult venerating consciousness in the fog sea.",
+      "goals": "Sink a lighthouse beacon during spring equinox."
+    },
+    {
+      "id": "salt_ledger",
+      "name": "Salt Ledger Press",
+      "description": "Investigative reform newspaper.",
+      "goals": "Expose corruption and missing fishers."
+    }
+  ],
+  "lore": [
+    {
+      "id": "lore_deluge_fog",
+      "title": "The Persistent Mist",
+      "content": "Sailors say the fog thickened after the 1887 Deluge Night when eleven boats vanished in clear weather.",
+      "tags": [
+        "history"
+      ],
+      "region_id": "harrow_bay"
+    },
+    {
+      "id": "lore_mine_seal",
+      "title": "Shaft Seven",
+      "content": "Brackenford sealed Mine Shaft 7 after miners reported singing from flooded tunnels.",
+      "tags": [
+        "horror"
+      ],
+      "region_id": "blackwood_hills"
+    },
+    {
+      "id": "lore_black_lantern",
+      "title": "Black Lantern",
+      "content": "The wreck appears on flats each decade; keepers who investigate do not return unchanged.",
+      "tags": [
+        "mystery"
+      ],
+      "region_id": "salt_flats"
+    }
+  ],
+  "maps": [
+    {
+      "id": "map_harrowport",
+      "name": "Harrowport Chart",
+      "kind": "city",
+      "path": "maps/harrowport.png",
+      "description": "Docks, Gaslight Promenade, Constabulary Quarter, Fogward Slums.",
+      "scale": "1 sq = 200 ft"
+    },
+    {
+      "id": "map_mistfall",
+      "name": "Mistfall Regional",
+      "kind": "region",
+      "path": "maps/mistfall_coast.png",
+      "description": "Harrow Bay, Blackwood Hills, Salt Flats.",
+      "scale": "1 hex = 4 mi"
+    }
+  ],
+  "encounter_tables": [
+    {
+      "id": "encounter_docks_night",
+      "name": "Harrowport Docks at Night",
+      "context": "urban_night",
+      "biome": "urban",
+      "dice": "d100",
+      "rows": [
+        {
+          "roll": "1-40",
+          "result": "Smugglers",
+          "creature_ids": [
+            "creature_smuggler"
+          ],
+          "quantity": "2d4"
+        },
+        {
+          "roll": "41-65",
+          "result": "Constables",
+          "creature_ids": [
+            "creature_constable"
+          ],
+          "quantity": "1d4"
+        },
+        {
+          "roll": "66-85",
+          "result": "Feral dogs",
+          "creature_ids": [
+            "creature_feral_dog"
+          ],
+          "quantity": "1d6"
+        },
+        {
+          "roll": "86-100",
+          "result": "Fog lurker",
+          "creature_ids": [
+            "creature_fog_lurker"
+          ],
+          "quantity": "1"
+        }
+      ]
+    },
+    {
+      "id": "encounter_salt_flats",
+      "name": "Salt Flats at Low Tide",
+      "context": "coast",
+      "biome": "coastal",
+      "dice": "d100",
+      "rows": [
+        {
+          "roll": "1-50",
+          "result": "Drowned ones",
+          "creature_ids": [
+            "creature_drowned_one"
+          ],
+          "quantity": "2d4"
+        },
+        {
+          "roll": "51-75",
+          "result": "Cultists",
+          "creature_ids": [
+            "creature_cultist"
+          ],
+          "quantity": "1d6"
+        },
+        {
+          "roll": "76-100",
+          "result": "Deep mist fish",
+          "creature_ids": [
+            "creature_deep_fish"
+          ],
+          "quantity": "1d4"
+        }
+      ]
+    },
+    {
+      "id": "encounter_mine",
+      "name": "Shaft Seven Breach",
+      "context": "underground",
+      "biome": "underground",
+      "dice": "d100",
+      "rows": [
+        {
+          "roll": "1-70",
+          "result": "Tunnel thing",
+          "creature_ids": [
+            "creature_mine_thing"
+          ],
+          "quantity": "1"
+        },
+        {
+          "roll": "71-100",
+          "result": "Cult remnants",
+          "creature_ids": [
+            "creature_cultist"
+          ],
+          "quantity": "2d4"
+        }
+      ]
+    },
+    {
+      "id": "encounter_fog_moor",
+      "name": "Blackwood Fog Moor",
+      "context": "wilderness",
+      "biome": "highland",
+      "dice": "d100",
+      "rows": [
+        {
+          "roll": "1-60",
+          "result": "Nothing but mist"
+        },
+        {
+          "roll": "61-85",
+          "result": "Fog lurker",
+          "creature_ids": [
+            "creature_fog_lurker"
+          ],
+          "quantity": "1"
+        },
+        {
+          "roll": "86-100",
+          "result": "Cult patrol",
+          "creature_ids": [
+            "creature_cultist"
+          ],
+          "quantity": "1d4"
+        }
+      ]
+    }
+  ],
+  "location_contents": [
+    {
+      "location_id": "anchor_and_needle",
+      "npc_ids": [
+        "npc_jonah_mist"
+      ],
+      "encounter_table_id": "encounter_docks_night"
+    },
+    {
+      "location_id": "harrow_lighthouse",
+      "npc_ids": [
+        "npc_keeper_holt"
+      ],
+      "creature_weights": [
+        {
+          "creature_id": "creature_lighthouse_keeper",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "location_id": "wreck_black_lantern",
+      "creature_weights": [
+        {
+          "creature_id": "creature_drowned_one",
+          "weight": 3
+        }
+      ],
+      "encounter_table_id": "encounter_salt_flats"
+    },
+    {
+      "location_id": "the_salt_ledger",
+      "npc_ids": [
+        "npc_nadia_croft"
+      ],
+      "item_ids": [
+        "item_salt_ledger_press"
+      ]
+    },
+    {
+      "location_id": "sealed_mine_shaft",
+      "encounter_table_id": "encounter_mine"
+    }
+  ],
+  "indexes": {
+    "by_city": {
+      "brackenford": [
+        "bracken_inn"
+      ],
+      "harrowport": [
+        "harrow_lighthouse",
+        "constabulary_hq",
+        "the_salt_ledger",
+        "anchor_and_needle",
+        "fogward_chapel",
+        "customs_house"
+      ]
+    },
+    "by_region": {
+      "blackwood_hills": [
+        "bracken_inn",
+        "standing_stones",
+        "sealed_mine_shaft",
+        "brackenford"
+      ],
+      "harrow_bay": [
+        "harrow_lighthouse",
+        "constabulary_hq",
+        "the_salt_ledger",
+        "anchor_and_needle",
+        "fogward_chapel",
+        "customs_house",
+        "harrowport"
+      ],
+      "salt_flats": [
+        "wreck_black_lantern",
+        "tidal_shrine"
+      ]
+    },
+    "by_tag": {
+      "aberration": [
+        "creature_mine_thing"
+      ],
+      "ally": [
+        "npc_inspector_vale"
+      ],
+      "ancient": [
+        "standing_stones"
+      ],
+      "beast": [
+        "creature_feral_dog",
+        "creature_deep_fish"
+      ],
+      "criminal": [
+        "creature_smuggler",
+        "npc_jonah_mist"
+      ],
+      "cult": [
+        "harrow_lighthouse",
+        "wreck_black_lantern",
+        "tidal_shrine",
+        "creature_cultist",
+        "creature_lighthouse_keeper",
+        "npc_keeper_holt",
+        "item_drowned_idol"
+      ],
+      "cursed": [
+        "item_drowned_idol"
+      ],
+      "exploration": [
+        "item_fog_lamp"
+      ],
+      "faith": [
+        "fogward_chapel",
+        "npc_elias_morse"
+      ],
+      "firearm": [
+        "item_webley"
+      ],
+      "fog": [
+        "harrow_bay"
+      ],
+      "horror": [
+        "sealed_mine_shaft"
+      ],
+      "hub": [
+        "harrowport"
+      ],
+      "humanoid": [
+        "creature_constable",
+        "creature_smuggler",
+        "creature_cultist",
+        "creature_lighthouse_keeper",
+        "creature_investigator"
+      ],
+      "inland": [
+        "brackenford"
+      ],
+      "investigation": [
+        "the_salt_ledger",
+        "npc_nadia_croft"
+      ],
+      "key": [
+        "item_lantern_badge"
+      ],
+      "law": [
+        "constabulary_hq",
+        "customs_house",
+        "npc_inspector_vale"
+      ],
+      "lighthouse": [
+        "harrow_lighthouse"
+      ],
+      "medicine": [
+        "npc_dr_sallow",
+        "item_sanity_tonic"
+      ],
+      "monstrosity": [
+        "creature_fog_lurker"
+      ],
+      "noble": [
+        "npc_mayor_penn"
+      ],
+      "occult": [
+        "standing_stones"
+      ],
+      "plot": [
+        "item_salt_ledger_press"
+      ],
+      "port": [
+        "harrowport"
+      ],
+      "smuggling": [
+        "anchor_and_needle"
+      ],
+      "social": [
+        "anchor_and_needle",
+        "bracken_inn",
+        "npc_lila_bracken"
+      ],
+      "tidal": [
+        "salt_flats"
+      ],
+      "trade": [
+        "customs_house"
+      ],
+      "undead": [
+        "wreck_black_lantern",
+        "creature_drowned_one"
+      ],
+      "urban": [
+        "harrow_bay"
+      ],
+      "wilderness": [
+        "blackwood_hills"
+      ]
+    },
+    "by_creature_habitat": {
+      "coast": [
+        "creature_smuggler",
+        "creature_cultist",
+        "creature_drowned_one",
+        "creature_fog_lurker",
+        "creature_deep_fish"
+      ],
+      "fog": [
+        "creature_fog_lurker"
+      ],
+      "lighthouse": [
+        "creature_lighthouse_keeper"
+      ],
+      "temple": [
+        "creature_cultist"
+      ],
+      "tidal": [
+        "creature_deep_fish"
+      ],
+      "underground": [
+        "creature_mine_thing"
+      ],
+      "urban": [
+        "creature_constable",
+        "creature_smuggler",
+        "creature_feral_dog",
+        "creature_investigator"
+      ],
+      "wreck": [
+        "creature_drowned_one"
+      ]
+    },
+    "by_district": {
+      "docks": [
+        "harrow_lighthouse",
+        "anchor_and_needle",
+        "customs_house"
+      ],
+      "fogward": [
+        "fogward_chapel"
+      ],
+      "promenade": [
+        "constabulary_hq",
+        "the_salt_ledger"
+      ],
+      "square": [
+        "bracken_inn"
+      ]
+    },
+    "by_faction": {
+      "drowned_lantern": [
+        "npc_keeper_holt"
+      ],
+      "harbor_board": [
+        "npc_inspector_vale",
+        "npc_mayor_penn"
+      ],
+      "mist_runners": [
+        "npc_jonah_mist"
+      ],
+      "salt_ledger": [
+        "npc_nadia_croft"
+      ]
+    },
+    "npc_location_index": {
+      "npc_dr_sallow": "constabulary_hq",
+      "npc_elias_morse": "fogward_chapel",
+      "npc_inspector_vale": "constabulary_hq",
+      "npc_jonah_mist": "anchor_and_needle",
+      "npc_keeper_holt": "harrow_lighthouse",
+      "npc_lila_bracken": "bracken_inn",
+      "npc_mayor_penn": "customs_house",
+      "npc_nadia_croft": "the_salt_ledger"
+    },
+    "location_content_index": {
+      "anchor_and_needle": "anchor_and_needle",
+      "harrow_lighthouse": "harrow_lighthouse",
+      "sealed_mine_shaft": "sealed_mine_shaft",
+      "the_salt_ledger": "the_salt_ledger",
+      "wreck_black_lantern": "wreck_black_lantern"
+    }
+  },
+  "tools": [
+    {
+      "canonical_id": "get_region",
+      "enabled": true,
+      "name": "Get Region",
+      "description": "Fetch a region by ID with cities and wilderness locations.",
+      "parameters": {
+        "region_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_city",
+      "enabled": true,
+      "name": "Get City",
+      "description": "Fetch a city by ID with districts and location list.",
+      "parameters": {
+        "city_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_district",
+      "enabled": true,
+      "name": "Get District",
+      "description": "Fetch a district within a city.",
+      "parameters": {
+        "city_id": "string",
+        "district_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_location",
+      "enabled": true,
+      "name": "Get Location",
+      "description": "Fetch a location with description, tags, and connections.",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "list_city_locations",
+      "enabled": true,
+      "name": "List City Locations",
+      "description": "List all locations in a city, optionally filtered by district.",
+      "parameters": {
+        "city_id": "string",
+        "district_id": "string (optional)"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "list_location_npcs",
+      "enabled": true,
+      "name": "List Location NPCs",
+      "description": "List NPCs present at a location (from location contents and default locations).",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "population"
+    },
+    {
+      "canonical_id": "list_location_creatures",
+      "enabled": true,
+      "name": "List Location Creatures",
+      "description": "List weighted creatures associated with a location.",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "encounters"
+    },
+    {
+      "canonical_id": "list_location_items",
+      "enabled": true,
+      "name": "List Location Items",
+      "description": "List items found or sold at a location.",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "treasure"
+    },
+    {
+      "canonical_id": "get_npc",
+      "enabled": true,
+      "name": "Get NPC",
+      "description": "Fetch an NPC with roleplay notes, stat block, and default location.",
+      "parameters": {
+        "npc_id": "string"
+      },
+      "category": "population"
+    },
+    {
+      "canonical_id": "get_creature",
+      "enabled": true,
+      "name": "Get Creature",
+      "description": "Fetch a bestiary entry with full stat block and habitat notes.",
+      "parameters": {
+        "creature_id": "string"
+      },
+      "category": "bestiary"
+    },
+    {
+      "canonical_id": "get_item",
+      "enabled": true,
+      "name": "Get Item",
+      "description": "Fetch an item with description and mechanics.",
+      "parameters": {
+        "item_id": "string"
+      },
+      "category": "treasure"
+    },
+    {
+      "canonical_id": "search_world",
+      "enabled": true,
+      "name": "Search World",
+      "description": "Full-text search across locations, NPCs, items, and lore.",
+      "parameters": {
+        "kinds": "array (optional)",
+        "limit": "number (optional)",
+        "query": "string"
+      },
+      "category": "reference"
+    },
+    {
+      "canonical_id": "roll_encounter_table",
+      "enabled": true,
+      "name": "Roll Encounter Table",
+      "description": "Roll on an encounter table by ID or context (biome, district, depth).",
+      "parameters": {
+        "context": "string (optional)",
+        "roll": "number (optional)",
+        "table_id": "string (optional)"
+      },
+      "category": "encounters"
+    },
+    {
+      "canonical_id": "find_nearby_locations",
+      "enabled": true,
+      "name": "Find Nearby Locations",
+      "description": "List locations connected to or near a given location.",
+      "parameters": {
+        "location_id": "string",
+        "max_hops": "number (optional)"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_faction",
+      "enabled": true,
+      "name": "Get Faction",
+      "description": "Fetch a faction with goals and member NPC hints.",
+      "parameters": {
+        "faction_id": "string"
+      },
+      "category": "politics"
+    },
+    {
+      "canonical_id": "get_lore",
+      "enabled": true,
+      "name": "Get Lore",
+      "description": "Fetch a lore entry by ID or title.",
+      "parameters": {
+        "lore_id": "string"
+      },
+      "category": "reference"
+    },
+    {
+      "canonical_id": "list_bestiary",
+      "enabled": true,
+      "name": "List Bestiary",
+      "description": "List all creatures in the pack, optionally filtered by CR or tag.",
+      "parameters": {
+        "cr_max": "string (optional)",
+        "tag": "string (optional)"
+      },
+      "category": "bestiary"
+    },
+    {
+      "canonical_id": "filter_creatures_by_habitat",
+      "enabled": true,
+      "name": "Filter Creatures By Habitat",
+      "description": "Return creature IDs matching a habitat (forest, urban, dungeon, coast, etc.).",
+      "parameters": {
+        "habitat": "string"
+      },
+      "category": "bestiary"
+    },
+    {
+      "canonical_id": "get_map",
+      "enabled": true,
+      "name": "Get Map",
+      "description": "Fetch map metadata for a region, city, or location.",
+      "parameters": {
+        "map_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "describe_travel",
+      "enabled": true,
+      "name": "Describe Travel",
+      "description": "Summarize travel between two regions or cities with hazards and duration.",
+      "parameters": {
+        "from_id": "string",
+        "mode": "string (optional)",
+        "to_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_location",
+      "enabled": true,
+      "name": "get_location",
+      "description": "Fetch a place by ID.",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_npc",
+      "enabled": true,
+      "name": "get_npc",
+      "description": "Fetch an NPC.",
+      "parameters": {
+        "npc_id": "string"
+      },
+      "category": "population"
+    },
+    {
+      "canonical_id": "roll_encounter_table",
+      "enabled": true,
+      "name": "roll_encounter_table",
+      "description": "Roll encounter table.",
+      "parameters": {
+        "context": "string (optional)",
+        "roll": "number (optional)",
+        "table_id": "string (optional)"
+      },
+      "category": "encounters"
+    },
+    {
+      "canonical_id": "search_world",
+      "enabled": true,
+      "name": "search_world",
+      "description": "Search catalog.",
+      "parameters": {
+        "kinds": "array (optional)",
+        "limit": "number (optional)",
+        "query": "string"
+      },
+      "category": "reference"
+    }
+  ],
+  "oracle_guide": {
+    "principles": [
+      "Query the world pack for established locations, NPCs, and encounters before inventing.",
+      "Invent only when the pack has no matching content or the party goes off the authored map.",
+      "Use encounter tables for random wilderness and urban night scenes."
+    ],
+    "tool_priority": [
+      "get_location",
+      "list_city_locations",
+      "get_npc",
+      "roll_encounter_table",
+      "search_world"
+    ],
+    "anti_patterns": [
+      "Inventing a named shopkeeper when list_location_npcs returns candidates.",
+      "Rolling custom random encounters when a biome table exists."
+    ],
+    "scenarios": [
+      {
+        "situation": "Investigators arrive in Harrowport during a week-long fog",
+        "use_tools": [
+          "get_city",
+          "list_city_locations",
+          "get_lore"
+        ]
+      },
+      {
+        "situation": "Salt Ledger publishes a Harbor Board name",
+        "use_tools": [
+          "get_npc",
+          "get_faction",
+          "search_world"
+        ],
+        "avoid": [
+          "Inventing a new newspaper"
+        ]
+      },
+      {
+        "situation": "Keeper Holt invites the party to the lighthouse",
+        "use_tools": [
+          "get_location",
+          "get_npc",
+          "list_location_creatures"
+        ]
+      },
+      {
+        "situation": "Low tide exposes the Black Lantern wreck",
+        "use_tools": [
+          "roll_encounter_table",
+          "get_creature",
+          "get_lore"
+        ]
+      }
+    ]
+  },
+  "compatibility": {
+    "room_type": "domain.Room",
+    "npc_type": "domain.NPC",
+    "creature_type": "domain.StatBlock",
+    "tool_map": {
+      "get_creature": "lookup_creature",
+      "get_location": "get_location",
+      "get_npc": "get_npc",
+      "roll_encounter_table": "roll_encounter_table",
+      "search_world": "search_world"
+    },
+    "notes": "Future engine wiring maps worldpack query tools to adventure module lookups."
+  },
+  "metadata": {
+    "generated_at": "2026-08-14T12:30:40Z",
+    "generator": "worldpack-gen"
+  }
+}

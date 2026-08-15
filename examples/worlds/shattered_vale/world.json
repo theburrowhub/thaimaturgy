@@ -1,0 +1,4983 @@
+{
+  "api_version": "worldpack/v1",
+  "id": "shattered_vale",
+  "name": "The Shattered Vale",
+  "version": "1.0.0",
+  "language": "en",
+  "setting": {
+    "name": "The Shattered Vale",
+    "era": "Late medieval fantasy, five years after the Shattering",
+    "tone": "Heroic with creeping dread; trade hubs bustle while wilderness grows feral",
+    "summary": "A river-valley region fractured by a magical cataclysm. City-states cling to roads and rivers while monsters reclaim the wilds.",
+    "tags": [
+      "fantasy",
+      "riverlands",
+      "sandbox"
+    ],
+    "world_rules": {
+      "magic": "Common — divine clerics, arcane wizards, and druidic rites; ley-line scars from the Shattering cause wild surges.",
+      "technology": "Late medieval — castles, mills, crossbows; no gunpowder.",
+      "death_and_afterlife": "Souls reach the Outer Planes unless trapped by necromancy.",
+      "travel": "Roads between city-states; river barges; wilderness is dangerous."
+    },
+    "politics": {
+      "summary": "Fragmented city-states, guild leagues, and feudal holds compete after the Shattering.",
+      "major_powers": [
+        "Merchants' League (Millhaven)",
+        "Order of the Dawn",
+        "Ironhold Wardenate",
+        "Red Hand Bandits"
+      ],
+      "conflicts": [
+        "League tariffs vs Ironhold tolls",
+        "Dawn vs Undercrypt necromancy",
+        "Red Hand vs town guards"
+      ],
+      "law_and_order": "Town charters and temple courts in cities; wilderness is self-help."
+    },
+    "suggested_rulesystem": "dnd5e",
+    "playable_with": [
+      "dnd5e",
+      "savage_worlds",
+      "d100"
+    ]
+  },
+  "regions": [
+    {
+      "id": "northern_marches",
+      "name": "Northern Marches",
+      "description": "Rolling moorland and broken keeps north of the vale. Bandits and undead haunt the old imperial roads.",
+      "biome": "grassland",
+      "city_ids": [
+        "thornwall"
+      ],
+      "location_ids": [
+        "northern_marches_ruins",
+        "marches_old_bridge"
+      ],
+      "tags": [
+        "cold",
+        "ruins",
+        "bandits"
+      ],
+      "map_id": "map_northern_marches",
+      "travel_notes": "Two days from Millhaven by road; winter snows can close the pass for weeks."
+    },
+    {
+      "id": "sunlit_coast",
+      "name": "Sunlit Coast",
+      "description": "Cliff-lined shores and fishing villages where smugglers and sahuagin rumors mix with salt spray.",
+      "biome": "coastal",
+      "city_ids": [
+        "millhaven"
+      ],
+      "location_ids": [
+        "sunlit_coast_cliffs",
+        "sunlit_lighthouse",
+        "coast_shipwreck_cove"
+      ],
+      "tags": [
+        "trade",
+        "smuggling"
+      ],
+      "map_id": "map_sunlit_coast",
+      "travel_notes": "Coastal road is well patrolled near Millhaven; ship travel to Ironhold takes half a day."
+    },
+    {
+      "id": "whisperwood",
+      "name": "Whisperwood",
+      "description": "An ancient forest whose trees murmur at dusk. Fey trails and goblin warrens lurk beneath the canopy.",
+      "biome": "forest",
+      "location_ids": [
+        "whisperwood_grove",
+        "whisperwood_roadside_shrine"
+      ],
+      "tags": [
+        "fey",
+        "goblin"
+      ],
+      "map_id": "map_whisperwood",
+      "travel_notes": "Travelers should not leave the King's Road after dark."
+    },
+    {
+      "id": "ironspine_mountains",
+      "name": "Ironspine Mountains",
+      "description": "Jagged peaks rich in ore. Hobgoblin legions drill in hidden valleys; ogres block high passes.",
+      "biome": "mountain",
+      "city_ids": [
+        "ironhold"
+      ],
+      "location_ids": [
+        "ironspine_pass"
+      ],
+      "tags": [
+        "mining",
+        "hobgoblin"
+      ],
+      "map_id": "map_ironspine",
+      "travel_notes": "Mountain passes require Survival DC 12 in winter; avalanches are common."
+    },
+    {
+      "id": "undercrypt",
+      "name": "Undercrypt",
+      "description": "A buried necropolis opened by the Shattering. Cultists and undead swell its halls.",
+      "biome": "underground",
+      "location_ids": [
+        "undercrypt_entrance",
+        "undercrypt_chamber_of_bones"
+      ],
+      "tags": [
+        "undead",
+        "dungeon"
+      ],
+      "map_id": "map_undercrypt",
+      "travel_notes": "No safe overland route; entrances are scattered sinkholes and collapsed temples."
+    }
+  ],
+  "cities": [
+    {
+      "id": "millhaven",
+      "name": "Millhaven",
+      "region_id": "sunlit_coast",
+      "description": "River-port trade hub of twenty thousand souls. The Merchants' League holds sway, but the Order of the Dawn keeps the peace.",
+      "population": "~20,000",
+      "government": "Merchant Council chaired by Mayor Eldric Vane",
+      "districts": [
+        {
+          "id": "harbor",
+          "name": "Harbor District",
+          "description": "Salt-stained docks and warehouses.",
+          "location_ids": [
+            "river_docks"
+          ],
+          "tags": [
+            "trade",
+            "docks"
+          ]
+        },
+        {
+          "id": "market",
+          "name": "Market District",
+          "description": "Bustling bazaar and guild halls.",
+          "location_ids": [
+            "millhaven_market",
+            "the_gilded_anchor",
+            "millhaven_town_hall"
+          ],
+          "tags": [
+            "trade",
+            "commerce"
+          ]
+        },
+        {
+          "id": "temple_hill",
+          "name": "Temple Hill",
+          "description": "White stone temples overlooking the river.",
+          "location_ids": [
+            "temple_of_dawn"
+          ],
+          "tags": [
+            "holy"
+          ]
+        },
+        {
+          "id": "garrison",
+          "name": "Garrison Quarter",
+          "description": "Barracks and the town wall's eastern gate.",
+          "location_ids": [
+            "millhaven_barracks"
+          ],
+          "tags": [
+            "military"
+          ]
+        },
+        {
+          "id": "undercroft",
+          "name": "Undercroft",
+          "description": "Narrow alleys beneath Temple Hill; thieves and fences.",
+          "location_ids": [
+            "cutpurse_alley"
+          ],
+          "tags": [
+            "criminal"
+          ]
+        }
+      ],
+      "location_ids": [
+        "millhaven_market",
+        "the_gilded_anchor",
+        "temple_of_dawn",
+        "millhaven_barracks",
+        "river_docks",
+        "cutpurse_alley",
+        "millhaven_town_hall"
+      ],
+      "tags": [
+        "trade",
+        "port",
+        "hub"
+      ],
+      "map_id": "map_millhaven"
+    },
+    {
+      "id": "ironhold",
+      "name": "Ironhold",
+      "region_id": "ironspine_mountains",
+      "description": "Mountain fortress-city controlling ore routes. Warden Gareth rules with military pragmatism.",
+      "population": "~8,000",
+      "government": "Military governorship under Warden Gareth",
+      "districts": [
+        {
+          "id": "keep",
+          "name": "High Keep",
+          "description": "Citadel and officer quarters.",
+          "location_ids": [
+            "ironhold_keep",
+            "ironhold_training_yard"
+          ],
+          "tags": [
+            "military"
+          ]
+        },
+        {
+          "id": "forge_quarter",
+          "name": "Forge Quarter",
+          "description": "Smelters and master smiths.",
+          "location_ids": [
+            "ironhold_smithy"
+          ],
+          "tags": [
+            "craft"
+          ]
+        }
+      ],
+      "location_ids": [
+        "ironhold_keep",
+        "ironhold_smithy",
+        "ironhold_training_yard"
+      ],
+      "tags": [
+        "fortress",
+        "mining"
+      ],
+      "map_id": "map_ironhold"
+    },
+    {
+      "id": "thornwall",
+      "name": "Thornwall",
+      "region_id": "northern_marches",
+      "description": "Palisade frontier town guarding the moor road. Last respectable stop before the wild marches.",
+      "population": "~2,500",
+      "government": "Frontier charter; Scout-Captain Jessa Marrow holds practical authority",
+      "districts": [
+        {
+          "id": "gate",
+          "name": "Gate Town",
+          "description": "Inns and traders serving caravan traffic.",
+          "location_ids": [
+            "thornwall_gatehouse",
+            "thornwall_saloon"
+          ],
+          "tags": [
+            "frontier"
+          ]
+        }
+      ],
+      "location_ids": [
+        "thornwall_gatehouse",
+        "thornwall_saloon"
+      ],
+      "tags": [
+        "frontier",
+        "caravan"
+      ]
+    }
+  ],
+  "locations": [
+    {
+      "id": "millhaven_market",
+      "name": "Grand Market Square",
+      "kind": "market",
+      "city_id": "millhaven",
+      "district_id": "market",
+      "region_id": "sunlit_coast",
+      "description": "Canvas awnings shade stalls selling spice, steel, and spell components. Town criers announce League tariffs at noon.",
+      "read_aloud": "The market roars with haggling voices. Spice smoke and forge heat mingle above cobblestones worn smooth by centuries of trade.",
+      "dm_notes": "Pickpockets (commoner stats) operate in pairs; Merchant Prince Alden Cross maintains a private booth on the east side.",
+      "tags": [
+        "market",
+        "social",
+        "shopping"
+      ],
+      "connections": [
+        "the_gilded_anchor",
+        "millhaven_town_hall"
+      ]
+    },
+    {
+      "id": "the_gilded_anchor",
+      "name": "The Gilded Anchor",
+      "kind": "tavern",
+      "city_id": "millhaven",
+      "district_id": "market",
+      "region_id": "sunlit_coast",
+      "description": "Three-story inn favored by river captains. Rooms 5 sp/night; stew 3 cp; ale 4 cp.",
+      "read_aloud": "A gilt ship's anchor hangs above the door. Inside, a hearth fire fights the river damp while a fiddle tunes up for the evening.",
+      "dm_notes": "Tomas Gull knows every rumor on the docks. Hidden cellar connects to cutpurse alley for smugglers.",
+      "tags": [
+        "tavern",
+        "rest",
+        "rumors"
+      ],
+      "connections": [
+        "millhaven_market",
+        "river_docks"
+      ]
+    },
+    {
+      "id": "temple_of_dawn",
+      "name": "Temple of the Dawn",
+      "kind": "temple",
+      "city_id": "millhaven",
+      "district_id": "temple_hill",
+      "region_id": "sunlit_coast",
+      "description": "Marble sanctuary of the Order of the Dawn. Healing available for donations; undead wards on the crypt door.",
+      "read_aloud": "Stained glass casts amber light across pews. Incense and quiet prayer fill the nave.",
+      "dm_notes": "Priestess Lyra Dawn can raise concerns about Undercrypt activity. Relic vault DC 18 Thieves' Tools.",
+      "tags": [
+        "temple",
+        "healing",
+        "holy"
+      ],
+      "connections": [
+        "millhaven_town_hall",
+        "cutpurse_alley"
+      ]
+    },
+    {
+      "id": "millhaven_barracks",
+      "name": "Town Barracks",
+      "kind": "barracks",
+      "city_id": "millhaven",
+      "district_id": "garrison",
+      "region_id": "sunlit_coast",
+      "description": "Stone barracks housing forty town guards. Armory issues weapons only with writ.",
+      "read_aloud": "Drill commands echo across the yard. Spears flash in practiced unison.",
+      "dm_notes": "Captain Mira Thorne runs tight discipline. Cells in basement hold petty criminals.",
+      "tags": [
+        "military",
+        "law"
+      ],
+      "connections": [
+        "millhaven_market"
+      ]
+    },
+    {
+      "id": "river_docks",
+      "name": "River Docks",
+      "kind": "docks",
+      "city_id": "millhaven",
+      "district_id": "harbor",
+      "region_id": "sunlit_coast",
+      "description": "Timber wharves along the Silverrun. Barges to Ironhold depart at dawn.",
+      "read_aloud": "Gulls wheel over moored barges. Dockhands shout as crane ropes strain under grain sacks.",
+      "dm_notes": "Smugglers offload at night near warehouse 7. Dockmaster Fenn Reed takes bribes (5 gp) to look away.",
+      "tags": [
+        "docks",
+        "travel",
+        "smuggling"
+      ],
+      "connections": [
+        "the_gilded_anchor",
+        "sunlit_lighthouse"
+      ]
+    },
+    {
+      "id": "cutpurse_alley",
+      "name": "Cutpurse Alley",
+      "kind": "street",
+      "city_id": "millhaven",
+      "district_id": "undercroft",
+      "region_id": "sunlit_coast",
+      "description": "Lamp-lit maze of lean-tos and bolt-holes. Red Hand graffiti marks territory.",
+      "read_aloud": "Wet stone narrows to shoulder width. Eyes gleam from shutter slits.",
+      "dm_notes": "Sable Quinn runs a fence operation. Random encounter: 1d4 bandits or thugs shaking down a merchant.",
+      "tags": [
+        "criminal",
+        "urban",
+        "danger"
+      ],
+      "connections": [
+        "temple_of_dawn",
+        "millhaven_market"
+      ]
+    },
+    {
+      "id": "millhaven_town_hall",
+      "name": "Millhaven Town Hall",
+      "kind": "civic",
+      "city_id": "millhaven",
+      "district_id": "market",
+      "region_id": "sunlit_coast",
+      "description": "Council chamber and mayor's office. Public petitions heard on tendays.",
+      "read_aloud": "A bell tower rises above civic banners. Clerks scratch ledgers behind iron-grille windows.",
+      "dm_notes": "Mayor Eldric Vane balances League profit against Dawn moralism.",
+      "tags": [
+        "civic",
+        "quests"
+      ],
+      "connections": [
+        "millhaven_market",
+        "temple_of_dawn"
+      ]
+    },
+    {
+      "id": "ironhold_keep",
+      "name": "Ironhold Keep",
+      "kind": "keep",
+      "city_id": "ironhold",
+      "district_id": "keep",
+      "region_id": "ironspine_mountains",
+      "description": "Basalt keep carved into the cliff. Ballistae cover the pass.",
+      "read_aloud": "Black banners snap in the mountain wind. The gate groans open to reveal a courtyard of marching soldiers.",
+      "tags": [
+        "military",
+        "fortress"
+      ],
+      "connections": [
+        "ironhold_training_yard",
+        "ironhold_smithy"
+      ]
+    },
+    {
+      "id": "ironhold_smithy",
+      "name": "Stoneforge Smithy",
+      "kind": "shop",
+      "city_id": "ironhold",
+      "district_id": "forge_quarter",
+      "region_id": "ironspine_mountains",
+      "description": "Master smith Helga Stone crafts reliable arms for the garrison and visitors with coin.",
+      "read_aloud": "Hammer rhythm rings like a heartbeat. Coal heat washes over you as sparks fountain across the anvil.",
+      "tags": [
+        "shop",
+        "weapons",
+        "armor"
+      ],
+      "connections": [
+        "ironhold_keep"
+      ]
+    },
+    {
+      "id": "ironhold_training_yard",
+      "name": "Training Yard",
+      "kind": "yard",
+      "city_id": "ironhold",
+      "district_id": "keep",
+      "region_id": "ironspine_mountains",
+      "description": "Open yard for drills; recruits and mercenaries spar under sergeants' eyes.",
+      "read_aloud": "Wooden swords clack in synchronized forms. A drill sergeant barks corrections.",
+      "tags": [
+        "military",
+        "training"
+      ],
+      "connections": [
+        "ironhold_keep",
+        "ironspine_pass"
+      ]
+    },
+    {
+      "id": "thornwall_gatehouse",
+      "name": "Thornwall Gatehouse",
+      "kind": "gate",
+      "city_id": "thornwall",
+      "district_id": "gate",
+      "region_id": "northern_marches",
+      "description": "Double palisade with murder holes. Toll 1 sp per wagon.",
+      "read_aloud": "Thorn-studded logs frame the gate. Guards scan the moor road with wary eyes.",
+      "tags": [
+        "frontier",
+        "travel"
+      ],
+      "connections": [
+        "thornwall_saloon",
+        "marches_old_bridge"
+      ]
+    },
+    {
+      "id": "thornwall_saloon",
+      "name": "The Broken Spear Saloon",
+      "kind": "tavern",
+      "city_id": "thornwall",
+      "district_id": "gate",
+      "region_id": "northern_marches",
+      "description": "Rough frontier tavern. Bounties posted on the wall; Red Hand wanted posters among them.",
+      "read_aloud": "Sawdust floors soak up spilled ale. A fire crackles while traders swap road warnings.",
+      "tags": [
+        "tavern",
+        "frontier",
+        "rumors"
+      ],
+      "connections": [
+        "thornwall_gatehouse"
+      ]
+    },
+    {
+      "id": "whisperwood_grove",
+      "name": "Moonlit Grove",
+      "kind": "wilderness",
+      "region_id": "whisperwood",
+      "description": "Circle of silver-barked trees; fey lights at new moon.",
+      "read_aloud": "The forest hushes. Pale mushrooms glow between roots like scattered coins.",
+      "tags": [
+        "forest",
+        "fey",
+        "wilderness"
+      ],
+      "connections": [
+        "whisperwood_roadside_shrine",
+        "marches_old_bridge"
+      ]
+    },
+    {
+      "id": "whisperwood_roadside_shrine",
+      "name": "King's Road Shrine",
+      "kind": "shrine",
+      "region_id": "whisperwood",
+      "description": "Weathered saint statue; travelers leave coins for safe passage.",
+      "read_aloud": "A cracked saint watches the road. Offerings rust in a stone bowl.",
+      "tags": [
+        "forest",
+        "road",
+        "holy"
+      ],
+      "connections": [
+        "whisperwood_grove",
+        "marches_old_bridge"
+      ]
+    },
+    {
+      "id": "ironspine_pass",
+      "name": "Ironspine High Pass",
+      "kind": "wilderness",
+      "region_id": "ironspine_mountains",
+      "description": "Wind-scoured pass; hobgoblin patrols at dusk.",
+      "read_aloud": "The path narrows along a cliff. Far below, a river cuts through fog.",
+      "tags": [
+        "mountain",
+        "travel",
+        "danger"
+      ],
+      "connections": [
+        "ironhold_training_yard"
+      ]
+    },
+    {
+      "id": "sunlit_coast_cliffs",
+      "name": "Sunlit Cliffs",
+      "kind": "wilderness",
+      "region_id": "sunlit_coast",
+      "description": "Chalk cliffs with sea caves; smuggler boats at low tide.",
+      "read_aloud": "Waves hammer stone. Gulls scream over tide pools glittering in afternoon sun.",
+      "tags": [
+        "coast",
+        "wilderness"
+      ],
+      "connections": [
+        "coast_shipwreck_cove",
+        "sunlit_lighthouse"
+      ]
+    },
+    {
+      "id": "sunlit_lighthouse",
+      "name": "Pel's Lighthouse",
+      "kind": "landmark",
+      "city_id": "millhaven",
+      "district_id": "harbor",
+      "region_id": "sunlit_coast",
+      "description": "Old lighthouse on the headland; keeper maintains the beacon for dock fees.",
+      "read_aloud": "A striped tower climbs from the headland. The beacon's glass catches the dying light.",
+      "tags": [
+        "coast",
+        "landmark"
+      ],
+      "connections": [
+        "river_docks",
+        "sunlit_coast_cliffs"
+      ]
+    },
+    {
+      "id": "northern_marches_ruins",
+      "name": "Ruins of Caer Mor",
+      "kind": "ruins",
+      "region_id": "northern_marches",
+      "description": "Collapsed imperial fort; skeletons and shadows at night.",
+      "read_aloud": "Broken towers claw at low clouds. Ivy masks arrow slits like closed eyes.",
+      "tags": [
+        "ruins",
+        "undead",
+        "dungeon"
+      ],
+      "connections": [
+        "marches_old_bridge",
+        "undercrypt_entrance"
+      ]
+    },
+    {
+      "id": "marches_old_bridge",
+      "name": "Old Moor Bridge",
+      "kind": "wilderness",
+      "region_id": "northern_marches",
+      "description": "Stone bridge over a black river; toll collectors replaced by bandits some nights.",
+      "read_aloud": "Ancient arches span sluggish water. Carved wards have been chiseled away.",
+      "tags": [
+        "road",
+        "river",
+        "bandits"
+      ],
+      "connections": [
+        "thornwall_gatehouse",
+        "whisperwood_grove",
+        "northern_marches_ruins"
+      ]
+    },
+    {
+      "id": "coast_shipwreck_cove",
+      "name": "Shipwreck Cove",
+      "kind": "wilderness",
+      "region_id": "sunlit_coast",
+      "description": "Hidden cove with rotting hulls; giant rats and smuggler caches.",
+      "read_aloud": "Barnacle-crusted ribs of ships lean over black sand. The tide sucks at broken timbers.",
+      "tags": [
+        "coast",
+        "smuggling",
+        "dungeon"
+      ],
+      "connections": [
+        "sunlit_coast_cliffs"
+      ]
+    },
+    {
+      "id": "undercrypt_entrance",
+      "name": "Collapsed Temple Entrance",
+      "kind": "dungeon",
+      "region_id": "undercrypt",
+      "description": "Sinkhole revealing stairways into the necropolis. Cult graffiti marks the walls.",
+      "read_aloud": "Cold air exhales from broken flagstones. Torchlight does not reach the bottom.",
+      "tags": [
+        "dungeon",
+        "undead",
+        "underground"
+      ],
+      "connections": [
+        "northern_marches_ruins",
+        "undercrypt_chamber_of_bones"
+      ]
+    },
+    {
+      "id": "undercrypt_chamber_of_bones",
+      "name": "Chamber of Bones",
+      "kind": "dungeon",
+      "region_id": "undercrypt",
+      "description": "Ossuary chamber; ghoul packs nest behind rib-cage arches.",
+      "read_aloud": "Skulls piled to the ceiling watch with empty sockets. Scraping echoes from side tunnels.",
+      "tags": [
+        "dungeon",
+        "undead",
+        "underground"
+      ],
+      "connections": [
+        "undercrypt_entrance"
+      ]
+    }
+  ],
+  "npcs": [
+    {
+      "id": "npc_eldric_vane",
+      "name": "Mayor Eldric Vane",
+      "role": "quest giver",
+      "appearance": "Silver-haired human in League regalia; signet ring taps the table when thinking.",
+      "personality": "Measured, pragmatic, allergic to chaos.",
+      "motivations": "Keep Millhaven prosperous and independent from Ironhold.",
+      "secrets": "Secretly funds Dawn expeditions into Undercrypt to appease the temple bloc.",
+      "voice": "Dry baritone, legal metaphors.",
+      "knowledge": [
+        "League tariff schedules",
+        "Council votes",
+        "Smuggler routes (partial)"
+      ],
+      "sample_dialogue": [
+        "The League sells stability by the bushel — don't confuse price with virtue.",
+        "If you bring me Cassian's signet, I'll waive your dock fees for a tenday."
+      ],
+      "disposition": "neutral",
+      "faction_id": "merchants_league",
+      "default_location": "millhaven_town_hall",
+      "tool_bindings": [
+        {
+          "tool_id": "get_npc",
+          "parameters": {
+            "npc_id": "npc_eldric_vane"
+          }
+        }
+      ],
+      "tags": [
+        "civic",
+        "noble"
+      ]
+    },
+    {
+      "id": "npc_mira_thorne",
+      "name": "Captain Mira Thorne",
+      "role": "authority",
+      "appearance": "Half-elf with scarred cheek; town guard tabard always crisp.",
+      "personality": "Direct, fair, zero tolerance for Red Hand graffiti.",
+      "motivations": "Protect Millhaven without becoming the League's private army.",
+      "secrets": "Has a informant in Cutpurse Alley (Sable Quinn).",
+      "voice": "Clipped commands; softens slightly for recruits.",
+      "disposition": "lawful",
+      "faction_id": "order_of_dawn",
+      "stat_block": {
+        "ac": 16,
+        "max_hp": 11,
+        "hit_dice": "2d8+2",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 13,
+          "dex": 12,
+          "con": 12,
+          "int": 10,
+          "wis": 11,
+          "cha": 10
+        },
+        "cr": "1/8",
+        "xp": 25,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid",
+        "alignment": "Any",
+        "skills": [
+          "Perception +2"
+        ],
+        "senses": [
+          "passive Perception 12"
+        ],
+        "languages": [
+          "any one language (usually Common)"
+        ],
+        "actions": [
+          {
+            "name": "Spear",
+            "description": "or 1d8+1 if wielded two-handed; thrown range 20/60 ft.",
+            "to_hit": "+3",
+            "damage": "1d6+1 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "default_location": "millhaven_barracks",
+      "tags": [
+        "military",
+        "guard"
+      ]
+    },
+    {
+      "id": "npc_tomas_gull",
+      "name": "Tomas Gull",
+      "role": "informant",
+      "appearance": "Broad-shouldered human; apron and anchor tattoo.",
+      "personality": "Jovial surface, sharp ears.",
+      "motivations": "Keep the Gilded Anchor neutral ground.",
+      "knowledge": [
+        "Dock schedules",
+        "Which captains take bribes",
+        "Undercroft entrances"
+      ],
+      "sample_dialogue": [
+        "Ale first, questions second — house rule."
+      ],
+      "disposition": "friendly",
+      "default_location": "the_gilded_anchor",
+      "tags": [
+        "tavern",
+        "commoner"
+      ]
+    },
+    {
+      "id": "npc_lyra_dawn",
+      "name": "Priestess Lyra Dawn",
+      "role": "healer",
+      "appearance": "Human woman in white and gold; dawn-symbol tattoo on wrist.",
+      "personality": "Compassionate but steel when undead are involved.",
+      "motivations": "Close Undercrypt breaches before a death knight rises.",
+      "disposition": "good",
+      "faction_id": "order_of_dawn",
+      "stat_block": {
+        "ac": 15,
+        "max_hp": 27,
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 0,
+          "dex": 0,
+          "con": 0,
+          "int": 0,
+          "wis": 0,
+          "cha": 0
+        },
+        "cr": "2",
+        "proficiency_bonus": 2,
+        "skills": [
+          "Medicine +4",
+          "Religion +4"
+        ]
+      },
+      "default_location": "temple_of_dawn",
+      "tags": [
+        "cleric",
+        "holy"
+      ]
+    },
+    {
+      "id": "npc_brick_holt",
+      "name": "Sergeant Brick Holt",
+      "role": "trainer",
+      "appearance": "Stocky dwarf with braided beard and dented helm.",
+      "personality": "Gruff mentor energy.",
+      "motivations": "Turn green guards into soldiers.",
+      "stat_block": {
+        "ac": 16,
+        "max_hp": 11,
+        "hit_dice": "2d8+2",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 13,
+          "dex": 12,
+          "con": 12,
+          "int": 10,
+          "wis": 11,
+          "cha": 10
+        },
+        "cr": "1/8",
+        "xp": 25,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid",
+        "alignment": "Any",
+        "skills": [
+          "Perception +2"
+        ],
+        "senses": [
+          "passive Perception 12"
+        ],
+        "languages": [
+          "any one language (usually Common)"
+        ],
+        "actions": [
+          {
+            "name": "Spear",
+            "description": "or 1d8+1 if wielded two-handed; thrown range 20/60 ft.",
+            "to_hit": "+3",
+            "damage": "1d6+1 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "default_location": "millhaven_barracks",
+      "tags": [
+        "military"
+      ]
+    },
+    {
+      "id": "npc_fenn_reed",
+      "name": "Dockmaster Fenn Reed",
+      "role": "merchant",
+      "appearance": "Sun-leathered human with rope-calloused hands.",
+      "personality": "Everything has a price, including silence.",
+      "motivations": "Maximize dock fees; minimize League audits.",
+      "faction_id": "merchants_league",
+      "default_location": "river_docks",
+      "tags": [
+        "trade",
+        "dock"
+      ]
+    },
+    {
+      "id": "npc_sable_quinn",
+      "name": "Sable Quinn",
+      "role": "fence",
+      "appearance": "Hooded half-elf with ink-stained fingers.",
+      "personality": "Wry, never surprised.",
+      "motivations": "Profit without open war with Captain Thorne.",
+      "secrets": "Red Hand lieutenant but plays both sides.",
+      "disposition": "neutral evil",
+      "faction_id": "red_hand",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 11,
+        "hit_dice": "2d8+2",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 11,
+          "dex": 12,
+          "con": 12,
+          "int": 10,
+          "wis": 10,
+          "cha": 10
+        },
+        "cr": "1/8",
+        "xp": 25,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid",
+        "alignment": "Any Non-Lawful",
+        "senses": [
+          "passive Perception 10"
+        ],
+        "languages": [
+          "any one language (usually Common)"
+        ],
+        "actions": [
+          {
+            "name": "Scimitar",
+            "to_hit": "+3",
+            "damage": "1d6+1 slashing"
+          },
+          {
+            "name": "Light Crossbow",
+            "description": "range 80/320 ft.",
+            "to_hit": "+3",
+            "damage": "1d8+1 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "default_location": "cutpurse_alley",
+      "tags": [
+        "criminal",
+        "rogue"
+      ]
+    },
+    {
+      "id": "npc_gareth_ironhold",
+      "name": "Warden Gareth",
+      "role": "authority",
+      "appearance": "Human veteran with iron-gray hair and siege-burn scars.",
+      "personality": "Soldier first, politician never.",
+      "motivations": "Hold the pass; feed the empire's forges.",
+      "stat_block": {
+        "ac": 16,
+        "max_hp": 58,
+        "hit_dice": "2d8+2",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 13,
+          "dex": 12,
+          "con": 12,
+          "int": 10,
+          "wis": 11,
+          "cha": 10
+        },
+        "cr": "3",
+        "xp": 25,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid",
+        "alignment": "Any",
+        "skills": [
+          "Perception +2"
+        ],
+        "senses": [
+          "passive Perception 12"
+        ],
+        "languages": [
+          "any one language (usually Common)"
+        ],
+        "actions": [
+          {
+            "name": "Spear",
+            "description": "or 1d8+1 if wielded two-handed; thrown range 20/60 ft.",
+            "to_hit": "+3",
+            "damage": "1d6+1 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "default_location": "ironhold_keep",
+      "tags": [
+        "military",
+        "noble"
+      ]
+    },
+    {
+      "id": "npc_helga_stone",
+      "name": "Helga Stone",
+      "role": "merchant",
+      "appearance": "Muscular dwarf woman; burn scars on forearms.",
+      "personality": "Proud craftswoman; hates shoddy steel.",
+      "motivations": "Forge a blade worthy of legend.",
+      "default_location": "ironhold_smithy",
+      "tags": [
+        "craft",
+        "commoner"
+      ]
+    },
+    {
+      "id": "npc_jessa_marrow",
+      "name": "Scout-Captain Jessa Marrow",
+      "role": "guide",
+      "appearance": "Lean human in mottled cloak; shortbow always strung.",
+      "personality": "Dry humor; trusts maps more than people.",
+      "motivations": "Keep Thornwall alive through the next winter.",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 11,
+        "hit_dice": "2d8+2",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 11,
+          "dex": 12,
+          "con": 12,
+          "int": 10,
+          "wis": 10,
+          "cha": 10
+        },
+        "cr": "1/2",
+        "xp": 25,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid",
+        "alignment": "Any Non-Lawful",
+        "skills": [
+          "Survival +4",
+          "Stealth +4",
+          "Perception +3"
+        ],
+        "senses": [
+          "passive Perception 10"
+        ],
+        "languages": [
+          "any one language (usually Common)"
+        ],
+        "actions": [
+          {
+            "name": "Scimitar",
+            "to_hit": "+3",
+            "damage": "1d6+1 slashing"
+          },
+          {
+            "name": "Light Crossbow",
+            "description": "range 80/320 ft.",
+            "to_hit": "+3",
+            "damage": "1d8+1 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "default_location": "thornwall_gatehouse",
+      "tags": [
+        "ranger",
+        "frontier"
+      ]
+    },
+    {
+      "id": "npc_alden_cross",
+      "name": "Merchant Prince Alden Cross",
+      "role": "merchant",
+      "appearance": "Opulent robes; rings on every finger.",
+      "personality": "Charming predator.",
+      "motivations": "Corner the grain market.",
+      "faction_id": "merchants_league",
+      "default_location": "millhaven_market",
+      "tags": [
+        "trade",
+        "noble"
+      ]
+    },
+    {
+      "id": "npc_cassian_red",
+      "name": "Cassian of the Red Hand",
+      "role": "villain",
+      "appearance": "Crimson cloak; hand brand visible on neck.",
+      "personality": "Charismatic bandit king.",
+      "motivations": "Control the moor road and ransom Thornwall.",
+      "secrets": "Hides at Caer Mor ruins between raids.",
+      "faction_id": "red_hand",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 45,
+        "hit_dice": "2d8+2",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 11,
+          "dex": 12,
+          "con": 12,
+          "int": 10,
+          "wis": 10,
+          "cha": 10
+        },
+        "cr": "2",
+        "xp": 25,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid",
+        "alignment": "Any Non-Lawful",
+        "senses": [
+          "passive Perception 10"
+        ],
+        "languages": [
+          "any one language (usually Common)"
+        ],
+        "actions": [
+          {
+            "name": "Scimitar",
+            "to_hit": "+3",
+            "damage": "1d6+1 slashing"
+          },
+          {
+            "name": "Light Crossbow",
+            "description": "range 80/320 ft.",
+            "to_hit": "+3",
+            "damage": "1d8+1 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "default_location": "northern_marches_ruins",
+      "tags": [
+        "villain",
+        "bandit"
+      ]
+    },
+    {
+      "id": "npc_nim_willow",
+      "name": "Nim Willow",
+      "role": "healer",
+      "appearance": "Gnome with moss-green hair and satchel of herbs.",
+      "personality": "Talks to plants; ignores social rank.",
+      "motivations": "Protect Whisperwood from logging expeditions.",
+      "default_location": "whisperwood_grove",
+      "tags": [
+        "druid",
+        "herbalist"
+      ]
+    },
+    {
+      "id": "npc_durn_kettle",
+      "name": "Durn Kettle",
+      "role": "enforcer",
+      "appearance": "Orc with League badge he didn't earn.",
+      "personality": "Bullying coward when alone.",
+      "faction_id": "merchants_league",
+      "stat_block": {
+        "ac": 13,
+        "max_hp": 15,
+        "hit_dice": "2d8+6",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 16,
+          "dex": 12,
+          "con": 16,
+          "int": 7,
+          "wis": 11,
+          "cha": 10
+        },
+        "cr": "1/2",
+        "xp": 100,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid (orc)",
+        "alignment": "Chaotic Evil",
+        "skills": [
+          "Intimidation +2"
+        ],
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 10"
+        ],
+        "languages": [
+          "Common",
+          "Orc"
+        ],
+        "traits": [
+          "Aggressive: as a bonus action, can move up to its speed toward a hostile creature it can see."
+        ],
+        "actions": [
+          {
+            "name": "Greataxe",
+            "to_hit": "+5",
+            "damage": "1d12+3 slashing"
+          },
+          {
+            "name": "Javelin",
+            "description": "range 30/120 ft.",
+            "to_hit": "+5",
+            "damage": "1d6+3 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "default_location": "millhaven_market",
+      "tags": [
+        "thug"
+      ]
+    },
+    {
+      "id": "npc_mortis",
+      "name": "Brother Mortis",
+      "role": "cultist",
+      "appearance": "Hollow-eyed acolyte in crown sigil robes.",
+      "personality": "Whispers; believes undeath is mercy.",
+      "motivations": "Awaken the Hollow Crown regent.",
+      "default_location": "undercrypt_entrance",
+      "tags": [
+        "cult",
+        "villain"
+      ]
+    },
+    {
+      "id": "npc_old_pel",
+      "name": "Old Pel",
+      "role": "hermit",
+      "appearance": "Bent human with cataract eyes; smells of fish oil.",
+      "personality": "Rambling storyteller.",
+      "knowledge": [
+        "Tide charts",
+        "Smuggler signals",
+        "Sea cave layout"
+      ],
+      "default_location": "sunlit_lighthouse",
+      "tags": [
+        "commoner",
+        "guide"
+      ]
+    }
+  ],
+  "creatures": [
+    {
+      "id": "creature_goblin",
+      "name": "Goblin",
+      "srd_name": "goblin",
+      "stat_block": {
+        "ac": 15,
+        "max_hp": 7,
+        "hit_dice": "2d6",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 8,
+          "dex": 14,
+          "con": 10,
+          "int": 10,
+          "wis": 8,
+          "cha": 8
+        },
+        "cr": "1/4",
+        "xp": 50,
+        "proficiency_bonus": 2,
+        "size": "Small",
+        "type": "Humanoid (goblinoid)",
+        "alignment": "Neutral Evil",
+        "skills": [
+          "Stealth +6"
+        ],
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 9"
+        ],
+        "languages": [
+          "Common",
+          "Goblin"
+        ],
+        "traits": [
+          "Nimble Escape: can Disengage or Hide as a bonus action on each of its turns."
+        ],
+        "actions": [
+          {
+            "name": "Scimitar",
+            "to_hit": "+4",
+            "damage": "1d6+2 slashing"
+          },
+          {
+            "name": "Shortbow",
+            "description": "range 80/320 ft.",
+            "to_hit": "+4",
+            "damage": "1d6+2 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 15,
+          "max_hp": 7,
+          "hit_dice": "2d6",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 8,
+            "dex": 14,
+            "con": 10,
+            "int": 10,
+            "wis": 8,
+            "cha": 8
+          },
+          "cr": "1/4",
+          "xp": 50,
+          "proficiency_bonus": 2,
+          "size": "Small",
+          "type": "Humanoid (goblinoid)",
+          "alignment": "Neutral Evil",
+          "skills": [
+            "Stealth +6"
+          ],
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 9"
+          ],
+          "languages": [
+            "Common",
+            "Goblin"
+          ],
+          "traits": [
+            "Nimble Escape: can Disengage or Hide as a bonus action on each of its turns."
+          ],
+          "actions": [
+            {
+              "name": "Scimitar",
+              "to_hit": "+4",
+              "damage": "1d6+2 slashing"
+            },
+            {
+              "name": "Shortbow",
+              "description": "range 80/320 ft.",
+              "to_hit": "+4",
+              "damage": "1d6+2 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "forest",
+        "underground",
+        "urban"
+      ],
+      "cr": "1/4",
+      "tags": [
+        "cr:1/4",
+        "humanoid"
+      ],
+      "encounter_notes": "Ambush in packs of 2d4; use Nimble Escape to disengage into underbrush.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Whisperwood goblins trade with fences in Millhaven."
+    },
+    {
+      "id": "creature_kobold",
+      "name": "Kobold",
+      "srd_name": "kobold",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 5,
+        "hit_dice": "2d6-2",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 7,
+          "dex": 15,
+          "con": 9,
+          "int": 8,
+          "wis": 7,
+          "cha": 8
+        },
+        "cr": "1/8",
+        "xp": 25,
+        "proficiency_bonus": 2,
+        "size": "Small",
+        "type": "Humanoid (kobold)",
+        "alignment": "Lawful Evil",
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 8"
+        ],
+        "languages": [
+          "Common",
+          "Draconic"
+        ],
+        "traits": [
+          "Sunlight Sensitivity: disadvantage on attacks and Perception (sight) in sunlight.",
+          "Pack Tactics: advantage on attacks against a creature if an ally is within 5 ft. of it."
+        ],
+        "actions": [
+          {
+            "name": "Dagger",
+            "to_hit": "+4",
+            "damage": "1d4+2 piercing"
+          },
+          {
+            "name": "Sling",
+            "description": "range 30/120 ft.",
+            "to_hit": "+4",
+            "damage": "1d4+2 bludgeoning"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 5,
+          "hit_dice": "2d6-2",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 7,
+            "dex": 15,
+            "con": 9,
+            "int": 8,
+            "wis": 7,
+            "cha": 8
+          },
+          "cr": "1/8",
+          "xp": 25,
+          "proficiency_bonus": 2,
+          "size": "Small",
+          "type": "Humanoid (kobold)",
+          "alignment": "Lawful Evil",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 8"
+          ],
+          "languages": [
+            "Common",
+            "Draconic"
+          ],
+          "traits": [
+            "Sunlight Sensitivity: disadvantage on attacks and Perception (sight) in sunlight.",
+            "Pack Tactics: advantage on attacks against a creature if an ally is within 5 ft. of it."
+          ],
+          "actions": [
+            {
+              "name": "Dagger",
+              "to_hit": "+4",
+              "damage": "1d4+2 piercing"
+            },
+            {
+              "name": "Sling",
+              "description": "range 30/120 ft.",
+              "to_hit": "+4",
+              "damage": "1d4+2 bludgeoning"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "mountain",
+        "underground"
+      ],
+      "cr": "1/8",
+      "tags": [
+        "cr:1/8",
+        "dragonkin"
+      ],
+      "encounter_notes": "Trap-makers; 1d6 with sling focus fire on spellcasters.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Kobolds nest in Ironspine mine scrap tunnels."
+    },
+    {
+      "id": "creature_wolf",
+      "name": "Wolf",
+      "srd_name": "wolf",
+      "stat_block": {
+        "ac": 13,
+        "max_hp": 11,
+        "hit_dice": "2d8+2",
+        "speed": "40 ft.",
+        "abilities": {
+          "str": 12,
+          "dex": 15,
+          "con": 12,
+          "int": 3,
+          "wis": 12,
+          "cha": 6
+        },
+        "cr": "1/4",
+        "xp": 50,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Beast",
+        "alignment": "Unaligned",
+        "skills": [
+          "Perception +3",
+          "Stealth +4"
+        ],
+        "senses": [
+          "passive Perception 13"
+        ],
+        "traits": [
+          "Keen Hearing and Smell: advantage on Perception checks relying on hearing or smell.",
+          "Pack Tactics: advantage on attacks against a creature if an ally is within 5 ft. of it."
+        ],
+        "actions": [
+          {
+            "name": "Bite",
+            "description": "target DC 11 STR save or be knocked prone.",
+            "to_hit": "+4",
+            "damage": "2d4+2 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 13,
+          "max_hp": 11,
+          "hit_dice": "2d8+2",
+          "speed": "40 ft.",
+          "abilities": {
+            "str": 12,
+            "dex": 15,
+            "con": 12,
+            "int": 3,
+            "wis": 12,
+            "cha": 6
+          },
+          "cr": "1/4",
+          "xp": 50,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Beast",
+          "alignment": "Unaligned",
+          "skills": [
+            "Perception +3",
+            "Stealth +4"
+          ],
+          "senses": [
+            "passive Perception 13"
+          ],
+          "traits": [
+            "Keen Hearing and Smell: advantage on Perception checks relying on hearing or smell.",
+            "Pack Tactics: advantage on attacks against a creature if an ally is within 5 ft. of it."
+          ],
+          "actions": [
+            {
+              "name": "Bite",
+              "description": "target DC 11 STR save or be knocked prone.",
+              "to_hit": "+4",
+              "damage": "2d4+2 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "forest",
+        "grassland"
+      ],
+      "cr": "1/4",
+      "tags": [
+        "cr:1/4",
+        "beast"
+      ],
+      "encounter_notes": "Pairs patrol Whisperwood trails; pack of 4 near Moonlit Grove.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Wolves avoid Ironhold ballistae range."
+    },
+    {
+      "id": "creature_giant_rat",
+      "name": "Giant Rat",
+      "srd_name": "giant rat",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 7,
+        "hit_dice": "2d6",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 7,
+          "dex": 15,
+          "con": 11,
+          "int": 2,
+          "wis": 10,
+          "cha": 4
+        },
+        "cr": "1/8",
+        "xp": 25,
+        "proficiency_bonus": 2,
+        "size": "Small",
+        "type": "Beast",
+        "alignment": "Unaligned",
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 10"
+        ],
+        "traits": [
+          "Keen Smell: advantage on Perception checks relying on smell.",
+          "Pack Tactics: advantage on attacks against a creature if an ally is within 5 ft. of it."
+        ],
+        "actions": [
+          {
+            "name": "Bite",
+            "to_hit": "+4",
+            "damage": "1d4+2 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 7,
+          "hit_dice": "2d6",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 7,
+            "dex": 15,
+            "con": 11,
+            "int": 2,
+            "wis": 10,
+            "cha": 4
+          },
+          "cr": "1/8",
+          "xp": 25,
+          "proficiency_bonus": 2,
+          "size": "Small",
+          "type": "Beast",
+          "alignment": "Unaligned",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "traits": [
+            "Keen Smell: advantage on Perception checks relying on smell.",
+            "Pack Tactics: advantage on attacks against a creature if an ally is within 5 ft. of it."
+          ],
+          "actions": [
+            {
+              "name": "Bite",
+              "to_hit": "+4",
+              "damage": "1d4+2 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "urban",
+        "coast",
+        "underground"
+      ],
+      "cr": "1/8",
+      "tags": [
+        "cr:1/8",
+        "beast"
+      ],
+      "encounter_notes": "Swarms in shipwreck cove and Undercrypt side tunnels.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Carries filth fever on crit in home games if desired."
+    },
+    {
+      "id": "creature_bandit",
+      "name": "Bandit",
+      "srd_name": "bandit",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 11,
+        "hit_dice": "2d8+2",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 11,
+          "dex": 12,
+          "con": 12,
+          "int": 10,
+          "wis": 10,
+          "cha": 10
+        },
+        "cr": "1/8",
+        "xp": 25,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid",
+        "alignment": "Any Non-Lawful",
+        "senses": [
+          "passive Perception 10"
+        ],
+        "languages": [
+          "any one language (usually Common)"
+        ],
+        "actions": [
+          {
+            "name": "Scimitar",
+            "to_hit": "+3",
+            "damage": "1d6+1 slashing"
+          },
+          {
+            "name": "Light Crossbow",
+            "description": "range 80/320 ft.",
+            "to_hit": "+3",
+            "damage": "1d8+1 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 11,
+          "hit_dice": "2d8+2",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 11,
+            "dex": 12,
+            "con": 12,
+            "int": 10,
+            "wis": 10,
+            "cha": 10
+          },
+          "cr": "1/8",
+          "xp": 25,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid",
+          "alignment": "Any Non-Lawful",
+          "senses": [
+            "passive Perception 10"
+          ],
+          "languages": [
+            "any one language (usually Common)"
+          ],
+          "actions": [
+            {
+              "name": "Scimitar",
+              "to_hit": "+3",
+              "damage": "1d6+1 slashing"
+            },
+            {
+              "name": "Light Crossbow",
+              "description": "range 80/320 ft.",
+              "to_hit": "+3",
+              "damage": "1d8+1 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "road",
+        "grassland",
+        "urban"
+      ],
+      "cr": "1/8",
+      "tags": [
+        "cr:1/8",
+        "humanoid"
+      ],
+      "encounter_notes": "Red Hand standard patrol; demand toll or fight.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Often led by a thug (use bandit stats with +5 HP)."
+    },
+    {
+      "id": "creature_guard",
+      "name": "Guard",
+      "srd_name": "guard",
+      "stat_block": {
+        "ac": 16,
+        "max_hp": 11,
+        "hit_dice": "2d8+2",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 13,
+          "dex": 12,
+          "con": 12,
+          "int": 10,
+          "wis": 11,
+          "cha": 10
+        },
+        "cr": "1/8",
+        "xp": 25,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid",
+        "alignment": "Any",
+        "skills": [
+          "Perception +2"
+        ],
+        "senses": [
+          "passive Perception 12"
+        ],
+        "languages": [
+          "any one language (usually Common)"
+        ],
+        "actions": [
+          {
+            "name": "Spear",
+            "description": "or 1d8+1 if wielded two-handed; thrown range 20/60 ft.",
+            "to_hit": "+3",
+            "damage": "1d6+1 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 16,
+          "max_hp": 11,
+          "hit_dice": "2d8+2",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 13,
+            "dex": 12,
+            "con": 12,
+            "int": 10,
+            "wis": 11,
+            "cha": 10
+          },
+          "cr": "1/8",
+          "xp": 25,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid",
+          "alignment": "Any",
+          "skills": [
+            "Perception +2"
+          ],
+          "senses": [
+            "passive Perception 12"
+          ],
+          "languages": [
+            "any one language (usually Common)"
+          ],
+          "actions": [
+            {
+              "name": "Spear",
+              "description": "or 1d8+1 if wielded two-handed; thrown range 20/60 ft.",
+              "to_hit": "+3",
+              "damage": "1d6+1 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "urban",
+        "fortress"
+      ],
+      "cr": "1/8",
+      "tags": [
+        "cr:1/8",
+        "humanoid"
+      ],
+      "encounter_notes": "Town guard stats for Millhaven and Ironhold soldiers.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Will call reinforcements if outnumbered."
+    },
+    {
+      "id": "creature_commoner",
+      "name": "Commoner",
+      "srd_name": "commoner",
+      "stat_block": {
+        "ac": 10,
+        "max_hp": 4,
+        "hit_dice": "1d8",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 10,
+          "dex": 10,
+          "con": 10,
+          "int": 10,
+          "wis": 10,
+          "cha": 10
+        },
+        "cr": "0",
+        "xp": 10,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid",
+        "alignment": "Any",
+        "senses": [
+          "passive Perception 10"
+        ],
+        "languages": [
+          "any one language (usually Common)"
+        ],
+        "actions": [
+          {
+            "name": "Club",
+            "to_hit": "+2",
+            "damage": "1d4 bludgeoning"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 10,
+          "max_hp": 4,
+          "hit_dice": "1d8",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 10,
+            "dex": 10,
+            "con": 10,
+            "int": 10,
+            "wis": 10,
+            "cha": 10
+          },
+          "cr": "0",
+          "xp": 10,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid",
+          "alignment": "Any",
+          "senses": [
+            "passive Perception 10"
+          ],
+          "languages": [
+            "any one language (usually Common)"
+          ],
+          "actions": [
+            {
+              "name": "Club",
+              "to_hit": "+2",
+              "damage": "1d4 bludgeoning"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "urban",
+        "grassland",
+        "coast"
+      ],
+      "cr": "0",
+      "tags": [
+        "cr:0",
+        "humanoid"
+      ],
+      "encounter_notes": "Citizens, farmers, dockhands — social encounters.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Not combatants unless desperate."
+    },
+    {
+      "id": "creature_skeleton",
+      "name": "Skeleton",
+      "srd_name": "skeleton",
+      "stat_block": {
+        "ac": 13,
+        "max_hp": 13,
+        "hit_dice": "2d8+4",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 10,
+          "dex": 14,
+          "con": 15,
+          "int": 6,
+          "wis": 8,
+          "cha": 5
+        },
+        "cr": "1/4",
+        "xp": 50,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Undead",
+        "alignment": "Lawful Evil",
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 9"
+        ],
+        "languages": [
+          "understands the languages it knew in life but can't speak"
+        ],
+        "damage_immunities": [
+          "poison"
+        ],
+        "damage_vulnerabilities": [
+          "bludgeoning"
+        ],
+        "condition_immunities": [
+          "exhaustion",
+          "poisoned"
+        ],
+        "actions": [
+          {
+            "name": "Shortsword",
+            "to_hit": "+4",
+            "damage": "1d6+2 piercing"
+          },
+          {
+            "name": "Shortbow",
+            "description": "range 80/320 ft.",
+            "to_hit": "+4",
+            "damage": "1d6+2 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 13,
+          "max_hp": 13,
+          "hit_dice": "2d8+4",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 10,
+            "dex": 14,
+            "con": 15,
+            "int": 6,
+            "wis": 8,
+            "cha": 5
+          },
+          "cr": "1/4",
+          "xp": 50,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Undead",
+          "alignment": "Lawful Evil",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 9"
+          ],
+          "languages": [
+            "understands the languages it knew in life but can't speak"
+          ],
+          "damage_immunities": [
+            "poison"
+          ],
+          "damage_vulnerabilities": [
+            "bludgeoning"
+          ],
+          "condition_immunities": [
+            "exhaustion",
+            "poisoned"
+          ],
+          "actions": [
+            {
+              "name": "Shortsword",
+              "to_hit": "+4",
+              "damage": "1d6+2 piercing"
+            },
+            {
+              "name": "Shortbow",
+              "description": "range 80/320 ft.",
+              "to_hit": "+4",
+              "damage": "1d6+2 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "ruins",
+        "underground",
+        "dungeon"
+      ],
+      "cr": "1/4",
+      "tags": [
+        "cr:1/4",
+        "undead"
+      ],
+      "encounter_notes": "Caer Mor ruins at night; 1d6 rise from rubble.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Vulnerable to bludgeoning — hint via Religion DC 12."
+    },
+    {
+      "id": "creature_zombie",
+      "name": "Zombie",
+      "srd_name": "zombie",
+      "stat_block": {
+        "ac": 8,
+        "max_hp": 22,
+        "hit_dice": "3d8+9",
+        "speed": "20 ft.",
+        "abilities": {
+          "str": 13,
+          "dex": 6,
+          "con": 16,
+          "int": 3,
+          "wis": 6,
+          "cha": 5
+        },
+        "cr": "1/4",
+        "xp": 50,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Undead",
+        "alignment": "Neutral Evil",
+        "saving_throws": [
+          "WIS +0"
+        ],
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 8"
+        ],
+        "languages": [
+          "understands the languages it knew in life but can't speak"
+        ],
+        "damage_immunities": [
+          "poison"
+        ],
+        "condition_immunities": [
+          "poisoned"
+        ],
+        "traits": [
+          "Undead Fortitude: if reduced to 0 HP by non-radiant, non-critical damage, makes a CON save (DC 5 + damage) to drop to 1 HP instead."
+        ],
+        "actions": [
+          {
+            "name": "Slam",
+            "to_hit": "+3",
+            "damage": "1d6+1 bludgeoning"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 8,
+          "max_hp": 22,
+          "hit_dice": "3d8+9",
+          "speed": "20 ft.",
+          "abilities": {
+            "str": 13,
+            "dex": 6,
+            "con": 16,
+            "int": 3,
+            "wis": 6,
+            "cha": 5
+          },
+          "cr": "1/4",
+          "xp": 50,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Undead",
+          "alignment": "Neutral Evil",
+          "saving_throws": [
+            "WIS +0"
+          ],
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 8"
+          ],
+          "languages": [
+            "understands the languages it knew in life but can't speak"
+          ],
+          "damage_immunities": [
+            "poison"
+          ],
+          "condition_immunities": [
+            "poisoned"
+          ],
+          "traits": [
+            "Undead Fortitude: if reduced to 0 HP by non-radiant, non-critical damage, makes a CON save (DC 5 + damage) to drop to 1 HP instead."
+          ],
+          "actions": [
+            {
+              "name": "Slam",
+              "to_hit": "+3",
+              "damage": "1d6+1 bludgeoning"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "underground",
+        "ruins",
+        "dungeon"
+      ],
+      "cr": "1/4",
+      "tags": [
+        "cr:1/4",
+        "undead"
+      ],
+      "encounter_notes": "Shambling near Undercrypt entrance; Undead Fortitude surprise.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Often precedes ghoul packs."
+    },
+    {
+      "id": "creature_ghoul",
+      "name": "Ghoul",
+      "srd_name": "ghoul",
+      "stat_block": {
+        "ac": 12,
+        "max_hp": 22,
+        "hit_dice": "5d8",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 13,
+          "dex": 15,
+          "con": 10,
+          "int": 7,
+          "wis": 10,
+          "cha": 6
+        },
+        "cr": "1",
+        "xp": 200,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Undead",
+        "alignment": "Chaotic Evil",
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 10"
+        ],
+        "languages": [
+          "Common"
+        ],
+        "damage_immunities": [
+          "poison"
+        ],
+        "condition_immunities": [
+          "charmed",
+          "exhaustion",
+          "poisoned"
+        ],
+        "actions": [
+          {
+            "name": "Bite",
+            "to_hit": "+2",
+            "damage": "2d6 piercing"
+          },
+          {
+            "name": "Claws",
+            "description": "if the target is a non-elf, non-undead creature it must succeed on a DC 10 CON save or be paralyzed for 1 minute (repeat save at end of each turn).",
+            "to_hit": "+4",
+            "damage": "2d4+2 slashing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 12,
+          "max_hp": 22,
+          "hit_dice": "5d8",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 13,
+            "dex": 15,
+            "con": 10,
+            "int": 7,
+            "wis": 10,
+            "cha": 6
+          },
+          "cr": "1",
+          "xp": 200,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Undead",
+          "alignment": "Chaotic Evil",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "languages": [
+            "Common"
+          ],
+          "damage_immunities": [
+            "poison"
+          ],
+          "condition_immunities": [
+            "charmed",
+            "exhaustion",
+            "poisoned"
+          ],
+          "actions": [
+            {
+              "name": "Bite",
+              "to_hit": "+2",
+              "damage": "2d6 piercing"
+            },
+            {
+              "name": "Claws",
+              "description": "if the target is a non-elf, non-undead creature it must succeed on a DC 10 CON save or be paralyzed for 1 minute (repeat save at end of each turn).",
+              "to_hit": "+4",
+              "damage": "2d4+2 slashing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "underground",
+        "dungeon",
+        "ruins"
+      ],
+      "cr": "1",
+      "tags": [
+        "cr:1",
+        "undead"
+      ],
+      "encounter_notes": "Pack of 2d4 in Chamber of Bones; paralyze opens PCs to focus fire.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Avoid elves — immunity to paralyze."
+    },
+    {
+      "id": "creature_orc",
+      "name": "Orc",
+      "srd_name": "orc",
+      "stat_block": {
+        "ac": 13,
+        "max_hp": 15,
+        "hit_dice": "2d8+6",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 16,
+          "dex": 12,
+          "con": 16,
+          "int": 7,
+          "wis": 11,
+          "cha": 10
+        },
+        "cr": "1/2",
+        "xp": 100,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid (orc)",
+        "alignment": "Chaotic Evil",
+        "skills": [
+          "Intimidation +2"
+        ],
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 10"
+        ],
+        "languages": [
+          "Common",
+          "Orc"
+        ],
+        "traits": [
+          "Aggressive: as a bonus action, can move up to its speed toward a hostile creature it can see."
+        ],
+        "actions": [
+          {
+            "name": "Greataxe",
+            "to_hit": "+5",
+            "damage": "1d12+3 slashing"
+          },
+          {
+            "name": "Javelin",
+            "description": "range 30/120 ft.",
+            "to_hit": "+5",
+            "damage": "1d6+3 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 13,
+          "max_hp": 15,
+          "hit_dice": "2d8+6",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 16,
+            "dex": 12,
+            "con": 16,
+            "int": 7,
+            "wis": 11,
+            "cha": 10
+          },
+          "cr": "1/2",
+          "xp": 100,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid (orc)",
+          "alignment": "Chaotic Evil",
+          "skills": [
+            "Intimidation +2"
+          ],
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "languages": [
+            "Common",
+            "Orc"
+          ],
+          "traits": [
+            "Aggressive: as a bonus action, can move up to its speed toward a hostile creature it can see."
+          ],
+          "actions": [
+            {
+              "name": "Greataxe",
+              "to_hit": "+5",
+              "damage": "1d12+3 slashing"
+            },
+            {
+              "name": "Javelin",
+              "description": "range 30/120 ft.",
+              "to_hit": "+5",
+              "damage": "1d6+3 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "mountain",
+        "grassland"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "cr:1/2",
+        "humanoid"
+      ],
+      "encounter_notes": "Ironspine raiding parties; Aggressive closes distance fast.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Sometimes hire out as mercenaries in Thornwall."
+    },
+    {
+      "id": "creature_hobgoblin",
+      "name": "Hobgoblin",
+      "srd_name": "hobgoblin",
+      "stat_block": {
+        "ac": 18,
+        "max_hp": 11,
+        "hit_dice": "2d8+2",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 13,
+          "dex": 12,
+          "con": 12,
+          "int": 10,
+          "wis": 10,
+          "cha": 9
+        },
+        "cr": "1/2",
+        "xp": 100,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid (goblinoid)",
+        "alignment": "Lawful Evil",
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 10"
+        ],
+        "languages": [
+          "Common",
+          "Goblin"
+        ],
+        "traits": [
+          "Martial Advantage: once per turn, +2d6 damage to a creature it hits if an ally is within 5 ft. of the target."
+        ],
+        "actions": [
+          {
+            "name": "Longsword",
+            "description": "or 1d10+1 if wielded two-handed.",
+            "to_hit": "+3",
+            "damage": "1d8+1 slashing"
+          },
+          {
+            "name": "Longbow",
+            "description": "range 150/600 ft.",
+            "to_hit": "+3",
+            "damage": "1d8+1 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 18,
+          "max_hp": 11,
+          "hit_dice": "2d8+2",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 13,
+            "dex": 12,
+            "con": 12,
+            "int": 10,
+            "wis": 10,
+            "cha": 9
+          },
+          "cr": "1/2",
+          "xp": 100,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid (goblinoid)",
+          "alignment": "Lawful Evil",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "languages": [
+            "Common",
+            "Goblin"
+          ],
+          "traits": [
+            "Martial Advantage: once per turn, +2d6 damage to a creature it hits if an ally is within 5 ft. of the target."
+          ],
+          "actions": [
+            {
+              "name": "Longsword",
+              "description": "or 1d10+1 if wielded two-handed.",
+              "to_hit": "+3",
+              "damage": "1d8+1 slashing"
+            },
+            {
+              "name": "Longbow",
+              "description": "range 150/600 ft.",
+              "to_hit": "+3",
+              "damage": "1d8+1 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "mountain",
+        "fortress"
+      ],
+      "cr": "1/2",
+      "tags": [
+        "cr:1/2",
+        "humanoid"
+      ],
+      "encounter_notes": "Disciplined squads of 4 with longbow volley then melee.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Martial Advantage punishes clustered PCs."
+    },
+    {
+      "id": "creature_bugbear",
+      "name": "Bugbear",
+      "srd_name": "bugbear",
+      "stat_block": {
+        "ac": 16,
+        "max_hp": 27,
+        "hit_dice": "5d8+5",
+        "speed": "30 ft.",
+        "abilities": {
+          "str": 15,
+          "dex": 14,
+          "con": 13,
+          "int": 8,
+          "wis": 11,
+          "cha": 9
+        },
+        "cr": "1",
+        "xp": 200,
+        "proficiency_bonus": 2,
+        "size": "Medium",
+        "type": "Humanoid (goblinoid)",
+        "alignment": "Chaotic Evil",
+        "skills": [
+          "Stealth +6",
+          "Survival +2"
+        ],
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 10"
+        ],
+        "languages": [
+          "Common",
+          "Goblin"
+        ],
+        "traits": [
+          "Brute: a melee weapon deals one extra die of damage when it hits (included).",
+          "Surprise Attack: +7 (2d6) damage if it surprises a creature and hits it in the first round."
+        ],
+        "actions": [
+          {
+            "name": "Morningstar",
+            "to_hit": "+4",
+            "damage": "2d8+2 piercing (Brute die included)"
+          },
+          {
+            "name": "Javelin",
+            "description": "range 30/120 ft.; the extra melee die is the Brute trait.",
+            "to_hit": "+4",
+            "damage": "2d6+2 piercing in melee, 1d6+2 at range"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 16,
+          "max_hp": 27,
+          "hit_dice": "5d8+5",
+          "speed": "30 ft.",
+          "abilities": {
+            "str": 15,
+            "dex": 14,
+            "con": 13,
+            "int": 8,
+            "wis": 11,
+            "cha": 9
+          },
+          "cr": "1",
+          "xp": 200,
+          "proficiency_bonus": 2,
+          "size": "Medium",
+          "type": "Humanoid (goblinoid)",
+          "alignment": "Chaotic Evil",
+          "skills": [
+            "Stealth +6",
+            "Survival +2"
+          ],
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "languages": [
+            "Common",
+            "Goblin"
+          ],
+          "traits": [
+            "Brute: a melee weapon deals one extra die of damage when it hits (included).",
+            "Surprise Attack: +7 (2d6) damage if it surprises a creature and hits it in the first round."
+          ],
+          "actions": [
+            {
+              "name": "Morningstar",
+              "to_hit": "+4",
+              "damage": "2d8+2 piercing (Brute die included)"
+            },
+            {
+              "name": "Javelin",
+              "description": "range 30/120 ft.; the extra melee die is the Brute trait.",
+              "to_hit": "+4",
+              "damage": "2d6+2 piercing in melee, 1d6+2 at range"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "forest",
+        "underground"
+      ],
+      "cr": "1",
+      "tags": [
+        "cr:1",
+        "humanoid"
+      ],
+      "encounter_notes": "Whisperwood ambush elite; Surprise Attack alpha strike.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Often paired with goblin scouts."
+    },
+    {
+      "id": "creature_ogre",
+      "name": "Ogre",
+      "srd_name": "ogre",
+      "stat_block": {
+        "ac": 11,
+        "max_hp": 59,
+        "hit_dice": "7d10+21",
+        "speed": "40 ft.",
+        "abilities": {
+          "str": 19,
+          "dex": 8,
+          "con": 16,
+          "int": 5,
+          "wis": 7,
+          "cha": 7
+        },
+        "cr": "2",
+        "xp": 450,
+        "proficiency_bonus": 2,
+        "size": "Large",
+        "type": "Giant",
+        "alignment": "Chaotic Evil",
+        "senses": [
+          "darkvision 60 ft.",
+          "passive Perception 8"
+        ],
+        "languages": [
+          "Common",
+          "Giant"
+        ],
+        "actions": [
+          {
+            "name": "Greatclub",
+            "to_hit": "+6",
+            "damage": "2d8+4 bludgeoning"
+          },
+          {
+            "name": "Javelin",
+            "description": "range 30/120 ft.",
+            "to_hit": "+6",
+            "damage": "2d6+4 piercing"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 11,
+          "max_hp": 59,
+          "hit_dice": "7d10+21",
+          "speed": "40 ft.",
+          "abilities": {
+            "str": 19,
+            "dex": 8,
+            "con": 16,
+            "int": 5,
+            "wis": 7,
+            "cha": 7
+          },
+          "cr": "2",
+          "xp": 450,
+          "proficiency_bonus": 2,
+          "size": "Large",
+          "type": "Giant",
+          "alignment": "Chaotic Evil",
+          "senses": [
+            "darkvision 60 ft.",
+            "passive Perception 8"
+          ],
+          "languages": [
+            "Common",
+            "Giant"
+          ],
+          "actions": [
+            {
+              "name": "Greatclub",
+              "to_hit": "+6",
+              "damage": "2d8+4 bludgeoning"
+            },
+            {
+              "name": "Javelin",
+              "description": "range 30/120 ft.",
+              "to_hit": "+6",
+              "damage": "2d6+4 piercing"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "mountain",
+        "road"
+      ],
+      "cr": "2",
+      "tags": [
+        "cr:2",
+        "giant"
+      ],
+      "encounter_notes": "Blocks Ironspine pass alone; dumb but brutal.",
+      "tool_adapter": "lookup_creature",
+      "lore": "May be bribed with food (Persuasion DC 15)."
+    },
+    {
+      "id": "creature_giant_spider",
+      "name": "Giant Spider",
+      "srd_name": "giant spider",
+      "stat_block": {
+        "ac": 14,
+        "max_hp": 26,
+        "hit_dice": "4d10+4",
+        "speed": "30 ft., climb 30 ft.",
+        "abilities": {
+          "str": 14,
+          "dex": 16,
+          "con": 12,
+          "int": 2,
+          "wis": 11,
+          "cha": 4
+        },
+        "cr": "1",
+        "xp": 200,
+        "proficiency_bonus": 2,
+        "size": "Large",
+        "type": "Beast",
+        "alignment": "Unaligned",
+        "skills": [
+          "Stealth +7"
+        ],
+        "senses": [
+          "blindsight 10 ft.",
+          "darkvision 60 ft.",
+          "passive Perception 10"
+        ],
+        "traits": [
+          "Spider Climb: can climb difficult surfaces, including upside down, without a check.",
+          "Web Sense: while in contact with a web, knows the location of any other creature in contact with the same web.",
+          "Web Walker: ignores movement restrictions caused by webbing."
+        ],
+        "actions": [
+          {
+            "name": "Bite",
+            "description": "DC 11 CON save; half poison damage on a success, and if reduced to 0 HP the target is stable but poisoned and paralyzed for 1 hour.",
+            "to_hit": "+5",
+            "damage": "1d8+3 piercing plus 2d8 poison"
+          },
+          {
+            "name": "Web (Recharge 5-6)",
+            "description": "ranged 30/60 ft., one creature; on a hit the target is restrained by webbing. The restrained target can use its action for a DC 12 Strength check to break free. The webbing can also be attacked and destroyed (AC 10; 5 HP; vulnerable to fire; immune to bludgeoning, poison, and psychic).",
+            "to_hit": "+5"
+          }
+        ],
+        "source": "SRD 5.1 (CC-BY-4.0)"
+      },
+      "stat_blocks": {
+        "dnd5e": {
+          "ac": 14,
+          "max_hp": 26,
+          "hit_dice": "4d10+4",
+          "speed": "30 ft., climb 30 ft.",
+          "abilities": {
+            "str": 14,
+            "dex": 16,
+            "con": 12,
+            "int": 2,
+            "wis": 11,
+            "cha": 4
+          },
+          "cr": "1",
+          "xp": 200,
+          "proficiency_bonus": 2,
+          "size": "Large",
+          "type": "Beast",
+          "alignment": "Unaligned",
+          "skills": [
+            "Stealth +7"
+          ],
+          "senses": [
+            "blindsight 10 ft.",
+            "darkvision 60 ft.",
+            "passive Perception 10"
+          ],
+          "traits": [
+            "Spider Climb: can climb difficult surfaces, including upside down, without a check.",
+            "Web Sense: while in contact with a web, knows the location of any other creature in contact with the same web.",
+            "Web Walker: ignores movement restrictions caused by webbing."
+          ],
+          "actions": [
+            {
+              "name": "Bite",
+              "description": "DC 11 CON save; half poison damage on a success, and if reduced to 0 HP the target is stable but poisoned and paralyzed for 1 hour.",
+              "to_hit": "+5",
+              "damage": "1d8+3 piercing plus 2d8 poison"
+            },
+            {
+              "name": "Web (Recharge 5-6)",
+              "description": "ranged 30/60 ft., one creature; on a hit the target is restrained by webbing. The restrained target can use its action for a DC 12 Strength check to break free. The webbing can also be attacked and destroyed (AC 10; 5 HP; vulnerable to fire; immune to bludgeoning, poison, and psychic).",
+              "to_hit": "+5"
+            }
+          ],
+          "source": "SRD 5.1 (CC-BY-4.0)"
+        }
+      },
+      "habitats": [
+        "forest",
+        "underground",
+        "dungeon"
+      ],
+      "cr": "1",
+      "tags": [
+        "cr:1",
+        "beast"
+      ],
+      "encounter_notes": "Webs across Undercrypt antechambers; reuse Stealth +7.",
+      "tool_adapter": "lookup_creature",
+      "lore": "Web Sense makes bypassing webs tricky."
+    }
+  ],
+  "items": [
+    {
+      "id": "item_longsword",
+      "name": "Longsword",
+      "kind": "weapon",
+      "rarity": "common",
+      "description": "Versatile steel blade.",
+      "mechanics": "1d8 slashing (1d10 two-handed).",
+      "value_gp": 15,
+      "tags": [
+        "martial",
+        "melee"
+      ]
+    },
+    {
+      "id": "item_shortsword",
+      "name": "Shortsword",
+      "kind": "weapon",
+      "rarity": "common",
+      "description": "Light blade favored by scouts.",
+      "mechanics": "1d6 piercing, finesse, light.",
+      "value_gp": 10,
+      "tags": [
+        "martial",
+        "finesse"
+      ]
+    },
+    {
+      "id": "item_greatsword",
+      "name": "Greatsword",
+      "kind": "weapon",
+      "rarity": "common",
+      "description": "Heavy two-handed sword.",
+      "mechanics": "2d6 slashing, heavy, two-handed.",
+      "value_gp": 50,
+      "tags": [
+        "martial",
+        "heavy"
+      ]
+    },
+    {
+      "id": "item_light_crossbow",
+      "name": "Light Crossbow",
+      "kind": "weapon",
+      "rarity": "common",
+      "description": "Simple ranged weapon.",
+      "mechanics": "1d8 piercing, range 80/320, loading.",
+      "value_gp": 25,
+      "tags": [
+        "ranged"
+      ]
+    },
+    {
+      "id": "item_dagger",
+      "name": "Dagger",
+      "kind": "weapon",
+      "rarity": "common",
+      "description": "Utility blade.",
+      "mechanics": "1d4 piercing, finesse, light, thrown 20/60.",
+      "value_gp": 2,
+      "tags": [
+        "simple",
+        "finesse"
+      ]
+    },
+    {
+      "id": "item_spear",
+      "name": "Spear",
+      "kind": "weapon",
+      "rarity": "common",
+      "description": "Guard issue polearm.",
+      "mechanics": "1d6 piercing (1d8 two-handed); thrown 20/60.",
+      "value_gp": 1,
+      "tags": [
+        "simple"
+      ]
+    },
+    {
+      "id": "item_leather_armor",
+      "name": "Leather Armor",
+      "kind": "armor",
+      "rarity": "common",
+      "description": "Supple hide armor.",
+      "mechanics": "AC 11 + DEX.",
+      "value_gp": 10,
+      "tags": [
+        "light"
+      ]
+    },
+    {
+      "id": "item_chain_shirt",
+      "name": "Chain Shirt",
+      "kind": "armor",
+      "rarity": "common",
+      "description": "Interlocking rings.",
+      "mechanics": "AC 13 + DEX (max 2).",
+      "value_gp": 50,
+      "tags": [
+        "medium"
+      ]
+    },
+    {
+      "id": "item_scale_mail",
+      "name": "Scale Mail",
+      "kind": "armor",
+      "rarity": "common",
+      "description": "Ironhold garrison issue.",
+      "mechanics": "AC 14 + DEX (max 2); Stealth disadvantage.",
+      "value_gp": 50,
+      "tags": [
+        "medium"
+      ]
+    },
+    {
+      "id": "item_shield",
+      "name": "Shield",
+      "kind": "armor",
+      "rarity": "common",
+      "description": "Wooden shield with iron boss.",
+      "mechanics": "+2 AC.",
+      "value_gp": 10,
+      "tags": [
+        "shield"
+      ]
+    },
+    {
+      "id": "item_healing_potion",
+      "name": "Potion of Healing",
+      "kind": "potion",
+      "rarity": "common",
+      "description": "Red glimmering draught.",
+      "mechanics": "Regain 2d4+2 HP when consumed.",
+      "value_gp": 50,
+      "tags": [
+        "consumable",
+        "magic"
+      ]
+    },
+    {
+      "id": "item_antitoxin",
+      "name": "Antitoxin",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Herbal neutralizer.",
+      "mechanics": "Advantage on saves vs poison for 1 hour.",
+      "value_gp": 50,
+      "tags": [
+        "consumable"
+      ]
+    },
+    {
+      "id": "item_healers_kit",
+      "name": "Healer's Kit",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Bandages, salves, splints.",
+      "mechanics": "Stabilize dying creature without Medicine check; 10 uses.",
+      "value_gp": 5,
+      "tags": [
+        "tool"
+      ]
+    },
+    {
+      "id": "item_thieves_tools",
+      "name": "Thieves' Tools",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Lockpicks and pry bars.",
+      "mechanics": "Required for lockpicking; proficiency adds PB.",
+      "value_gp": 25,
+      "tags": [
+        "tool"
+      ]
+    },
+    {
+      "id": "item_rope",
+      "name": "Hempen Rope (50 ft.)",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Sturdy climbing rope.",
+      "mechanics": "Standard adventuring gear.",
+      "value_gp": 1,
+      "tags": [
+        "adventuring"
+      ]
+    },
+    {
+      "id": "item_torch",
+      "name": "Torch",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Pine-resin torch.",
+      "mechanics": "Bright light 20 ft., dim 20 ft.; 1 hour burn.",
+      "value_gp": 1,
+      "tags": [
+        "light"
+      ]
+    },
+    {
+      "id": "item_rations",
+      "name": "Rations (1 day)",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Traveler's dry provisions.",
+      "mechanics": "One day of food.",
+      "value_gp": 5,
+      "tags": [
+        "consumable"
+      ],
+      "location_ids": [
+        "millhaven_market"
+      ]
+    },
+    {
+      "id": "item_climbing_kit",
+      "name": "Climbing Kit",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Pitons, gloves, harness.",
+      "mechanics": "Advantage on Athletics to climb.",
+      "value_gp": 25,
+      "tags": [
+        "adventuring"
+      ]
+    },
+    {
+      "id": "item_smith_hammer",
+      "name": "Stoneforge Warhammer",
+      "kind": "weapon",
+      "rarity": "uncommon",
+      "description": "Helga Stone's balanced hammer.",
+      "mechanics": "+1 warhammer (1d8+1 bludgeoning).",
+      "value_gp": 200,
+      "tags": [
+        "magic",
+        "+1"
+      ],
+      "location_ids": [
+        "ironhold_smithy"
+      ]
+    },
+    {
+      "id": "item_dawn_amulet",
+      "name": "Amulet of the Dawn",
+      "kind": "magic",
+      "rarity": "uncommon",
+      "description": "Order holy symbol warm to the touch.",
+      "mechanics": "Once/day cast bless (self only) as an action.",
+      "value_gp": 300,
+      "tags": [
+        "magic",
+        "holy"
+      ],
+      "location_ids": [
+        "temple_of_dawn"
+      ]
+    },
+    {
+      "id": "item_red_hand_mask",
+      "name": "Red Hand Mask",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Crimson cloth mask, bandit trophy.",
+      "mechanics": "Disadvantage on Persuasion with law-abiding NPCs if worn openly.",
+      "tags": [
+        "criminal"
+      ]
+    },
+    {
+      "id": "item_moonpetal_herb",
+      "name": "Moonpetal Salve",
+      "kind": "potion",
+      "rarity": "common",
+      "description": "Nim Willow's herbal salve.",
+      "mechanics": "Cure one level of exhaustion after short rest (once/day).",
+      "value_gp": 25,
+      "tags": [
+        "herbal"
+      ],
+      "location_ids": [
+        "whisperwood_grove"
+      ]
+    },
+    {
+      "id": "item_silver_dagger",
+      "name": "Silvered Dagger",
+      "kind": "weapon",
+      "rarity": "uncommon",
+      "description": "Silver-coated blade for lycanthropes and certain undead.",
+      "mechanics": "1d4+1 piercing; counts as silver for resistances.",
+      "value_gp": 100,
+      "tags": [
+        "silver",
+        "finesse"
+      ]
+    },
+    {
+      "id": "item_bag_of_trinkets",
+      "name": "Dockside Curio Bag",
+      "kind": "gear",
+      "rarity": "common",
+      "description": "Assorted sea charms and odd coins.",
+      "mechanics": "Flavor loot; single trinket worth 1d6 sp.",
+      "value_gp": 3,
+      "location_ids": [
+        "river_docks"
+      ]
+    },
+    {
+      "id": "item_undercrypt_key",
+      "name": "Crypt Iron Key",
+      "kind": "key",
+      "rarity": "rare",
+      "description": "Heavy key etched with crown sigil.",
+      "mechanics": "Opens sealed Undercrypt vault (DM plot gate).",
+      "tags": [
+        "quest"
+      ]
+    },
+    {
+      "id": "item_lighthouse_lens",
+      "name": "Focusing Lens Shard",
+      "kind": "magic",
+      "rarity": "uncommon",
+      "description": "Fractured lighthouse lens that catches starlight.",
+      "mechanics": "Once/day cast light on an object for 1 hour.",
+      "value_gp": 75,
+      "location_ids": [
+        "sunlit_lighthouse"
+      ]
+    }
+  ],
+  "factions": [
+    {
+      "id": "merchants_league",
+      "name": "Merchants' League",
+      "description": "Cartel of trade guilds controlling river tariffs and warehouse licenses.",
+      "goals": "Maximize profit, monopolize grain routes, keep the vale politically fragmented."
+    },
+    {
+      "id": "order_of_dawn",
+      "name": "Order of the Dawn",
+      "description": "Militant faith dedicated to holding back undeath and abyssal corruption from the Shattering.",
+      "goals": "Seal Undercrypt breaches, support temples, recruit paladins and clerics."
+    },
+    {
+      "id": "red_hand",
+      "name": "Red Hand Bandits",
+      "description": "Loose confederation of brigands marked by crimson hand graffiti.",
+      "goals": "Extort caravans, raid weak settlements, eventually control Thornwall pass."
+    }
+  ],
+  "lore": [
+    {
+      "id": "lore_shattering",
+      "title": "The Shattering",
+      "content": "Five years ago a failed archmage ritual cracked the vale's ley lines. Cities survived; the spaces between them turned hostile. Undead rise faster near fault lines.",
+      "tags": [
+        "history",
+        "cataclysm"
+      ]
+    },
+    {
+      "id": "lore_silverrun",
+      "title": "The Silverrun River",
+      "content": "Major trade artery from Ironhold ore barges to Millhaven's sea gates. River pirates are rare but smugglers common.",
+      "tags": [
+        "trade",
+        "geography"
+      ],
+      "region_id": "sunlit_coast"
+    },
+    {
+      "id": "lore_undercrypt",
+      "title": "Secrets of the Undercrypt",
+      "content": "The necropolis predates the empire. Cult of the Hollow Crown seeks a lich regent in the deepest vaults.",
+      "tags": [
+        "undead",
+        "plot"
+      ],
+      "region_id": "undercrypt"
+    },
+    {
+      "id": "lore_whisperwood",
+      "title": "Whispers in the Wood",
+      "content": "Shepherds report trees repeating their secrets. Druids say the forest listens to the Shattering and learns fear.",
+      "tags": [
+        "fey",
+        "horror"
+      ],
+      "region_id": "whisperwood"
+    },
+    {
+      "id": "lore_red_hand",
+      "title": "Origins of the Red Hand",
+      "content": "Bandit lord Cassian united outcast soldiers after the Shattering. The Hand taxes the moor road and fences stolen League goods in Millhaven's Undercroft.",
+      "tags": [
+        "bandits",
+        "politics"
+      ],
+      "region_id": "northern_marches"
+    }
+  ],
+  "maps": [
+    {
+      "id": "map_northern_marches",
+      "name": "Northern Marches Overview",
+      "kind": "regional",
+      "path": "maps/northern_marches.png",
+      "description": "Moor roads, ruined towers, Thornwall marked at the frontier.",
+      "scale": "1 hex = 6 miles"
+    },
+    {
+      "id": "map_sunlit_coast",
+      "name": "Sunlit Coast Chart",
+      "kind": "regional",
+      "path": "maps/sunlit_coast.png",
+      "description": "River delta, Millhaven harbor, cliff paths.",
+      "scale": "1 hex = 4 miles"
+    },
+    {
+      "id": "map_whisperwood",
+      "name": "Whisperwood Trails",
+      "kind": "regional",
+      "path": "maps/whisperwood.png",
+      "description": "King's Road, grove shrines, goblin territory hatched in green.",
+      "scale": "1 hex = 4 miles"
+    },
+    {
+      "id": "map_ironspine",
+      "name": "Ironspine Passes",
+      "kind": "regional",
+      "path": "maps/ironspine.png",
+      "description": "Fortress Ironhold, mining camps, hobgoblin markers.",
+      "scale": "1 hex = 5 miles"
+    },
+    {
+      "id": "map_undercrypt",
+      "name": "Undercrypt Levels",
+      "kind": "dungeon",
+      "path": "maps/undercrypt.png",
+      "description": "Collapsed temple entrance and three known sub-levels.",
+      "scale": "1 square = 10 ft"
+    },
+    {
+      "id": "map_millhaven",
+      "name": "Millhaven City Map",
+      "kind": "city",
+      "path": "maps/millhaven.png",
+      "description": "Districts: Harbor, Market, Temple Hill, Garrison, Undercroft.",
+      "scale": "1 square = 100 ft"
+    },
+    {
+      "id": "map_ironhold",
+      "name": "Ironhold Fortress",
+      "kind": "city",
+      "path": "maps/ironhold.png",
+      "description": "Keep, smith quarter, training yard, sally ports.",
+      "scale": "1 square = 50 ft"
+    }
+  ],
+  "encounter_tables": [
+    {
+      "id": "encounter_whisperwood",
+      "name": "Whisperwood Forest",
+      "context": "forest",
+      "biome": "forest",
+      "dice": "d12",
+      "description": "Daytime forest travel between King's Road and groves.",
+      "rows": [
+        {
+          "roll": "1-2",
+          "result": "No encounter; unsettling silence.",
+          "notes": "Foreshadow fey attention."
+        },
+        {
+          "roll": "3-4",
+          "result": "1d4 wolves stalk the party.",
+          "creature_ids": [
+            "creature_wolf"
+          ],
+          "quantity": "1d4"
+        },
+        {
+          "roll": "5-6",
+          "result": "2d4 goblins in ambush.",
+          "creature_ids": [
+            "creature_goblin"
+          ],
+          "quantity": "2d4"
+        },
+        {
+          "roll": "7-8",
+          "result": "1 bugbear with 2 goblins.",
+          "creature_ids": [
+            "creature_bugbear",
+            "creature_goblin"
+          ],
+          "quantity": "1 + 2"
+        },
+        {
+          "roll": "9-10",
+          "result": "Giant spider webs block path.",
+          "creature_ids": [
+            "creature_giant_spider"
+          ],
+          "quantity": "1d2"
+        },
+        {
+          "roll": "11",
+          "result": "Nim Willow offers guidance.",
+          "notes": "Social; not combat."
+        },
+        {
+          "roll": "12",
+          "result": "Fey lights lead off-trail (optional side quest)."
+        }
+      ]
+    },
+    {
+      "id": "encounter_road_day",
+      "name": "King's Road (Day)",
+      "context": "road",
+      "biome": "road",
+      "dice": "d10",
+      "rows": [
+        {
+          "roll": "1-3",
+          "result": "Uneventful travel."
+        },
+        {
+          "roll": "4-5",
+          "result": "Merchant caravan (trade rumors)."
+        },
+        {
+          "roll": "6-7",
+          "result": "1d6 bandits demand toll.",
+          "creature_ids": [
+            "creature_bandit"
+          ],
+          "quantity": "1d6"
+        },
+        {
+          "roll": "8",
+          "result": "Wolf pair crosses road.",
+          "creature_ids": [
+            "creature_wolf"
+          ],
+          "quantity": "2"
+        },
+        {
+          "roll": "9",
+          "result": "Broken cart; Perception DC 13 for ambush.",
+          "creature_ids": [
+            "creature_bandit"
+          ],
+          "quantity": "1d4"
+        },
+        {
+          "roll": "10",
+          "result": "Order paladin escort shares Undercrypt warning."
+        }
+      ]
+    },
+    {
+      "id": "encounter_urban_night",
+      "name": "Millhaven Urban Night",
+      "context": "urban_night",
+      "biome": "urban",
+      "district_id": "undercroft",
+      "dice": "d8",
+      "rows": [
+        {
+          "roll": "1-2",
+          "result": "Drunk commoners; no threat."
+        },
+        {
+          "roll": "3-4",
+          "result": "1d4 giant rats in trash heap.",
+          "creature_ids": [
+            "creature_giant_rat"
+          ],
+          "quantity": "1d4"
+        },
+        {
+          "roll": "5-6",
+          "result": "Red Hand shake-down.",
+          "creature_ids": [
+            "creature_bandit"
+          ],
+          "quantity": "1d4+1"
+        },
+        {
+          "roll": "7",
+          "result": "Guard patrol (Captain Thorne if alarm raised).",
+          "creature_ids": [
+            "creature_guard"
+          ],
+          "quantity": "2d4"
+        },
+        {
+          "roll": "8",
+          "result": "Sable Quinn offers a job.",
+          "notes": "Social encounter."
+        }
+      ]
+    },
+    {
+      "id": "encounter_dungeon_entry",
+      "name": "Undercrypt Entry",
+      "context": "dungeon",
+      "dungeon_depth": 1,
+      "dice": "d6",
+      "rows": [
+        {
+          "roll": "1",
+          "result": "Cold draft; no encounter."
+        },
+        {
+          "roll": "2-3",
+          "result": "1d6 zombies shamble from rubble.",
+          "creature_ids": [
+            "creature_zombie"
+          ],
+          "quantity": "1d6"
+        },
+        {
+          "roll": "4-5",
+          "result": "1d4 skeletons with shortbows.",
+          "creature_ids": [
+            "creature_skeleton"
+          ],
+          "quantity": "1d4"
+        },
+        {
+          "roll": "6",
+          "result": "Brother Mortis preaching to converts.",
+          "notes": "Roleplay or combat."
+        }
+      ]
+    },
+    {
+      "id": "encounter_dungeon_deep",
+      "name": "Undercrypt Deep",
+      "context": "dungeon",
+      "dungeon_depth": 3,
+      "dice": "d8",
+      "rows": [
+        {
+          "roll": "1-2",
+          "result": "1d4 ghouls feeding.",
+          "creature_ids": [
+            "creature_ghoul"
+          ],
+          "quantity": "1d4"
+        },
+        {
+          "roll": "3-4",
+          "result": "Giant spider nest.",
+          "creature_ids": [
+            "creature_giant_spider"
+          ],
+          "quantity": "1"
+        },
+        {
+          "roll": "5-6",
+          "result": "2d6 skeletons.",
+          "creature_ids": [
+            "creature_skeleton"
+          ],
+          "quantity": "2d6"
+        },
+        {
+          "roll": "7",
+          "result": "Crypt trap: DC 14 DEX save or 2d10 piercing."
+        },
+        {
+          "roll": "8",
+          "result": "Hollow Crown cultists (use cultist stats or bandits).",
+          "creature_ids": [
+            "creature_bandit"
+          ],
+          "quantity": "2d4"
+        }
+      ]
+    },
+    {
+      "id": "encounter_coast",
+      "name": "Sunlit Coast",
+      "context": "coast",
+      "biome": "coast",
+      "dice": "d8",
+      "rows": [
+        {
+          "roll": "1-3",
+          "result": "Seagulls and tide; calm."
+        },
+        {
+          "roll": "4",
+          "result": "Smugglers unloading (Persuasion or fight).",
+          "creature_ids": [
+            "creature_bandit"
+          ],
+          "quantity": "1d6"
+        },
+        {
+          "roll": "5-6",
+          "result": "Swarm of giant rats in wreck.",
+          "creature_ids": [
+            "creature_giant_rat"
+          ],
+          "quantity": "2d6"
+        },
+        {
+          "roll": "7",
+          "result": "Old Pel signals from lighthouse."
+        },
+        {
+          "roll": "8",
+          "result": "Hidden cache: 2d6 gp and a healing potion.",
+          "notes": "item_healing_potion"
+        }
+      ]
+    },
+    {
+      "id": "encounter_mountain_road",
+      "name": "Ironspine Pass",
+      "context": "mountain",
+      "biome": "mountain",
+      "dice": "d10",
+      "rows": [
+        {
+          "roll": "1-3",
+          "result": "Wind and goats; no encounter."
+        },
+        {
+          "roll": "4-5",
+          "result": "2d4 kobold slingers.",
+          "creature_ids": [
+            "creature_kobold"
+          ],
+          "quantity": "2d4"
+        },
+        {
+          "roll": "6-7",
+          "result": "Hobgoblin squad.",
+          "creature_ids": [
+            "creature_hobgoblin"
+          ],
+          "quantity": "4"
+        },
+        {
+          "roll": "8",
+          "result": "1 ogre blocks bridge.",
+          "creature_ids": [
+            "creature_ogre"
+          ],
+          "quantity": "1"
+        },
+        {
+          "roll": "9",
+          "result": "Orc raiders.",
+          "creature_ids": [
+            "creature_orc"
+          ],
+          "quantity": "2d4"
+        },
+        {
+          "roll": "10",
+          "result": "Ironhold patrol assists if party is flagged friendly.",
+          "creature_ids": [
+            "creature_guard"
+          ],
+          "quantity": "4"
+        }
+      ]
+    },
+    {
+      "id": "encounter_ruins_night",
+      "name": "Caer Mor at Night",
+      "context": "ruins",
+      "biome": "ruins",
+      "dice": "d6",
+      "rows": [
+        {
+          "roll": "1",
+          "result": "Wind through empty halls."
+        },
+        {
+          "roll": "2-3",
+          "result": "1d6 skeletons rise.",
+          "creature_ids": [
+            "creature_skeleton"
+          ],
+          "quantity": "1d6"
+        },
+        {
+          "roll": "4-5",
+          "result": "1d4 zombies with Undead Fortitude.",
+          "creature_ids": [
+            "creature_zombie"
+          ],
+          "quantity": "1d4"
+        },
+        {
+          "roll": "6",
+          "result": "Cassian's war camp (major encounter).",
+          "creature_ids": [
+            "creature_bandit",
+            "creature_orc"
+          ],
+          "quantity": "2d6 + 1d4"
+        }
+      ]
+    },
+    {
+      "id": "encounter_millhaven_docks_day",
+      "name": "Millhaven Docks (Day)",
+      "context": "urban",
+      "biome": "coast",
+      "dice": "d6",
+      "rows": [
+        {
+          "roll": "1-2",
+          "result": "Busy labor; no threat."
+        },
+        {
+          "roll": "3-4",
+          "result": "Dockside argument escalates.",
+          "creature_ids": [
+            "creature_commoner"
+          ],
+          "quantity": "2"
+        },
+        {
+          "roll": "5",
+          "result": "Smuggler chase through warehouses.",
+          "creature_ids": [
+            "creature_bandit"
+          ],
+          "quantity": "1d4"
+        },
+        {
+          "roll": "6",
+          "result": "Fenn Reed offers passage intel.",
+          "notes": "Social."
+        }
+      ]
+    }
+  ],
+  "location_contents": [
+    {
+      "location_id": "millhaven_market",
+      "npc_ids": [
+        "npc_alden_cross",
+        "npc_durn_kettle"
+      ],
+      "item_ids": [
+        "item_rations",
+        "item_torch",
+        "item_rope"
+      ],
+      "features": [
+        {
+          "name": "Pickpocket bustle",
+          "description": "Perception DC 14 spots a thief.",
+          "skill": "Perception",
+          "dc": 14,
+          "success": "Spot the thief before losing 1d6 sp.",
+          "failure": "Lose 1d6 sp or chase scene."
+        }
+      ]
+    },
+    {
+      "location_id": "the_gilded_anchor",
+      "npc_ids": [
+        "npc_tomas_gull"
+      ],
+      "item_ids": [
+        "item_healing_potion"
+      ],
+      "features": [
+        {
+          "name": "Hidden smuggler cellar",
+          "skill": "Investigation",
+          "dc": 15,
+          "success": "Find route to Cutpurse Alley.",
+          "failure": "Tomas denies everything."
+        }
+      ]
+    },
+    {
+      "location_id": "temple_of_dawn",
+      "npc_ids": [
+        "npc_lyra_dawn"
+      ],
+      "item_ids": [
+        "item_dawn_amulet",
+        "item_healers_kit"
+      ]
+    },
+    {
+      "location_id": "millhaven_barracks",
+      "npc_ids": [
+        "npc_mira_thorne",
+        "npc_brick_holt"
+      ],
+      "item_ids": [
+        "item_spear",
+        "item_chain_shirt",
+        "item_shield"
+      ]
+    },
+    {
+      "location_id": "river_docks",
+      "npc_ids": [
+        "npc_fenn_reed"
+      ],
+      "item_ids": [
+        "item_bag_of_trinkets"
+      ],
+      "creature_weights": [
+        {
+          "creature_id": "creature_commoner",
+          "weight": 0.7,
+          "notes": "Dockworkers"
+        },
+        {
+          "creature_id": "creature_bandit",
+          "weight": 0.2,
+          "notes": "Night smugglers"
+        }
+      ]
+    },
+    {
+      "location_id": "cutpurse_alley",
+      "npc_ids": [
+        "npc_sable_quinn"
+      ],
+      "item_ids": [
+        "item_thieves_tools",
+        "item_red_hand_mask"
+      ],
+      "encounter_table_id": "encounter_urban_night"
+    },
+    {
+      "location_id": "millhaven_town_hall",
+      "npc_ids": [
+        "npc_eldric_vane"
+      ]
+    },
+    {
+      "location_id": "ironhold_smithy",
+      "npc_ids": [
+        "npc_helga_stone"
+      ],
+      "item_ids": [
+        "item_smith_hammer",
+        "item_longsword",
+        "item_scale_mail"
+      ]
+    },
+    {
+      "location_id": "ironhold_keep",
+      "npc_ids": [
+        "npc_gareth_ironhold"
+      ],
+      "creature_weights": [
+        {
+          "creature_id": "creature_guard",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "location_id": "thornwall_gatehouse",
+      "npc_ids": [
+        "npc_jessa_marrow"
+      ]
+    },
+    {
+      "location_id": "whisperwood_grove",
+      "npc_ids": [
+        "npc_nim_willow"
+      ],
+      "item_ids": [
+        "item_moonpetal_herb"
+      ],
+      "creature_weights": [
+        {
+          "creature_id": "creature_wolf",
+          "weight": 0.4
+        },
+        {
+          "creature_id": "creature_goblin",
+          "weight": 0.3
+        },
+        {
+          "creature_id": "creature_bugbear",
+          "weight": 0.1
+        }
+      ],
+      "encounter_table_id": "encounter_whisperwood"
+    },
+    {
+      "location_id": "northern_marches_ruins",
+      "npc_ids": [
+        "npc_cassian_red"
+      ],
+      "creature_weights": [
+        {
+          "creature_id": "creature_skeleton",
+          "weight": 0.5
+        },
+        {
+          "creature_id": "creature_zombie",
+          "weight": 0.3
+        }
+      ],
+      "encounter_table_id": "encounter_ruins_night"
+    },
+    {
+      "location_id": "undercrypt_entrance",
+      "npc_ids": [
+        "npc_mortis"
+      ],
+      "item_ids": [
+        "item_undercrypt_key"
+      ],
+      "encounter_table_id": "encounter_dungeon_entry"
+    },
+    {
+      "location_id": "undercrypt_chamber_of_bones",
+      "creature_weights": [
+        {
+          "creature_id": "creature_ghoul",
+          "weight": 0.6
+        },
+        {
+          "creature_id": "creature_skeleton",
+          "weight": 0.3
+        }
+      ],
+      "encounter_table_id": "encounter_dungeon_deep"
+    },
+    {
+      "location_id": "coast_shipwreck_cove",
+      "creature_weights": [
+        {
+          "creature_id": "creature_giant_rat",
+          "weight": 0.8
+        },
+        {
+          "creature_id": "creature_bandit",
+          "weight": 0.2
+        }
+      ],
+      "encounter_table_id": "encounter_coast"
+    },
+    {
+      "location_id": "sunlit_lighthouse",
+      "npc_ids": [
+        "npc_old_pel"
+      ],
+      "item_ids": [
+        "item_lighthouse_lens"
+      ]
+    },
+    {
+      "location_id": "ironspine_pass",
+      "creature_weights": [
+        {
+          "creature_id": "creature_hobgoblin",
+          "weight": 0.4
+        },
+        {
+          "creature_id": "creature_ogre",
+          "weight": 0.2
+        }
+      ],
+      "encounter_table_id": "encounter_mountain_road"
+    },
+    {
+      "location_id": "marches_old_bridge",
+      "encounter_table_id": "encounter_road_day"
+    }
+  ],
+  "indexes": {
+    "by_city": {
+      "ironhold": [
+        "ironhold_keep",
+        "ironhold_smithy",
+        "ironhold_training_yard"
+      ],
+      "ironhold_smithy": [
+        "item_smith_hammer"
+      ],
+      "millhaven": [
+        "millhaven_market",
+        "the_gilded_anchor",
+        "temple_of_dawn",
+        "millhaven_barracks",
+        "river_docks",
+        "cutpurse_alley",
+        "millhaven_town_hall",
+        "sunlit_lighthouse"
+      ],
+      "millhaven_market": [
+        "item_rations"
+      ],
+      "river_docks": [
+        "item_bag_of_trinkets"
+      ],
+      "sunlit_lighthouse": [
+        "item_lighthouse_lens"
+      ],
+      "temple_of_dawn": [
+        "item_dawn_amulet"
+      ],
+      "thornwall": [
+        "thornwall_gatehouse",
+        "thornwall_saloon"
+      ],
+      "whisperwood_grove": [
+        "item_moonpetal_herb"
+      ]
+    },
+    "by_region": {
+      "ironspine_mountains": [
+        "ironhold_keep",
+        "ironhold_smithy",
+        "ironhold_training_yard",
+        "ironspine_pass",
+        "ironhold"
+      ],
+      "northern_marches": [
+        "thornwall_gatehouse",
+        "thornwall_saloon",
+        "northern_marches_ruins",
+        "marches_old_bridge",
+        "thornwall"
+      ],
+      "sunlit_coast": [
+        "millhaven_market",
+        "the_gilded_anchor",
+        "temple_of_dawn",
+        "millhaven_barracks",
+        "river_docks",
+        "cutpurse_alley",
+        "millhaven_town_hall",
+        "sunlit_coast_cliffs",
+        "sunlit_lighthouse",
+        "coast_shipwreck_cove",
+        "millhaven"
+      ],
+      "undercrypt": [
+        "undercrypt_entrance",
+        "undercrypt_chamber_of_bones"
+      ],
+      "whisperwood": [
+        "whisperwood_grove",
+        "whisperwood_roadside_shrine"
+      ]
+    },
+    "by_tag": {
+      "+1": [
+        "item_smith_hammer"
+      ],
+      "adventuring": [
+        "item_rope",
+        "item_climbing_kit"
+      ],
+      "armor": [
+        "ironhold_smithy"
+      ],
+      "bandit": [
+        "npc_cassian_red"
+      ],
+      "bandits": [
+        "marches_old_bridge",
+        "northern_marches"
+      ],
+      "beast": [
+        "creature_wolf",
+        "creature_giant_rat",
+        "creature_giant_spider"
+      ],
+      "caravan": [
+        "thornwall"
+      ],
+      "civic": [
+        "millhaven_town_hall",
+        "npc_eldric_vane"
+      ],
+      "cleric": [
+        "npc_lyra_dawn"
+      ],
+      "coast": [
+        "sunlit_coast_cliffs",
+        "sunlit_lighthouse",
+        "coast_shipwreck_cove"
+      ],
+      "cold": [
+        "northern_marches"
+      ],
+      "commoner": [
+        "npc_tomas_gull",
+        "npc_helga_stone",
+        "npc_old_pel"
+      ],
+      "consumable": [
+        "item_healing_potion",
+        "item_antitoxin",
+        "item_rations"
+      ],
+      "cr:0": [
+        "creature_commoner"
+      ],
+      "cr:1": [
+        "creature_ghoul",
+        "creature_bugbear",
+        "creature_giant_spider"
+      ],
+      "cr:1/2": [
+        "creature_orc",
+        "creature_hobgoblin"
+      ],
+      "cr:1/4": [
+        "creature_goblin",
+        "creature_wolf",
+        "creature_skeleton",
+        "creature_zombie"
+      ],
+      "cr:1/8": [
+        "creature_kobold",
+        "creature_giant_rat",
+        "creature_bandit",
+        "creature_guard"
+      ],
+      "cr:2": [
+        "creature_ogre"
+      ],
+      "craft": [
+        "npc_helga_stone"
+      ],
+      "criminal": [
+        "cutpurse_alley",
+        "npc_sable_quinn",
+        "item_red_hand_mask"
+      ],
+      "cult": [
+        "npc_mortis"
+      ],
+      "danger": [
+        "cutpurse_alley",
+        "ironspine_pass"
+      ],
+      "dock": [
+        "npc_fenn_reed"
+      ],
+      "docks": [
+        "river_docks"
+      ],
+      "dragonkin": [
+        "creature_kobold"
+      ],
+      "druid": [
+        "npc_nim_willow"
+      ],
+      "dungeon": [
+        "northern_marches_ruins",
+        "coast_shipwreck_cove",
+        "undercrypt_entrance",
+        "undercrypt_chamber_of_bones",
+        "undercrypt"
+      ],
+      "fey": [
+        "whisperwood_grove",
+        "whisperwood"
+      ],
+      "finesse": [
+        "item_shortsword",
+        "item_dagger",
+        "item_silver_dagger"
+      ],
+      "forest": [
+        "whisperwood_grove",
+        "whisperwood_roadside_shrine"
+      ],
+      "fortress": [
+        "ironhold_keep",
+        "ironhold"
+      ],
+      "frontier": [
+        "thornwall_gatehouse",
+        "thornwall_saloon",
+        "thornwall",
+        "npc_jessa_marrow"
+      ],
+      "giant": [
+        "creature_ogre"
+      ],
+      "goblin": [
+        "whisperwood"
+      ],
+      "guard": [
+        "npc_mira_thorne"
+      ],
+      "guide": [
+        "npc_old_pel"
+      ],
+      "healing": [
+        "temple_of_dawn"
+      ],
+      "heavy": [
+        "item_greatsword"
+      ],
+      "herbal": [
+        "item_moonpetal_herb"
+      ],
+      "herbalist": [
+        "npc_nim_willow"
+      ],
+      "hobgoblin": [
+        "ironspine_mountains"
+      ],
+      "holy": [
+        "temple_of_dawn",
+        "whisperwood_roadside_shrine",
+        "npc_lyra_dawn",
+        "item_dawn_amulet"
+      ],
+      "hub": [
+        "millhaven"
+      ],
+      "humanoid": [
+        "creature_goblin",
+        "creature_bandit",
+        "creature_guard",
+        "creature_commoner",
+        "creature_orc",
+        "creature_hobgoblin",
+        "creature_bugbear"
+      ],
+      "item:ironhold_smithy": [
+        "item_smith_hammer"
+      ],
+      "item:millhaven_market": [
+        "item_rations"
+      ],
+      "item:river_docks": [
+        "item_bag_of_trinkets"
+      ],
+      "item:sunlit_lighthouse": [
+        "item_lighthouse_lens"
+      ],
+      "item:temple_of_dawn": [
+        "item_dawn_amulet"
+      ],
+      "item:whisperwood_grove": [
+        "item_moonpetal_herb"
+      ],
+      "landmark": [
+        "sunlit_lighthouse"
+      ],
+      "law": [
+        "millhaven_barracks"
+      ],
+      "light": [
+        "item_leather_armor",
+        "item_torch"
+      ],
+      "magic": [
+        "item_healing_potion",
+        "item_smith_hammer",
+        "item_dawn_amulet"
+      ],
+      "market": [
+        "millhaven_market"
+      ],
+      "martial": [
+        "item_longsword",
+        "item_shortsword",
+        "item_greatsword"
+      ],
+      "medium": [
+        "item_chain_shirt",
+        "item_scale_mail"
+      ],
+      "melee": [
+        "item_longsword"
+      ],
+      "military": [
+        "millhaven_barracks",
+        "ironhold_keep",
+        "ironhold_training_yard",
+        "npc_mira_thorne",
+        "npc_brick_holt",
+        "npc_gareth_ironhold"
+      ],
+      "mining": [
+        "ironhold",
+        "ironspine_mountains"
+      ],
+      "mountain": [
+        "ironspine_pass"
+      ],
+      "noble": [
+        "npc_eldric_vane",
+        "npc_gareth_ironhold",
+        "npc_alden_cross"
+      ],
+      "port": [
+        "millhaven"
+      ],
+      "quest": [
+        "item_undercrypt_key"
+      ],
+      "quests": [
+        "millhaven_town_hall"
+      ],
+      "ranged": [
+        "item_light_crossbow"
+      ],
+      "ranger": [
+        "npc_jessa_marrow"
+      ],
+      "rest": [
+        "the_gilded_anchor"
+      ],
+      "river": [
+        "marches_old_bridge"
+      ],
+      "road": [
+        "whisperwood_roadside_shrine",
+        "marches_old_bridge"
+      ],
+      "rogue": [
+        "npc_sable_quinn"
+      ],
+      "ruins": [
+        "northern_marches_ruins",
+        "northern_marches"
+      ],
+      "rumors": [
+        "the_gilded_anchor",
+        "thornwall_saloon"
+      ],
+      "shield": [
+        "item_shield"
+      ],
+      "shop": [
+        "ironhold_smithy"
+      ],
+      "shopping": [
+        "millhaven_market"
+      ],
+      "silver": [
+        "item_silver_dagger"
+      ],
+      "simple": [
+        "item_dagger",
+        "item_spear"
+      ],
+      "smuggling": [
+        "river_docks",
+        "coast_shipwreck_cove",
+        "sunlit_coast"
+      ],
+      "social": [
+        "millhaven_market"
+      ],
+      "tavern": [
+        "the_gilded_anchor",
+        "thornwall_saloon",
+        "npc_tomas_gull"
+      ],
+      "temple": [
+        "temple_of_dawn"
+      ],
+      "thug": [
+        "npc_durn_kettle"
+      ],
+      "tool": [
+        "item_healers_kit",
+        "item_thieves_tools"
+      ],
+      "trade": [
+        "millhaven",
+        "sunlit_coast",
+        "npc_fenn_reed",
+        "npc_alden_cross"
+      ],
+      "training": [
+        "ironhold_training_yard"
+      ],
+      "travel": [
+        "river_docks",
+        "thornwall_gatehouse",
+        "ironspine_pass"
+      ],
+      "undead": [
+        "northern_marches_ruins",
+        "undercrypt_entrance",
+        "undercrypt_chamber_of_bones",
+        "undercrypt",
+        "creature_skeleton",
+        "creature_zombie",
+        "creature_ghoul"
+      ],
+      "underground": [
+        "undercrypt_entrance",
+        "undercrypt_chamber_of_bones"
+      ],
+      "urban": [
+        "cutpurse_alley"
+      ],
+      "villain": [
+        "npc_cassian_red",
+        "npc_mortis"
+      ],
+      "weapons": [
+        "ironhold_smithy"
+      ],
+      "wilderness": [
+        "whisperwood_grove",
+        "sunlit_coast_cliffs"
+      ]
+    },
+    "by_creature_habitat": {
+      "coast": [
+        "creature_giant_rat",
+        "creature_commoner"
+      ],
+      "dungeon": [
+        "creature_skeleton",
+        "creature_zombie",
+        "creature_ghoul",
+        "creature_giant_spider"
+      ],
+      "forest": [
+        "creature_goblin",
+        "creature_wolf",
+        "creature_bugbear",
+        "creature_giant_spider"
+      ],
+      "fortress": [
+        "creature_guard",
+        "creature_hobgoblin"
+      ],
+      "grassland": [
+        "creature_wolf",
+        "creature_bandit",
+        "creature_commoner",
+        "creature_orc"
+      ],
+      "mountain": [
+        "creature_kobold",
+        "creature_orc",
+        "creature_hobgoblin",
+        "creature_ogre"
+      ],
+      "road": [
+        "creature_bandit",
+        "creature_ogre"
+      ],
+      "ruins": [
+        "creature_skeleton",
+        "creature_zombie",
+        "creature_ghoul"
+      ],
+      "underground": [
+        "creature_goblin",
+        "creature_kobold",
+        "creature_giant_rat",
+        "creature_skeleton",
+        "creature_zombie",
+        "creature_ghoul",
+        "creature_bugbear",
+        "creature_giant_spider"
+      ],
+      "urban": [
+        "creature_goblin",
+        "creature_giant_rat",
+        "creature_bandit",
+        "creature_guard",
+        "creature_commoner"
+      ]
+    },
+    "by_district": {
+      "forge_quarter": [
+        "ironhold_smithy"
+      ],
+      "garrison": [
+        "millhaven_barracks"
+      ],
+      "gate": [
+        "thornwall_gatehouse",
+        "thornwall_saloon"
+      ],
+      "harbor": [
+        "river_docks",
+        "sunlit_lighthouse"
+      ],
+      "keep": [
+        "ironhold_keep",
+        "ironhold_training_yard"
+      ],
+      "market": [
+        "millhaven_market",
+        "the_gilded_anchor",
+        "millhaven_town_hall"
+      ],
+      "temple_hill": [
+        "temple_of_dawn"
+      ],
+      "undercroft": [
+        "cutpurse_alley"
+      ]
+    },
+    "by_faction": {
+      "merchants_league": [
+        "npc_eldric_vane",
+        "npc_fenn_reed",
+        "npc_alden_cross",
+        "npc_durn_kettle"
+      ],
+      "order_of_dawn": [
+        "npc_mira_thorne",
+        "npc_lyra_dawn"
+      ],
+      "red_hand": [
+        "npc_sable_quinn",
+        "npc_cassian_red"
+      ]
+    },
+    "npc_location_index": {
+      "npc_alden_cross": "millhaven_market",
+      "npc_brick_holt": "millhaven_barracks",
+      "npc_cassian_red": "northern_marches_ruins",
+      "npc_durn_kettle": "millhaven_market",
+      "npc_eldric_vane": "millhaven_town_hall",
+      "npc_fenn_reed": "river_docks",
+      "npc_gareth_ironhold": "ironhold_keep",
+      "npc_helga_stone": "ironhold_smithy",
+      "npc_jessa_marrow": "thornwall_gatehouse",
+      "npc_lyra_dawn": "temple_of_dawn",
+      "npc_mira_thorne": "millhaven_barracks",
+      "npc_mortis": "undercrypt_entrance",
+      "npc_nim_willow": "whisperwood_grove",
+      "npc_old_pel": "sunlit_lighthouse",
+      "npc_sable_quinn": "cutpurse_alley",
+      "npc_tomas_gull": "the_gilded_anchor"
+    },
+    "location_content_index": {
+      "coast_shipwreck_cove": "coast_shipwreck_cove",
+      "cutpurse_alley": "cutpurse_alley",
+      "ironhold_keep": "ironhold_keep",
+      "ironhold_smithy": "ironhold_smithy",
+      "ironspine_pass": "ironspine_pass",
+      "marches_old_bridge": "marches_old_bridge",
+      "millhaven_barracks": "millhaven_barracks",
+      "millhaven_market": "millhaven_market",
+      "millhaven_town_hall": "millhaven_town_hall",
+      "northern_marches_ruins": "northern_marches_ruins",
+      "river_docks": "river_docks",
+      "sunlit_lighthouse": "sunlit_lighthouse",
+      "temple_of_dawn": "temple_of_dawn",
+      "the_gilded_anchor": "the_gilded_anchor",
+      "thornwall_gatehouse": "thornwall_gatehouse",
+      "undercrypt_chamber_of_bones": "undercrypt_chamber_of_bones",
+      "undercrypt_entrance": "undercrypt_entrance",
+      "whisperwood_grove": "whisperwood_grove"
+    }
+  },
+  "tools": [
+    {
+      "canonical_id": "get_region",
+      "enabled": true,
+      "name": "Get Region",
+      "description": "Fetch a region by ID with cities and wilderness locations.",
+      "parameters": {
+        "region_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_city",
+      "enabled": true,
+      "name": "Get City",
+      "description": "Fetch a city by ID with districts and location list.",
+      "parameters": {
+        "city_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_district",
+      "enabled": true,
+      "name": "Get District",
+      "description": "Fetch a district within a city.",
+      "parameters": {
+        "city_id": "string",
+        "district_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_location",
+      "enabled": true,
+      "name": "Get Location",
+      "description": "Fetch a location with description, tags, and connections.",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "list_city_locations",
+      "enabled": true,
+      "name": "List City Locations",
+      "description": "List all locations in a city, optionally filtered by district.",
+      "parameters": {
+        "city_id": "string",
+        "district_id": "string (optional)"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "list_location_npcs",
+      "enabled": true,
+      "name": "List Location NPCs",
+      "description": "List NPCs present at a location (from location contents and default locations).",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "population"
+    },
+    {
+      "canonical_id": "list_location_creatures",
+      "enabled": true,
+      "name": "List Location Creatures",
+      "description": "List weighted creatures associated with a location.",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "encounters"
+    },
+    {
+      "canonical_id": "list_location_items",
+      "enabled": true,
+      "name": "List Location Items",
+      "description": "List items found or sold at a location.",
+      "parameters": {
+        "location_id": "string"
+      },
+      "category": "treasure"
+    },
+    {
+      "canonical_id": "get_npc",
+      "enabled": true,
+      "name": "Get NPC",
+      "description": "Fetch an NPC with roleplay notes, stat block, and default location.",
+      "parameters": {
+        "npc_id": "string"
+      },
+      "category": "population"
+    },
+    {
+      "canonical_id": "get_creature",
+      "enabled": true,
+      "name": "Get Creature",
+      "description": "Fetch a bestiary entry with full stat block and habitat notes.",
+      "parameters": {
+        "creature_id": "string"
+      },
+      "category": "bestiary"
+    },
+    {
+      "canonical_id": "get_item",
+      "enabled": true,
+      "name": "Get Item",
+      "description": "Fetch an item with description and mechanics.",
+      "parameters": {
+        "item_id": "string"
+      },
+      "category": "treasure"
+    },
+    {
+      "canonical_id": "search_world",
+      "enabled": true,
+      "name": "Search World",
+      "description": "Full-text search across locations, NPCs, items, and lore.",
+      "parameters": {
+        "kinds": "array (optional)",
+        "limit": "number (optional)",
+        "query": "string"
+      },
+      "category": "reference"
+    },
+    {
+      "canonical_id": "roll_encounter_table",
+      "enabled": true,
+      "name": "Roll Encounter Table",
+      "description": "Roll on an encounter table by ID or context (biome, district, depth).",
+      "parameters": {
+        "context": "string (optional)",
+        "roll": "number (optional)",
+        "table_id": "string (optional)"
+      },
+      "category": "encounters"
+    },
+    {
+      "canonical_id": "find_nearby_locations",
+      "enabled": true,
+      "name": "Find Nearby Locations",
+      "description": "List locations connected to or near a given location.",
+      "parameters": {
+        "location_id": "string",
+        "max_hops": "number (optional)"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_faction",
+      "enabled": true,
+      "name": "Get Faction",
+      "description": "Fetch a faction with goals and member NPC hints.",
+      "parameters": {
+        "faction_id": "string"
+      },
+      "category": "politics"
+    },
+    {
+      "canonical_id": "get_lore",
+      "enabled": true,
+      "name": "Get Lore",
+      "description": "Fetch a lore entry by ID or title.",
+      "parameters": {
+        "lore_id": "string"
+      },
+      "category": "reference"
+    },
+    {
+      "canonical_id": "list_bestiary",
+      "enabled": true,
+      "name": "List Bestiary",
+      "description": "List all creatures in the pack, optionally filtered by CR or tag.",
+      "parameters": {
+        "cr_max": "string (optional)",
+        "tag": "string (optional)"
+      },
+      "category": "bestiary"
+    },
+    {
+      "canonical_id": "filter_creatures_by_habitat",
+      "enabled": true,
+      "name": "Filter Creatures By Habitat",
+      "description": "Return creature IDs matching a habitat (forest, urban, dungeon, coast, etc.).",
+      "parameters": {
+        "habitat": "string"
+      },
+      "category": "bestiary"
+    },
+    {
+      "canonical_id": "get_map",
+      "enabled": true,
+      "name": "Get Map",
+      "description": "Fetch map metadata for a region, city, or location.",
+      "parameters": {
+        "map_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "describe_travel",
+      "enabled": true,
+      "name": "Describe Travel",
+      "description": "Summarize travel between two regions or cities with hazards and duration.",
+      "parameters": {
+        "from_id": "string",
+        "mode": "string (optional)",
+        "to_id": "string"
+      },
+      "category": "geography"
+    },
+    {
+      "canonical_id": "get_city",
+      "enabled": true,
+      "name": "Millhaven Overview",
+      "description": "Fetch Millhaven city record.",
+      "parameters": {
+        "city_id": "string"
+      },
+      "category": "geography",
+      "examples": [
+        {
+          "title": "Party arrives",
+          "input": {
+            "city_id": "millhaven"
+          },
+          "output": "Returns districts, population, and location IDs."
+        }
+      ]
+    },
+    {
+      "canonical_id": "list_city_locations",
+      "enabled": true,
+      "name": "List Millhaven Harbor",
+      "description": "Locations in harbor district.",
+      "parameters": {
+        "city_id": "string",
+        "district_id": "string (optional)"
+      },
+      "category": "geography",
+      "examples": [
+        {
+          "title": "Find the docks",
+          "input": {
+            "city_id": "millhaven",
+            "district_id": "harbor"
+          },
+          "output": "river_docks, sunlit_lighthouse"
+        }
+      ]
+    },
+    {
+      "canonical_id": "get_npc",
+      "enabled": true,
+      "name": "Meet Captain Thorne",
+      "description": "Load guard captain NPC.",
+      "parameters": {
+        "npc_id": "string"
+      },
+      "category": "population",
+      "examples": [
+        {
+          "title": "Report crime",
+          "input": {
+            "npc_id": "npc_mira_thorne"
+          },
+          "output": "Personality, stat block, barracks location."
+        }
+      ]
+    },
+    {
+      "canonical_id": "roll_encounter_table",
+      "enabled": true,
+      "name": "Forest travel roll",
+      "description": "Roll Whisperwood table.",
+      "parameters": {
+        "context": "string (optional)",
+        "roll": "number (optional)",
+        "table_id": "string (optional)"
+      },
+      "category": "encounters",
+      "examples": [
+        {
+          "title": "d12 = 5",
+          "input": {
+            "roll": 5,
+            "table_id": "encounter_whisperwood"
+          },
+          "output": "2d4 goblins ambush."
+        }
+      ]
+    },
+    {
+      "canonical_id": "search_world",
+      "enabled": true,
+      "name": "Search for bandits",
+      "description": "Find Red Hand references.",
+      "parameters": {
+        "kinds": "array (optional)",
+        "limit": "number (optional)",
+        "query": "string"
+      },
+      "category": "reference",
+      "examples": [
+        {
+          "title": "Query red hand",
+          "input": {
+            "limit": 5,
+            "query": "Red Hand"
+          },
+          "output": "npc_cassian_red, lore_red_hand, cutpurse_alley..."
+        }
+      ]
+    }
+  ],
+  "oracle_guide": {
+    "principles": [
+      "Query the world pack for established locations, NPCs, and encounters before inventing.",
+      "Invent only when the pack has no matching content or the party goes off the authored map.",
+      "Use encounter tables for random wilderness and urban night scenes."
+    ],
+    "tool_priority": [
+      "get_location",
+      "list_city_locations",
+      "get_npc",
+      "roll_encounter_table",
+      "search_world"
+    ],
+    "anti_patterns": [
+      "Inventing a named shopkeeper when list_location_npcs returns candidates.",
+      "Rolling custom random encounters when a biome table exists."
+    ],
+    "scenarios": [
+      {
+        "situation": "Party enters Millhaven for the first time",
+        "use_tools": [
+          "get_city",
+          "list_city_locations",
+          "get_location",
+          "get_lore"
+        ],
+        "avoid": [
+          "Inventing a new city quarter"
+        ],
+        "invent_when": "Players ask for a shop type not listed — then invent name but reuse market tags."
+      },
+      {
+        "situation": "Random forest encounter on the King's Road",
+        "use_tools": [
+          "roll_encounter_table",
+          "get_creature",
+          "filter_creatures_by_habitat"
+        ],
+        "avoid": [
+          "Making up new monster stats"
+        ]
+      },
+      {
+        "situation": "Player asks who is in the tavern",
+        "use_tools": [
+          "get_location",
+          "list_location_npcs",
+          "get_npc"
+        ],
+        "avoid": [
+          "Generating a random tavernkeeper when Gilded Anchor is established"
+        ]
+      },
+      {
+        "situation": "Party explores Undercrypt level 1",
+        "use_tools": [
+          "get_location",
+          "list_location_creatures",
+          "roll_encounter_table",
+          "get_creature"
+        ],
+        "avoid": [
+          "Skipping undead stat blocks"
+        ]
+      },
+      {
+        "situation": "Player wants to buy healing potions",
+        "use_tools": [
+          "list_location_items",
+          "get_item",
+          "get_location"
+        ],
+        "invent_when": "Only if party is far from authored shops."
+      },
+      {
+        "situation": "Travel from Millhaven to Thornwall",
+        "use_tools": [
+          "describe_travel",
+          "get_region",
+          "roll_encounter_table"
+        ],
+        "avoid": [
+          "Teleporting encounters without road table"
+        ]
+      },
+      {
+        "situation": "Party searches for Red Hand hideout",
+        "use_tools": [
+          "search_world",
+          "get_faction",
+          "get_lore",
+          "find_nearby_locations"
+        ],
+        "avoid": [
+          "Relocating Cassian without story reason"
+        ]
+      }
+    ]
+  },
+  "compatibility": {
+    "room_type": "domain.Room",
+    "npc_type": "domain.NPC",
+    "creature_type": "domain.StatBlock",
+    "tool_map": {
+      "Forest travel roll": "roll_encounter_table",
+      "List Millhaven Harbor": "list_city_locations",
+      "Meet Captain Thorne": "get_npc",
+      "Millhaven Overview": "get_city",
+      "Search for bandits": "search_world",
+      "get_creature": "lookup_creature",
+      "get_location": "get_room",
+      "get_npc": "get_npc",
+      "search_world": "search_module"
+    },
+    "notes": "Future engine wiring maps worldpack query tools to adventure module lookups."
+  },
+  "metadata": {
+    "generated_at": "2026-08-14T12:30:40Z",
+    "generator": "worldpack-gen"
+  }
+}
