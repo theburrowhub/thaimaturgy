@@ -373,8 +373,10 @@ func (b *Bot) logText(arg string) string {
 var playerSafeCommands = map[string]bool{
 	"status": true,                // where the party is + progress counters (no DM notes)
 	"quests": true, "quest": true, // player-facing quest log
-	"note": true, // benign: append a note to the timeline
-	"rest": true, // short/long rest for the party (or a named character)
+	"note":       true, // benign: append a note to the timeline
+	"rest":       true, // short/long rest for the party (or a named character)
+	"recap":      true, // "previously on…" from session state (no DM notes/secrets)
+	"previously": true, // alias of /recap
 }
 
 // delegateToEngine routes a small, player-safe subset of slash commands through
@@ -984,6 +986,7 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /item add|remove <name> [xN] — edit your inventory
 /setnote <text> — set your character's notes
 /quests — list tracked quests
+/recap — a quick "previously on…" recap of the session so far
 /note <text> — add a note to the timeline
 /chatid — show this chat's id
 /help — this help`

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -34,6 +35,65 @@ func paritySession() *domain.Session {
 	}
 	state := domain.NewSessionState("test_session", adv)
 	return domain.NewSession(state, adv, domain.DefaultConfig())
+}
+
+func TestCommandHandlerRecap(t *testing.T) {
+	session := paritySession()
+	handler := NewCommandHandler(session)
+
+	// A fresh session: recap still works and reports the empty-story baseline.
+	res := handler.Execute(ParseCommand("/recap"))
+	if !res.Success || !strings.Contains(res.Response, "=== RECAP ===") {
+		t.Fatalf("/recap on a fresh session = %+v", res)
+	}
+	if !strings.Contains(res.Response, "Test Adventure") {
+		t.Errorf("recap should name the adventure: %q", res.Response)
+	}
+	if !strings.Contains(res.Response, "The session is just beginning.") {
+		t.Errorf("empty-summary recap should say the session is just beginning: %q", res.Response)
+	}
+
+	// Build some play state, then recap should reflect it.
+	handler.Execute(ParseCommand("/goto r1"))
+	handler.Execute(ParseCommand("/met guard"))
+	handler.Execute(ParseCommand("/trigger ambush"))
+	handler.Execute(ParseCommand("/note the party bribed the sentry"))
+	session.State.Summary = "The party reached the gate and talked their way in."
+
+	res = handler.Execute(ParseCommand("/previously")) // alias
+	if !res.Success {
+		t.Fatalf("/previously failed: %s", res.Message)
+	}
+	for _, want := range []string{
+		"Entrance",                    // current room
+		"Gate Guard",                  // known NPC resolved to its module name
+		"The party reached the gate",  // the running summary
+		"the party bribed the sentry", // a recent narrative timeline beat
+	} {
+		if !strings.Contains(res.Response, want) {
+			t.Errorf("recap missing %q\n---\n%s", want, res.Response)
+		}
+	}
+	// Player-safe: the authored event NAME must never surface (it can itself be a
+	// spoiler), neither as a list nor via its "Triggered event: …" timeline entry.
+	if strings.Contains(res.Response, "Bandit Ambush") {
+		t.Errorf("recap leaked the authored event name to players:\n%s", res.Response)
+	}
+}
+
+// A dice roll must not leak into the narrative recap (mechanics are filtered).
+func TestRecapFiltersMechanics(t *testing.T) {
+	session := paritySession()
+	handler := NewCommandHandler(session)
+	handler.Execute(ParseCommand("/note a shadow crosses the hall"))
+	handler.Execute(ParseCommand("/roll 2d6"))
+	res := handler.Execute(ParseCommand("/recap"))
+	if !strings.Contains(res.Response, "a shadow crosses the hall") {
+		t.Errorf("recap should keep the narrative note: %q", res.Response)
+	}
+	if strings.Contains(strings.ToLower(res.Response), "2d6") {
+		t.Errorf("recap should not include the dice roll: %q", res.Response)
+	}
 }
 
 func TestCommandHandlerMet(t *testing.T) {
