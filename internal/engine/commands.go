@@ -706,9 +706,12 @@ func (h *CommandHandler) recapText() string {
 	if met := h.metNPCNames(); len(met) > 0 {
 		fmt.Fprintf(&sb, "\nKnown NPCs: %s\n", strings.Join(met, ", "))
 	}
-	if evs := h.triggeredEventNames(); len(evs) > 0 {
-		fmt.Fprintf(&sb, "Events so far: %s\n", strings.Join(evs, ", "))
-	}
+	// NB: triggered-event NAMES are deliberately NOT listed. They are authored by
+	// the module and can themselves be spoilers (e.g. "The vizier poisons the
+	// king"); since /recap is player-safe (exposed on Telegram), we never surface
+	// them. What the players actually witnessed already reaches them through the
+	// narration/summary. LogEvent entries are likewise filtered from the recent
+	// timeline below for the same reason.
 	if len(st.Quests) > 0 {
 		quests := make([]string, 0, len(st.Quests))
 		for _, q := range st.Quests {
@@ -745,31 +748,15 @@ func (h *CommandHandler) metNPCNames() []string {
 	return names
 }
 
-// triggeredEventNames returns, sorted, the names of events that have fired.
-func (h *CommandHandler) triggeredEventNames() []string {
-	var names []string
-	for id, done := range h.state().TriggeredEvents {
-		if !done {
-			continue
-		}
-		name := id
-		if e := h.adv().Event(id); e != nil {
-			name = e.Name
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
 // recentNarrative returns up to max recent timeline messages, dropping pure
-// mechanics (rolls, flags, party/system bookkeeping) so the recap reads as a
-// story rather than a log dump. Order (oldest→newest) is preserved.
+// mechanics (rolls, flags, party/system bookkeeping) and event markers (whose
+// message carries the authored, possibly-spoilery event name) so the recap
+// reads as a player-safe story rather than a log dump. Order is preserved.
 func recentNarrative(entries []domain.LogEntry, max int) []string {
 	var out []string
 	for _, e := range entries {
 		switch e.Type {
-		case domain.LogRoll, domain.LogFlag, domain.LogParty, domain.LogSystem:
+		case domain.LogRoll, domain.LogFlag, domain.LogParty, domain.LogSystem, domain.LogEvent:
 			continue
 		}
 		if msg := strings.TrimSpace(e.Message); msg != "" {

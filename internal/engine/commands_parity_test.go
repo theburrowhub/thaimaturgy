@@ -67,13 +67,17 @@ func TestCommandHandlerRecap(t *testing.T) {
 	for _, want := range []string{
 		"Entrance",                    // current room
 		"Gate Guard",                  // known NPC resolved to its module name
-		"Bandit Ambush",               // triggered event resolved to its name
 		"The party reached the gate",  // the running summary
 		"the party bribed the sentry", // a recent narrative timeline beat
 	} {
 		if !strings.Contains(res.Response, want) {
 			t.Errorf("recap missing %q\n---\n%s", want, res.Response)
 		}
+	}
+	// Player-safe: the authored event NAME must never surface (it can itself be a
+	// spoiler), neither as a list nor via its "Triggered event: …" timeline entry.
+	if strings.Contains(res.Response, "Bandit Ambush") {
+		t.Errorf("recap leaked the authored event name to players:\n%s", res.Response)
 	}
 }
 
