@@ -18,7 +18,7 @@ func sceneSession() *domain.Session {
 		Scenes: []domain.Scene{
 			{ID: "day", Name: "Opening Hours", Initial: true,
 				Next: []domain.SceneTransition{{To: "night", When: "the party returns at night"}}},
-			{ID: "night", Name: "Private Viewing",
+			{ID: "night", Name: "Private Viewing", ReadAloud: "Night falls over the museum.",
 				Rooms: []domain.SceneRoom{{
 					Room: "hall", ReadAloud: "The hall is hushed and dim.",
 					Present: "the relic is displayed; extra guards", NPCIDs: []string{"guard"},
@@ -101,6 +101,65 @@ func TestSceneCommand(t *testing.T) {
 	// Unknown scene fails.
 	if res := h.Execute(ParseCommand("/scene bogus")); res.Success {
 		t.Error("/scene with an unknown id should fail")
+	}
+}
+
+// A scene with an explicit empty npc_ids clears the room's cast (deserted),
+// while an omitted npc_ids leaves the authored cast — the day/night distinction
+// must not leave contradictory NPCs present. (#84 review)
+func TestSceneClearsCastWithEmptyList(t *testing.T) {
+	adv := &domain.Adventure{
+		SchemaVersion: domain.SchemaVersion, ID: "a", Title: "A", StartRoom: "hall",
+		Zones: []domain.Zone{{ID: "z1", Name: "Z", Rooms: []domain.Room{
+			{ID: "hall", Name: "Hall", NPCIDs: []string{"curator"}},
+		}}},
+		NPCs: []domain.NPC{{ID: "curator", Name: "Curator"}},
+		Scenes: []domain.Scene{
+			{ID: "empty", Name: "Deserted", Initial: true, Rooms: []domain.SceneRoom{{Room: "hall", NPCIDs: []string{}}}},
+		},
+	}
+	s := domain.NewSession(domain.NewSessionState("s", adv), adv, domain.DefaultConfig())
+	prompt := NewOracle(s, nil).buildSystemPrompt()
+	if strings.Contains(prompt, "Curator") {
+		t.Errorf("an explicit empty npc_ids should clear the cast, but Curator is present:\n%s", prompt)
+	}
+}
+
+// The DM /room command and the get_room tool render the current room under the
+// active scene, not the authored default. (#84 review)
+func TestSceneAwareRoomViews(t *testing.T) {
+	s := sceneSession()
+	s.State.SetScene("night", "Private Viewing")
+	h := NewCommandHandler(s)
+	if res := h.Execute(ParseCommand("/room")); !strings.Contains(res.Response, "The hall is hushed and dim.") {
+		t.Errorf("/room should show the night scene text: %q", res.Response)
+	}
+	tr := NewToolRouter(s)
+	res := call(tr, "get_room", map[string]any{"room_id": "hall"})
+	if !strings.Contains(res.Content, "The hall is hushed and dim.") {
+		t.Errorf("get_room should show the night scene text: %q", res.Content)
+	}
+}
+
+// Switching a scene surfaces its opening read-aloud so the DM can narrate it.
+func TestSceneSwitchSurfacesReadAloud(t *testing.T) {
+	s := sceneSession()
+	h := NewCommandHandler(s)
+	res := h.Execute(ParseCommand("/scene night"))
+	if !strings.Contains(res.Response, "Night falls over the museum.") {
+		t.Errorf("/scene switch should surface the scene read-aloud: %+v", res)
+	}
+}
+
+// A pre-scenes save (no current_scene) resumed against an adventure that now has
+// scenes gets the initial scene seeded, so overrides apply immediately.
+func TestResumeSeedsInitialScene(t *testing.T) {
+	adv := sceneSession().Adventure
+	old := domain.NewSessionState("old", adv)
+	old.CurrentScene = "" // simulate a save from before scenes existed
+	s := domain.NewSession(old, adv, domain.DefaultConfig())
+	if s.State.CurrentScene != "day" {
+		t.Errorf("resume should seed the initial scene, got %q", s.State.CurrentScene)
 	}
 }
 

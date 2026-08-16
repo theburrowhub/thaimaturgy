@@ -279,7 +279,7 @@ func (h *CommandHandler) handleGoto(cmd *Command, r *CommandResult) {
 	h.state().SetLocation(zid, rid, room.Name)
 	h.session.MarkModified()
 	r.Message = "Party moved to " + room.Name
-	r.Response = FormatRoom(h.adv(), room)
+	r.Response = h.sceneRoom(room)
 }
 
 func (h *CommandHandler) handleRoom(_ *Command, r *CommandResult) {
@@ -288,7 +288,21 @@ func (h *CommandHandler) handleRoom(_ *Command, r *CommandResult) {
 		r.Success, r.Message = false, "No current room. Use /goto <room_id>."
 		return
 	}
-	r.Response = FormatRoom(h.adv(), room)
+	r.Response = h.sceneRoom(room)
+}
+
+// sceneRoom renders a room under the session's active scene, so DM commands see
+// the same scene-appropriate presentation the oracle does (the same location can
+// read differently per scene). Falls back to the authored room when there is no
+// scene or no override.
+func (h *CommandHandler) sceneRoom(room *domain.Room) string {
+	scene := h.adv().Scene(h.state().Scene())
+	eff, present := effectiveRoom(scene, room)
+	out := FormatRoom(h.adv(), eff)
+	if present != "" {
+		out = "In this scene, notably: " + present + "\n" + out
+	}
+	return out
 }
 
 func (h *CommandHandler) handleZone(cmd *Command, r *CommandResult) {
@@ -746,9 +760,10 @@ func (h *CommandHandler) handleScene(cmd *Command, r *CommandResult) {
 		return
 	}
 	st := h.state()
+	current := st.Scene() // read CurrentScene once, under the state lock (no data race)
 	if len(cmd.Args) == 0 {
 		var sb strings.Builder
-		if cur := adv.Scene(st.CurrentScene); cur != nil {
+		if cur := adv.Scene(current); cur != nil {
 			fmt.Fprintf(&sb, "Current scene: %s [%s]\n", nameOrID(cur.Name, cur.ID), cur.ID)
 			if cur.Description != "" {
 				fmt.Fprintf(&sb, "  %s\n", cur.Description)
@@ -774,7 +789,7 @@ func (h *CommandHandler) handleScene(cmd *Command, r *CommandResult) {
 		for i := range adv.Scenes {
 			sc := &adv.Scenes[i]
 			marker := "  "
-			if sc.ID == st.CurrentScene {
+			if sc.ID == current {
 				marker = "* "
 			}
 			fmt.Fprintf(&sb, "%s%s [%s]\n", marker, nameOrID(sc.Name, sc.ID), sc.ID)
@@ -791,6 +806,10 @@ func (h *CommandHandler) handleScene(cmd *Command, r *CommandResult) {
 	st.SetScene(sc.ID, sc.Name)
 	h.session.MarkModified()
 	r.Message = "Scene set to " + nameOrID(sc.Name, sc.ID) + "."
+	// Surface the scene's opening narration (if any) so the DM can read it now.
+	if sc.ReadAloud != "" {
+		r.Response = sc.ReadAloud
+	}
 }
 
 // metNPCNames returns, sorted, the names of NPCs the party has met, resolved to

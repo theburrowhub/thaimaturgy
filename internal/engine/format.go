@@ -32,7 +32,10 @@ func effectiveRoom(scene *domain.Scene, room *domain.Room) (*domain.Room, string
 			eff.DMNotes = sr.DMNotes
 		}
 	}
-	if len(sr.NPCIDs) > 0 {
+	// A non-nil slice (including an explicit empty []) replaces the room's cast —
+	// so a scene can author "nobody here now"; a nil slice (field omitted) leaves
+	// the authored cast untouched.
+	if sr.NPCIDs != nil {
 		eff.NPCIDs = sr.NPCIDs
 	}
 	return &eff, sr.Present

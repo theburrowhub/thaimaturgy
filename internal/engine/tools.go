@@ -480,7 +480,14 @@ func (tr *ToolRouter) getRoom(id string, args map[string]any) types.ToolResult {
 	if r == nil {
 		return errResult(id, "no room with id "+rid)
 	}
-	return okResult(id, FormatRoom(tr.adv(), r)+tr.worldChangesAppendix("room", r.ID))
+	// Render the room under the active scene so retrieval matches what the party
+	// currently sees (same location, scene-appropriate state).
+	eff, present := effectiveRoom(tr.adv().Scene(tr.state().Scene()), r)
+	body := FormatRoom(tr.adv(), eff)
+	if present != "" {
+		body = "In this scene, notably: " + present + "\n" + body
+	}
+	return okResult(id, body+tr.worldChangesAppendix("room", r.ID))
 }
 
 func (tr *ToolRouter) getZone(id string, args map[string]any) types.ToolResult {
@@ -924,7 +931,11 @@ func (tr *ToolRouter) setScene(id string, args map[string]any) types.ToolResult 
 	}
 	tr.state().SetScene(sc.ID, sc.Name)
 	tr.session.MarkModified()
-	return okResult(id, "scene set to "+nameOrID(sc.Name, sc.ID))
+	msg := "scene set to " + nameOrID(sc.Name, sc.ID)
+	if sc.ReadAloud != "" {
+		msg += "\nScene read-aloud: " + sc.ReadAloud
+	}
+	return okResult(id, msg)
 }
 
 func (tr *ToolRouter) setFlag(id string, args map[string]any) types.ToolResult {

@@ -446,9 +446,12 @@ func (o *Oracle) buildSystemPrompt() string {
 	// differently at different points in the story, so the room below is rendered
 	// THROUGH the scene's overrides. A module with no scenes → scene is nil and
 	// everything behaves exactly as before.
-	scene := adv.Scene(st.CurrentScene)
+	scene := adv.Scene(st.Scene()) // Scene() reads CurrentScene under the state lock
 	if scene != nil {
 		fmt.Fprintf(&sb, "Current scene: %s [%s]\n", nameOrID(scene.Name, scene.ID), scene.ID)
+		if scene.ReadAloud != "" {
+			fmt.Fprintf(&sb, "Scene read-aloud (narrate when the scene opens): %s\n", scene.ReadAloud)
+		}
 		if scene.Description != "" {
 			fmt.Fprintf(&sb, "Scene notes (DM eyes only): %s\n", scene.Description)
 		}

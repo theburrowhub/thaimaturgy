@@ -557,7 +557,11 @@ func (s *SessionState) ImportStructured(src *SessionState) {
 	defer s.mu.Unlock()
 	s.CurrentZone = src.CurrentZone
 	s.CurrentRoom = src.CurrentRoom
-	s.CurrentScene = src.CurrentScene
+	// Don't let an empty imported scene clobber an already-seeded active scene
+	// (e.g. a merge from a subprocess that didn't set it).
+	if src.CurrentScene != "" {
+		s.CurrentScene = src.CurrentScene
+	}
 	s.VisitedRooms = src.VisitedRooms
 	s.KnownNPCs = src.KnownNPCs
 	s.TriggeredEvents = src.TriggeredEvents
@@ -937,6 +941,14 @@ type Session struct {
 
 // NewSession binds state, adventure, and config into a runtime session.
 func NewSession(state *SessionState, adv *Adventure, config *Config) *Session {
+	// Seed the active scene when it's missing — e.g. resuming a pre-scenes save
+	// against an adventure that now defines scenes — so scene overrides apply from
+	// the start instead of only after a manual /scene. No-op for fresh sessions
+	// (already seeded) and scene-less adventures (InitialSceneID is empty). Safe
+	// without the lock: the session isn't shared yet at construction.
+	if state != nil && adv != nil && state.CurrentScene == "" {
+		state.CurrentScene = adv.InitialSceneID()
+	}
 	return &Session{
 		State:     state,
 		Adventure: adv,
