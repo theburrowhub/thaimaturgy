@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.1",
+  "id": "the-curfew-bell",
+  "title": "The Curfew Bell",
+  "author": "thAImaturgy examples",
+  "system": "D&D 5e",
+  "language": "en",
+  "summary": "A market town welcomes visitors by day, but a tolling bell empties its streets at dusk — and something moves once the watch locks the gates.",
+  "context": "A short investigation for a party of 1st-2nd level. It shows how one location can be run as two scenes: the same square, bustling by day and deserted under curfew. Use it as a template for phase-based adventures.",
+  "background": "The night watch isn't protecting the town from the dark — it is covering for the smugglers who use the empty streets after curfew. The watch-captain rings the bell early on nights a shipment moves.",
+  "introduction": "The party arrives in Graystone at midday, hired by a worried merchant whose courier vanished after curfew three nights ago. They have until dusk to look around; once the bell tolls, no one is supposed to be on the streets.",
+  "conclusion": "The party can expose the watch-captain's smuggling ring (confront him during the curfew run), quietly recover the missing courier, or be run out of town. Any ending resolves what the bell really signals.",
+  "hooks": [
+    "A merchant hires the party to find a courier who vanished after curfew.",
+    "One of the party recognizes the courier as an old friend.",
+    "The town pays unusually well for 'discreet' visitors who don't ask about the bell."
+  ],
+  "start_room": "square",
+  "zones": [
+    {
+      "id": "town",
+      "name": "Graystone",
+      "overview": "A walled market town built around a central square and its bell tower.",
+      "rooms": [
+        {
+          "id": "square",
+          "name": "Market Square",
+          "read_aloud": "Cobblestones ring with footsteps and haggling; the bell tower throws a long shadow across the stalls.",
+          "dm_notes": "By day this is the hub. The vanished courier was last seen buying bread here.",
+          "npc_ids": ["elenya"],
+          "exits": [{ "to": "tavern", "direction": "north", "description": "The Broken Tankard fronts the square." }]
+        },
+        {
+          "id": "tavern",
+          "name": "The Broken Tankard",
+          "read_aloud": "Low beams, spilled ale, and a hearth that never quite warms the room.",
+          "dm_notes": "Neutral ground. The tavernkeeper knows the bell rings early on 'delivery' nights but fears the watch.",
+          "exits": [{ "to": "square", "direction": "south" }]
+        }
+      ]
+    }
+  ],
+  "npcs": [
+    {
+      "id": "elenya",
+      "name": "Elenya",
+      "role": "market vendor",
+      "appearance": "A sharp-eyed baker with flour on her sleeves.",
+      "personality": "Friendly but guarded once the sun starts to set.",
+      "motivations": "Keep her stall and stay off the watch's bad side.",
+      "knowledge": ["Saw the courier the day he vanished", "The bell has been ringing earlier than it used to"]
+    },
+    {
+      "id": "watch-captain",
+      "name": "Captain Vorr",
+      "role": "captain of the night watch",
+      "appearance": "Broad-shouldered, immaculate uniform, a key ring that never leaves his belt.",
+      "personality": "Courteous by day, coldly authoritative after the bell.",
+      "motivations": "Move the shipments and keep the streets empty and quiet.",
+      "secrets": "He rings the curfew bell early on nights a smuggling shipment moves."
+    }
+  ],
+  "events": [
+    {
+      "id": "the-bell",
+      "name": "The Bell Tolls",
+      "trigger": "Dusk falls, or the party lingers too long in the open.",
+      "read_aloud": "A deep bronze note rolls across the rooftops. Doors slam. Within minutes the square is empty.",
+      "dm_notes": "Switch to the 'curfew' scene when this fires (set_scene curfew)."
+    }
+  ],
+  "scenes": [
+    {
+      "id": "day",
+      "name": "Before the Bell",
+      "initial": true,
+      "description": "Daytime investigation. The town is open and talkative; the party can gather leads before dusk.",
+      "rooms": [
+        { "room": "square", "present": "packed with stalls and townsfolk; safe to ask questions" }
+      ],
+      "next": [
+        { "to": "curfew", "when": "the curfew bell tolls at dusk (event the-bell), or the party is caught outside after dark" }
+      ]
+    },
+    {
+      "id": "curfew",
+      "name": "After the Bell",
+      "description": "The streets are locked down. Being seen draws the watch; this is when the smuggling run happens.",
+      "read_aloud": "The last echo of the bell fades. The town holds its breath behind shuttered windows.",
+      "rooms": [
+        {
+          "room": "square",
+          "read_aloud": "Empty cobblestones gleam under the watch's lanterns. Bootsteps echo in the dark.",
+          "present": "deserted; watch patrols; being seen is dangerous",
+          "npc_ids": ["watch-captain"]
+        },
+        {
+          "room": "tavern",
+          "present": "shuttered and dark; the door is barred from inside",
+          "npc_ids": []
+        }
+      ]
+    }
+  ]
+}

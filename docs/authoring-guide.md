@@ -146,6 +146,16 @@ If you'd rather write JSON by hand, follow the steps below.
   `/npc <id>` or `/event <id>` to pull the full entry.
 - **Document the ending.** A clear `conclusion` (with branches) lets the oracle steer
   toward a satisfying resolution.
+- **Write the opening.** Fill `introduction` and `hooks`: the virtual DM narrates the
+  premise and hook (who the party are, who involves them and why, the stakes) when the
+  game begins, then sets the first scene. Don't rely on "you're at a door."
+- **Use scenes for non-spatial progression.** When the story moves in phases — or the
+  same place changes over time (day/curfew, before/after a heist, a court before and
+  after a murder) — model it with `scenes` instead of duplicating zones. Each scene can
+  override a room's `read_aloud` / `dm_notes` / present cast and note what's different
+  (`present`); mark the `initial` scene and list `next` transitions. Advance with
+  `/scene <id>`. Plain dungeons need no scenes. See the schema's [Scene](adventure-schema.md#scene) section.
+
 - **Keep image paths relative** and under the archive root.
 
 ## Running a session (DM cheat-sheet)
@@ -161,7 +171,8 @@ Type a question to the oracle, or use a command:
 | `/search <query>` | Search the whole module. |
 | `/map [zone]`, `/art <id\|path>` | Open a map/art image in your OS viewer. |
 | `/note <text>`, `/flag key=true` | Feed the running session state. |
-| `/roll 2d6+3`, `/quests`, `/party`, `/status` | Utilities. |
+| `/scene [id]` | Show or switch the active narrative scene/phase (adventures with `scenes`). |
+| `/roll 2d6+3`, `/quests`, `/recap`, `/party`, `/status` | Utilities. |
 | `/save [name]`, `/load [name]`, `/quit` | Session management. |
 
 The oracle also updates session state itself (location, NPCs met, events triggered,
