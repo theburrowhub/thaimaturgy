@@ -419,6 +419,20 @@ func (o *Oracle) buildSystemPrompt() string {
 	writeSection(&sb, "Summary", adv.Summary)
 	writeSection(&sb, "Context", adv.Context)
 	writeSection(&sb, "Background (DM eyes only)", adv.Background)
+	// The opening: how the adventure begins and the hooks that draw the party in.
+	// Injected so the DM can actually narrate the premise/hook when the game
+	// starts — otherwise it drops the party into a location with no framing. This
+	// is general: any module that authored an introduction/hooks gets a narrated
+	// opening; a module without them is unaffected.
+	writeSection(&sb, "How it begins (introduction)", adv.Introduction)
+	if len(adv.Hooks) > 0 {
+		sb.WriteString("Hooks (how the party is drawn in — deliver at least one when opening):\n")
+		for _, h := range adv.Hooks {
+			if h = strings.TrimSpace(h); h != "" {
+				fmt.Fprintf(&sb, "  - %s\n", h)
+			}
+		}
+	}
 	if len(adv.Tables) > 0 {
 		names := make([]string, 0, len(adv.Tables))
 		for i := range adv.Tables {
