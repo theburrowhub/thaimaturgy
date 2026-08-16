@@ -176,6 +176,7 @@ type SessionState struct {
 	// Structured progress fed by the DM.
 	CurrentZone     string                `json:"current_zone,omitempty"`
 	CurrentRoom     string                `json:"current_room,omitempty"`
+	CurrentScene    string                `json:"current_scene,omitempty"` // active scene/phase (empty when the module has no scenes)
 	VisitedRooms    map[string]bool       `json:"visited_rooms,omitempty"`
 	KnownNPCs       map[string]*NPCStatus `json:"known_npcs,omitempty"`
 	TriggeredEvents map[string]bool       `json:"triggered_events,omitempty"`
@@ -341,6 +342,8 @@ func NewSessionState(name string, adv *Adventure) *SessionState {
 				s.VisitedRooms[room.ID] = true
 			}
 		}
+		// Start in the module's initial scene (empty when it authored no scenes).
+		s.CurrentScene = adv.InitialSceneID()
 	}
 	return s
 }
@@ -372,6 +375,29 @@ func (s *SessionState) SetLocation(zoneID, roomID, roomName string) {
 	}
 	s.record(LogEntry{Type: LogLocation, Message: "Entered " + label,
 		Data: map[string]any{"zone": zoneID, "room": roomID}})
+	s.touch()
+}
+
+// Scene returns the active scene id.
+func (s *SessionState) Scene() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.CurrentScene
+}
+
+// SetScene switches the active narrative scene/phase. The change is recorded as a
+// LogSystem entry (which /recap and player-facing views filter out, so a scene's
+// authored name can't leak as a spoiler).
+func (s *SessionState) SetScene(id, name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.CurrentScene = id
+	label := name
+	if label == "" {
+		label = id
+	}
+	s.record(LogEntry{Type: LogSystem, Message: "Scene: " + label,
+		Data: map[string]any{"scene": id}})
 	s.touch()
 }
 
@@ -531,6 +557,7 @@ func (s *SessionState) ImportStructured(src *SessionState) {
 	defer s.mu.Unlock()
 	s.CurrentZone = src.CurrentZone
 	s.CurrentRoom = src.CurrentRoom
+	s.CurrentScene = src.CurrentScene
 	s.VisitedRooms = src.VisitedRooms
 	s.KnownNPCs = src.KnownNPCs
 	s.TriggeredEvents = src.TriggeredEvents

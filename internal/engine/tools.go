@@ -175,6 +175,15 @@ var AvailableTools = []types.Tool{
 		}`),
 	},
 	{
+		Name:        "set_scene",
+		Description: "Switch the active narrative scene/phase when the story advances. Scenes can re-dress the same locations with a different state (who is present, what is available, the mood); this does NOT move the party to another place. Use the scene ids offered by the current scene's transitions.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{"scene_id":{"type":"string"}},
+			"required":["scene_id"]
+		}`),
+	},
+	{
 		Name:        "set_flag",
 		Description: "Set a boolean story flag tracking a decision or world change (e.g. 'gate_opened').",
 		Parameters: json.RawMessage(`{
@@ -424,6 +433,8 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 		return tr.setNPCAlive(call.ID, args)
 	case "trigger_event":
 		return tr.triggerEvent(call.ID, args)
+	case "set_scene":
+		return tr.setScene(call.ID, args)
 	case "set_flag":
 		return tr.setFlag(call.ID, args)
 	case "set_variable":
@@ -903,6 +914,17 @@ func (tr *ToolRouter) triggerEvent(id string, args map[string]any) types.ToolRes
 	tr.state().TriggerEvent(eid, name)
 	tr.session.MarkModified()
 	return okResult(id, "event triggered: "+name)
+}
+
+func (tr *ToolRouter) setScene(id string, args map[string]any) types.ToolResult {
+	sid, _ := args["scene_id"].(string)
+	sc := tr.adv().Scene(sid)
+	if sc == nil {
+		return errResult(id, "no scene with id "+sid)
+	}
+	tr.state().SetScene(sc.ID, sc.Name)
+	tr.session.MarkModified()
+	return okResult(id, "scene set to "+nameOrID(sc.Name, sc.ID))
 }
 
 func (tr *ToolRouter) setFlag(id string, args map[string]any) types.ToolResult {

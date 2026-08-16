@@ -10,6 +10,34 @@ import (
 // This file renders authored adventure content into readable text blocks,
 // reused by the oracle context builder, the DM commands, and the TUI panels.
 
+// effectiveRoom returns the room as it should be presented under the active
+// scene: a copy of the authored room with the scene's overrides applied (boxed
+// text replaced, DM notes appended, present cast replaced), plus the scene's
+// free-text "what's notably different now" note. When scene is nil or has no
+// override for this room, the authored room is returned unchanged and the note
+// is empty — so a module without scenes behaves exactly as before.
+func effectiveRoom(scene *domain.Scene, room *domain.Room) (*domain.Room, string) {
+	sr := scene.Room(room.ID) // scene.Room is nil-safe
+	if sr == nil {
+		return room, ""
+	}
+	eff := *room // copy; we only replace whole fields, never mutate the authored slices
+	if sr.ReadAloud != "" {
+		eff.ReadAloud = sr.ReadAloud
+	}
+	if sr.DMNotes != "" {
+		if eff.DMNotes != "" {
+			eff.DMNotes = eff.DMNotes + "\n" + sr.DMNotes
+		} else {
+			eff.DMNotes = sr.DMNotes
+		}
+	}
+	if len(sr.NPCIDs) > 0 {
+		eff.NPCIDs = sr.NPCIDs
+	}
+	return &eff, sr.Present
+}
+
 // FormatRoom renders a room with its read-aloud text and DM notes.
 func FormatRoom(adv *domain.Adventure, r *domain.Room) string {
 	if r == nil {

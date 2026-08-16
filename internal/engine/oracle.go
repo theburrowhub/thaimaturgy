@@ -442,19 +442,49 @@ func (o *Oracle) buildSystemPrompt() string {
 	}
 
 	sb.WriteString("\n=== CURRENT SITUATION ===\n")
+	// Resolve the active scene (if any). Scenes let the same location read
+	// differently at different points in the story, so the room below is rendered
+	// THROUGH the scene's overrides. A module with no scenes → scene is nil and
+	// everything behaves exactly as before.
+	scene := adv.Scene(st.CurrentScene)
+	if scene != nil {
+		fmt.Fprintf(&sb, "Current scene: %s [%s]\n", nameOrID(scene.Name, scene.ID), scene.ID)
+		if scene.Description != "" {
+			fmt.Fprintf(&sb, "Scene notes (DM eyes only): %s\n", scene.Description)
+		}
+		if len(scene.Next) > 0 {
+			sb.WriteString("This scene can lead to (advance with set_scene when the story calls for it — you decide when):\n")
+			for _, t := range scene.Next {
+				label := t.To
+				if ns := adv.Scene(t.To); ns != nil {
+					label = nameOrID(ns.Name, ns.ID) + " [" + ns.ID + "]"
+				}
+				if t.When != "" {
+					fmt.Fprintf(&sb, "  - %s — when: %s\n", label, t.When)
+				} else {
+					fmt.Fprintf(&sb, "  - %s\n", label)
+				}
+			}
+		}
+		sb.WriteString("Describe locations AS THEY ARE IN THIS SCENE (present cast, mood, what's available) using the scene overrides below; do not treat a change of scene as moving to another place.\n")
+	}
 	if room, zone := adv.Room(st.CurrentRoom); room != nil {
 		if zone != nil {
 			fmt.Fprintf(&sb, "Zone: %s [%s]\n", zone.Name, zone.ID)
 		}
-		sb.WriteString(FormatRoom(adv, room))
+		effRoom, present := effectiveRoom(scene, room)
+		if present != "" {
+			fmt.Fprintf(&sb, "In this scene, notably: %s\n", present)
+		}
+		sb.WriteString(FormatRoom(adv, effRoom))
 		sb.WriteString("\n")
 		// NB: DM-recorded world changes (issue #21) are NOT injected here. They are
 		// model-generated in response to player actions, so they are untrusted and
 		// must not sit at system priority; buildMessages/askViaCLI deliver them in a
 		// separate, lower-priority data message instead (see worldStateContext).
-		if len(room.NPCIDs) > 0 {
+		if len(effRoom.NPCIDs) > 0 {
 			sb.WriteString("\n--- Present NPCs ---\n")
-			for _, nid := range room.NPCIDs {
+			for _, nid := range effRoom.NPCIDs {
 				if n := adv.NPC(nid); n != nil {
 					sb.WriteString(FormatNPC(adv, n))
 					sb.WriteString("\n\n")
