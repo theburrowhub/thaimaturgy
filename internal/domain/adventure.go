@@ -55,7 +55,47 @@ type Adventure struct {
 	Lore     []LoreEntry `json:"lore,omitempty"`
 	Images   []ImageRef  `json:"images,omitempty"`
 
+	// Scenes model narrative progression that isn't purely spatial: an adventure
+	// can be structured as scenes/phases that advance in sequence and/or by the
+	// players' choices, and a scene can re-dress the SAME locations with a
+	// different state (who is present, what is available, the mood) without
+	// duplicating zones. A module with no scenes behaves exactly as before: a
+	// single implicit scene and plain room-to-room movement.
+	Scenes []Scene `json:"scenes,omitempty"`
+
 	Meta map[string]any `json:"meta,omitempty"`
+}
+
+// Scene is one narrative beat/phase of the adventure. While a scene is active it
+// can override how specific rooms are presented (see SceneRoom), so the same
+// location can read differently at different points in the story (e.g. a hall
+// bustling by day and deserted by night, or a vault before and after a heist).
+type Scene struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name,omitempty"`
+	Description string            `json:"description,omitempty"` // DM-facing: what this scene is about / how to run it
+	ReadAloud   string            `json:"read_aloud,omitempty"`  // optional narration to set the scene when it opens
+	Initial     bool              `json:"initial,omitempty"`     // the scene the adventure starts in
+	Rooms       []SceneRoom       `json:"rooms,omitempty"`       // per-location overrides while this scene is active
+	Next        []SceneTransition `json:"next,omitempty"`        // how/where the story goes from here
+}
+
+// SceneRoom overrides how one room is presented while its scene is active. Empty
+// fields leave the room's authored defaults untouched; set fields replace them.
+type SceneRoom struct {
+	Room      string   `json:"room"`                 // the room id this override applies to
+	ReadAloud string   `json:"read_aloud,omitempty"` // replaces the room's boxed text this scene
+	DMNotes   string   `json:"dm_notes,omitempty"`   // extra DM notes for this scene (added to the room's)
+	NPCIDs    []string `json:"npc_ids,omitempty"`    // who is present this scene (replaces the room's default cast)
+	Present   string   `json:"present,omitempty"`    // free-text: what's notably different now (crowd, guards, items on display…)
+}
+
+// SceneTransition documents how the story advances from a scene. It is guidance
+// for the DM (human or virtual) — the DM decides when to move on — not an
+// automatically-evaluated trigger.
+type SceneTransition struct {
+	To   string `json:"to"`             // target scene id
+	When string `json:"when,omitempty"` // DM-facing: the condition or choice that leads there
 }
 
 // Zone is a coherent region of the adventure (a dungeon level, a town, a
@@ -462,6 +502,44 @@ func (a *Adventure) Event(id string) *Event {
 	return nil
 }
 
+// Scene returns the scene with the given ID, or nil.
+func (a *Adventure) Scene(id string) *Scene {
+	for i := range a.Scenes {
+		if a.Scenes[i].ID == id {
+			return &a.Scenes[i]
+		}
+	}
+	return nil
+}
+
+// InitialSceneID returns the id of the scene the adventure starts in: the one
+// marked Initial, else the first authored scene, else "" when there are none.
+func (a *Adventure) InitialSceneID() string {
+	for i := range a.Scenes {
+		if a.Scenes[i].Initial {
+			return a.Scenes[i].ID
+		}
+	}
+	if len(a.Scenes) > 0 {
+		return a.Scenes[0].ID
+	}
+	return ""
+}
+
+// Room returns the override this scene applies to a room, or nil when the scene
+// leaves that room at its authored defaults.
+func (s *Scene) Room(roomID string) *SceneRoom {
+	if s == nil {
+		return nil
+	}
+	for i := range s.Rooms {
+		if s.Rooms[i].Room == roomID {
+			return &s.Rooms[i]
+		}
+	}
+	return nil
+}
+
 // Item returns the item with the given ID, or nil.
 func (a *Adventure) Item(id string) *Item {
 	for i := range a.Items {
@@ -662,6 +740,26 @@ func ValidateAdventure(a *Adventure, imageExists func(relPath string) bool) []er
 		}
 	}
 
+	sceneIDs := make(map[string]bool)
+	initialScenes := 0
+	for i := range a.Scenes {
+		sc := a.Scenes[i]
+		if sc.ID == "" {
+			add("scene %q: 'id' is required", sc.Name)
+			continue
+		}
+		if sceneIDs[sc.ID] {
+			add("scene: duplicate id %q", sc.ID)
+		}
+		sceneIDs[sc.ID] = true
+		if sc.Initial {
+			initialScenes++
+		}
+	}
+	if initialScenes > 1 {
+		add("adventure: more than one scene is marked initial")
+	}
+
 	// Image catalog IDs (for image_ids references) and duplicate detection.
 	imageIDs := make(map[string]bool)
 	for _, img := range a.Images {
@@ -720,6 +818,28 @@ func ValidateAdventure(a *Adventure, imageExists func(relPath string) bool) []er
 	}
 	if s := strings.TrimSpace(a.StartRoom); s != "" && !roomIDs[s] {
 		add("adventure: start_room references unknown room %q", s)
+	}
+	for i := range a.Scenes {
+		sc := a.Scenes[i]
+		for _, sr := range sc.Rooms {
+			if strings.TrimSpace(sr.Room) == "" {
+				add("scene %q: a room override is missing 'room'", sc.ID)
+			} else if !roomIDs[sr.Room] {
+				add("scene %q: room override references unknown room %q", sc.ID, sr.Room)
+			}
+			for _, nid := range sr.NPCIDs {
+				if !npcIDs[nid] {
+					add("scene %q: room %q override references unknown npc %q", sc.ID, sr.Room, nid)
+				}
+			}
+		}
+		for _, t := range sc.Next {
+			if strings.TrimSpace(t.To) == "" {
+				add("scene %q: a transition is missing 'to'", sc.ID)
+			} else if !sceneIDs[t.To] {
+				add("scene %q: transition references unknown scene %q", sc.ID, t.To)
+			}
+		}
 	}
 	for _, n := range a.NPCs {
 		if n.DefaultLocation != "" && !roomIDs[n.DefaultLocation] {

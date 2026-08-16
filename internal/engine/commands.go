@@ -44,6 +44,7 @@ const (
 	CmdTable   // roll on a random table
 	CmdBegin   // (virtual-DM) start the game: the DM narrates the opening scene
 	CmdRecap   // instant "previously on…" recap built from session state
+	CmdScene   // show or switch the active narrative scene/phase
 	CmdOracle  // free-form query to the oracle (no slash prefix)
 )
 
@@ -138,6 +139,8 @@ func ParseCommand(input string) *Command {
 		cmd.Type = CmdBegin
 	case "recap", "previously":
 		cmd.Type = CmdRecap
+	case "scene", "phase":
+		cmd.Type = CmdScene
 	default:
 		cmd.Type = CmdUnknown
 	}
@@ -249,6 +252,8 @@ func (h *CommandHandler) Execute(cmd *Command) *CommandResult {
 		h.handleBegin(cmd, r)
 	case CmdRecap:
 		r.Response = h.recapText()
+	case CmdScene:
+		h.handleScene(cmd, r)
 	case CmdUnknown:
 		r.Success = false
 		r.Message = "Unknown command: " + cmd.Raw + ". Type /help."
@@ -274,7 +279,7 @@ func (h *CommandHandler) handleGoto(cmd *Command, r *CommandResult) {
 	h.state().SetLocation(zid, rid, room.Name)
 	h.session.MarkModified()
 	r.Message = "Party moved to " + room.Name
-	r.Response = FormatRoom(h.adv(), room)
+	r.Response = h.sceneRoom(room)
 }
 
 func (h *CommandHandler) handleRoom(_ *Command, r *CommandResult) {
@@ -283,7 +288,21 @@ func (h *CommandHandler) handleRoom(_ *Command, r *CommandResult) {
 		r.Success, r.Message = false, "No current room. Use /goto <room_id>."
 		return
 	}
-	r.Response = FormatRoom(h.adv(), room)
+	r.Response = h.sceneRoom(room)
+}
+
+// sceneRoom renders a room under the session's active scene, so DM commands see
+// the same scene-appropriate presentation the oracle does (the same location can
+// read differently per scene). Falls back to the authored room when there is no
+// scene or no override.
+func (h *CommandHandler) sceneRoom(room *domain.Room) string {
+	scene := h.adv().Scene(h.state().Scene())
+	eff, present := effectiveRoom(scene, room)
+	out := FormatRoom(h.adv(), eff)
+	if present != "" {
+		out = "In this scene, notably: " + present + "\n" + out
+	}
+	return out
 }
 
 func (h *CommandHandler) handleZone(cmd *Command, r *CommandResult) {
@@ -730,6 +749,69 @@ func (h *CommandHandler) recapText() string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+// handleScene shows the active narrative scene and where it can lead (no arg) or
+// switches to another scene (with a scene id). Scene switching is a DM action:
+// it re-dresses the current locations for a new phase of the story, it does not
+// move the party. It is not exposed to Telegram players (authoritative mutation).
+func (h *CommandHandler) handleScene(cmd *Command, r *CommandResult) {
+	adv := h.adv()
+	if len(adv.Scenes) == 0 {
+		r.Success, r.Message = false, "This adventure has no scenes."
+		return
+	}
+	st := h.state()
+	current := st.Scene() // read CurrentScene once, under the state lock (no data race)
+	if len(cmd.Args) == 0 {
+		var sb strings.Builder
+		if cur := adv.Scene(current); cur != nil {
+			fmt.Fprintf(&sb, "Current scene: %s [%s]\n", nameOrID(cur.Name, cur.ID), cur.ID)
+			if cur.Description != "" {
+				fmt.Fprintf(&sb, "  %s\n", cur.Description)
+			}
+			if len(cur.Next) > 0 {
+				sb.WriteString("Can lead to:\n")
+				for _, t := range cur.Next {
+					label := t.To
+					if ns := adv.Scene(t.To); ns != nil {
+						label = nameOrID(ns.Name, ns.ID) + " [" + ns.ID + "]"
+					}
+					if t.When != "" {
+						fmt.Fprintf(&sb, "  - %s — %s\n", label, t.When)
+					} else {
+						fmt.Fprintf(&sb, "  - %s\n", label)
+					}
+				}
+			}
+		} else {
+			sb.WriteString("No scene set.\n")
+		}
+		sb.WriteString("\nAll scenes (switch with /scene <id>):\n")
+		for i := range adv.Scenes {
+			sc := &adv.Scenes[i]
+			marker := "  "
+			if sc.ID == current {
+				marker = "* "
+			}
+			fmt.Fprintf(&sb, "%s%s [%s]\n", marker, nameOrID(sc.Name, sc.ID), sc.ID)
+		}
+		r.Response = strings.TrimRight(sb.String(), "\n")
+		return
+	}
+	sid := cmd.Args[0]
+	sc := adv.Scene(sid)
+	if sc == nil {
+		r.Success, r.Message = false, "No scene with id "+sid
+		return
+	}
+	st.SetScene(sc.ID, sc.Name)
+	h.session.MarkModified()
+	r.Message = "Scene set to " + nameOrID(sc.Name, sc.ID) + "."
+	// Surface the scene's opening narration (if any) so the DM can read it now.
+	if sc.ReadAloud != "" {
+		r.Response = sc.ReadAloud
+	}
+}
+
 // metNPCNames returns, sorted, the names of NPCs the party has met, resolved to
 // module names where possible.
 func (h *CommandHandler) metNPCNames() []string {
@@ -810,6 +892,7 @@ SESSION STATE:
   /flag key=true|false Set a story flag
   /met <npc_id>        Mark an NPC as met (known)
   /trigger <event_id>  Mark a scripted event as triggered
+  /scene [id]          Show or switch the active narrative scene/phase
   /quests              Show tracked quests
   /recap               Quick "previously on…" recap of the session so far
   /party               Show tracked player characters
