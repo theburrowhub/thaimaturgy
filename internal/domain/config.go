@@ -337,7 +337,7 @@ func GMSystemPrompt(lang Language) string {
 // narration when a player first enters virtual-DM mode.
 func DMKickoffPrompt(lang Language) string {
 	if lang == LangSpanish {
-		return "Comienza la partida. Describe la escena inicial de mi grupo en la ubicación actual del módulo y pregúntame qué hacemos."
+		return "Comienza la partida. Primero encuadra la historia: narra a los personajes la premisa y el gancho de la aventura — quiénes son en esta historia, quién los implica y por qué, y qué está en juego — apoyándote en la introducción y los ganchos del módulo. Luego establece la escena inicial en la ubicación de inicio y pregúntame qué hacemos. No reveles secretos ni contenido que los personajes aún no deberían conocer."
 	}
-	return "Begin the game. Set the opening scene for my party at the module's current location and ask what we do."
+	return "Begin the game. First set the stage: narrate the adventure's premise and hook to the characters — who they are in this story, who involves them and why, and what is at stake — drawing on the module's introduction and hooks. Then establish the opening scene at the starting location and ask what we do. Do not reveal secrets or content the characters shouldn't know yet."
 }
