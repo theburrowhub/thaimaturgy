@@ -13,8 +13,8 @@ services:
       # THAIM_PROVIDER: ${THAIM_PROVIDER:-}
       # THAIM_MODEL: ${THAIM_MODEL:-}
     volumes:
-      # Local edit (uncommitted): bind-mount the host's ~/.thaimaturgy so the
-      # container loads the adventures/sessions already there. Revert with
-      # `git checkout docker-compose.yml` to go back to the named volume.
-      - ${HOME}/.thaimaturgy:/data # adventures, sessions, config (host)
+      - thaimaturgy-data:/data # adventures, sessions, config persist here
     restart: unless-stopped
+
+volumes:
+  thaimaturgy-data:

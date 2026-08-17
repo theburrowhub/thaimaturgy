@@ -352,10 +352,14 @@ func (g *gui) showRemoteSettings() {
 		loaded.Provider = domain.ProviderType(strings.TrimSpace(provider.Text))
 		loaded.Model = strings.TrimSpace(model.Text)
 		loaded.Language = domain.Language(strings.TrimSpace(lang.Text))
+		// Capture the client on the UI thread: "Apply & reconnect" can replace
+		// g.remote concurrently, and this config belongs to THIS server — sending it
+		// to a just-applied different server would be wrong (and racy).
+		client := g.remote
 		go func() {
 			ctx, cancel := bg(15)
 			defer cancel()
-			err := g.remote.SaveConfig(ctx, loaded)
+			err := client.SaveConfig(ctx, loaded)
 			fyne.Do(func() {
 				if err != nil {
 					g.showErr(err)
@@ -383,10 +387,12 @@ func (g *gui) showRemoteSettings() {
 
 	// Load the server config in the background; on failure the connection fields
 	// above still work, so the user can correct the URL/token and reconnect.
+	// Capture the client (Apply & reconnect may swap g.remote before this returns).
+	client := g.remote
 	go func() {
 		ctx, cancel := bg(15)
 		defer cancel()
-		cfg, err := g.remote.Config(ctx)
+		cfg, err := client.Config(ctx)
 		fyne.Do(func() {
 			if err != nil {
 				srvStatus.SetText("Could not reach the server (" + err.Error() + "). Fix the URL/token above and Apply & reconnect.")
