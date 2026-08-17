@@ -236,6 +236,19 @@ var AvailableTools = []types.Tool{
 		}`),
 	},
 	{
+		Name:        "set_world_description",
+		Description: "Replace the ENTIRE current player-facing description of a room or NPC after the party changed it (e.g. a hall after a fire, a rearranged vault, a wounded guard). Unlike record_world_change (which appends a small note), this sets the full new description and HIDES the original, so later narration reads only the new state and can never slip back to the old one. Prefer this when the location/NPC now reads substantially differently. Send an empty description to revert to the authored text.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"kind":{"type":"string","enum":["room","npc"],"description":"What kind of entity to re-describe"},
+				"id":{"type":"string","description":"The entity's ID"},
+				"description":{"type":"string","description":"The full current description as the players would now perceive it. Send an explicit empty string to revert to the authored text."}
+			},
+			"required":["kind","id","description"]
+		}`),
+	},
+	{
 		Name:        "advance_quest",
 		Description: "Create or update a quest/objective's status (active, completed, failed).",
 		Parameters: json.RawMessage(`{
@@ -445,6 +458,8 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 		return tr.recordWorldChange(call.ID, args)
 	case "list_world_changes":
 		return tr.listWorldChanges(call.ID, args)
+	case "set_world_description":
+		return tr.setWorldDescription(call.ID, args)
 	case "advance_quest":
 		return tr.advanceQuest(call.ID, args)
 	case "update_party_member":
@@ -483,11 +498,19 @@ func (tr *ToolRouter) getRoom(id string, args map[string]any) types.ToolResult {
 	// Render the room under the active scene so retrieval matches what the party
 	// currently sees (same location, scene-appropriate state).
 	eff, present := effectiveRoom(tr.adv().Scene(tr.state().Scene()), r)
+	// v2: when a full current description overrides this room, suppress the authored
+	// read-aloud here too (copy — never mutate the module); the override is appended
+	// below via worldStateAppendix, so retrieval never returns the stale text.
+	if tr.state().WorldDescription(worldTarget("room", r.ID)) != "" {
+		cp := *eff
+		cp.ReadAloud = ""
+		eff = &cp
+	}
 	body := FormatRoom(tr.adv(), eff)
 	if present != "" {
 		body = "In this scene, notably: " + present + "\n" + body
 	}
-	return okResult(id, body+tr.worldChangesAppendix("room", r.ID))
+	return okResult(id, body+tr.worldStateAppendix("room", r.ID, "the room "+nameOrID(r.Name, r.ID)))
 }
 
 func (tr *ToolRouter) getZone(id string, args map[string]any) types.ToolResult {
@@ -505,7 +528,15 @@ func (tr *ToolRouter) getNPC(id string, args map[string]any) types.ToolResult {
 	if n == nil {
 		return errResult(id, "no npc with id "+nid)
 	}
-	out := FormatNPC(tr.adv(), n)
+	// v2: suppress the authored appearance when a current description overrides it
+	// (copy — never mutate the module); the override is appended below.
+	disp := n
+	if tr.state().WorldDescription(worldTarget("npc", nid)) != "" {
+		cp := *n
+		cp.Appearance = ""
+		disp = &cp
+	}
+	out := FormatNPC(tr.adv(), disp)
 	// If the NPC has no authored stat block, auto-fill a full one from the SRD when
 	// its name matches a standard creature (#26). Authored blocks always win.
 	if n.StatBlock == nil {
@@ -516,7 +547,7 @@ func (tr *ToolRouter) getNPC(id string, args map[string]any) types.ToolResult {
 	if st := tr.state().KnownNPCs[nid]; st != nil {
 		out += fmt.Sprintf("\n[session: met=%v alive=%v disposition=%q]", st.Met, st.Alive, st.Disposition)
 	}
-	return okResult(id, out+tr.worldChangesAppendix("npc", n.ID))
+	return okResult(id, out+tr.worldStateAppendix("npc", n.ID, "the character "+nameOrID(n.Name, n.ID)))
 }
 
 func (tr *ToolRouter) lookupCreature(id string, args map[string]any) types.ToolResult {
@@ -602,6 +633,16 @@ func (tr *ToolRouter) worldChangesAppendix(kind, id string) string {
 	return "\n\n" + block
 }
 
+// worldStateAppendix returns the mutable-world block for a retrieval tool: the
+// full current-description override (v2) when set — so retrieval reflects the
+// current state, not the stale authored text — otherwise the change bullets (v1).
+func (tr *ToolRouter) worldStateAppendix(kind, id, label string) string {
+	if desc := tr.state().WorldDescription(worldTarget(kind, id)); desc != "" {
+		return "\n\n" + FormatWorldState(label, desc, nil)
+	}
+	return tr.worldChangesAppendix(kind, id)
+}
+
 func (tr *ToolRouter) recordWorldChange(id string, args map[string]any) types.ToolResult {
 	kind, _ := args["kind"].(string)
 	eid, _ := args["id"].(string)
@@ -614,11 +655,45 @@ func (tr *ToolRouter) recordWorldChange(id string, args map[string]any) types.To
 	if !ok {
 		return errResult(id, fmt.Sprintf("no %s with id %q (kind must be one of room|zone|npc|item|event)", kind, eid))
 	}
+	// If this target has a full current-description override (v2), the bullet log
+	// is not shown for it — a note recorded here would be silently ignored. Direct
+	// the DM to update the authoritative description instead.
+	if tr.state().WorldDescription(worldTarget(kind, eid)) != "" {
+		return errResult(id, fmt.Sprintf("%s %q has a full current description set; update it with set_world_description instead of recording a separate change (or clear it first with an empty description)", kind, name))
+	}
 	if !tr.state().RecordWorldChange(worldTarget(kind, eid), kind+" "+name, change) {
 		return errResult(id, "change text is empty after removing control characters")
 	}
 	tr.session.MarkModified()
 	return okResult(id, fmt.Sprintf("Recorded change to %s %q. Future reads of it will reflect this state.", kind, name))
+}
+
+func (tr *ToolRouter) setWorldDescription(id string, args map[string]any) types.ToolResult {
+	kind, _ := args["kind"].(string)
+	eid, _ := args["id"].(string)
+	// Require description explicitly: a MISSING field must not silently clear an
+	// existing override. An explicit empty string is still allowed (it clears).
+	descRaw, present := args["description"]
+	if !present {
+		return errResult(id, "description is required (send an explicit empty string to revert to the authored text)")
+	}
+	desc, ok := descRaw.(string)
+	if !ok {
+		return errResult(id, "description must be a string")
+	}
+	if kind != "room" && kind != "npc" {
+		return errResult(id, "kind must be one of room|npc")
+	}
+	name, ok := tr.entityName(kind, eid)
+	if !ok {
+		return errResult(id, fmt.Sprintf("no %s with id %q", kind, eid))
+	}
+	_, set := tr.state().SetWorldDescription(worldTarget(kind, eid), desc)
+	tr.session.MarkModified()
+	if set {
+		return okResult(id, fmt.Sprintf("Updated the current description of %s %q; the authored text is now hidden and future narration uses only this.", kind, name))
+	}
+	return okResult(id, fmt.Sprintf("Reverted %s %q to its authored description.", kind, name))
 }
 
 func (tr *ToolRouter) listWorldChanges(id string, args map[string]any) types.ToolResult {
@@ -627,6 +702,14 @@ func (tr *ToolRouter) listWorldChanges(id string, args map[string]any) types.Too
 	name, ok := tr.entityName(kind, eid)
 	if !ok {
 		return errResult(id, fmt.Sprintf("no %s with id %q", kind, eid))
+	}
+	// A full current-description override supersedes the authored text and the
+	// bullet log, so report it (never claim "as authored" when one is set). Render
+	// it THROUGH FormatWorldState so the model-generated text keeps its untrusted
+	// data-block framing here too, never delivered as bare (injectable) prose.
+	if desc := tr.state().WorldDescription(worldTarget(kind, eid)); desc != "" {
+		return okResult(id, fmt.Sprintf("%s %q has a full CURRENT description (set via set_world_description) that supersedes the authored text:\n\n%s",
+			kind, name, FormatWorldState("this "+kind, desc, nil)))
 	}
 	changes := tr.state().WorldChangesFor(worldTarget(kind, eid))
 	if len(changes) == 0 {

@@ -352,7 +352,13 @@ func (o *Oracle) worldStateContext() string {
 		return ""
 	}
 	var blocks []string
-	if wc := FormatWorldChanges(st.WorldChangesFor(worldTarget("room", room.ID))); wc != "" {
+	// Per target, a full CURRENT-description override (v2) is the single source of
+	// truth and supersedes both the authored text and the bullet log; otherwise
+	// fall back to the recorded change bullets (v1).
+	roomTgt := worldTarget("room", room.ID)
+	if desc := st.WorldDescription(roomTgt); desc != "" {
+		blocks = append(blocks, FormatWorldState("the room "+room.Name, desc, nil))
+	} else if wc := FormatWorldChanges(st.WorldChangesFor(roomTgt)); wc != "" {
 		blocks = append(blocks, "Room "+room.Name+":\n"+wc)
 	}
 	for _, nid := range room.NPCIDs {
@@ -360,7 +366,10 @@ func (o *Oracle) worldStateContext() string {
 		if n == nil {
 			continue
 		}
-		if wc := FormatWorldChanges(st.WorldChangesFor(worldTarget("npc", n.ID))); wc != "" {
+		npcTgt := worldTarget("npc", n.ID)
+		if desc := st.WorldDescription(npcTgt); desc != "" {
+			blocks = append(blocks, FormatWorldState("the character "+n.Name, desc, nil))
+		} else if wc := FormatWorldChanges(st.WorldChangesFor(npcTgt)); wc != "" {
 			blocks = append(blocks, "NPC "+n.Name+":\n"+wc)
 		}
 	}
@@ -478,6 +487,16 @@ func (o *Oracle) buildSystemPrompt() string {
 			fmt.Fprintf(&sb, "Zone: %s [%s]\n", zone.Name, zone.ID)
 		}
 		effRoom, present := effectiveRoom(scene, room)
+		// Mutable-world v2: when the DM has set a full CURRENT description for this
+		// room, SUPPRESS the authored/scene read-aloud here so the model never sees
+		// the stale original. The current description is delivered instead as
+		// untrusted data (worldStateContext). Copy first — effectiveRoom may return
+		// the authored room pointer, which must never be mutated.
+		if st.WorldDescription(worldTarget("room", room.ID)) != "" {
+			cp := *effRoom
+			cp.ReadAloud = ""
+			effRoom = &cp
+		}
 		if present != "" {
 			fmt.Fprintf(&sb, "In this scene, notably: %s\n", present)
 		}
@@ -491,6 +510,13 @@ func (o *Oracle) buildSystemPrompt() string {
 			sb.WriteString("\n--- Present NPCs ---\n")
 			for _, nid := range effRoom.NPCIDs {
 				if n := adv.NPC(nid); n != nil {
+					// Same v2 suppression for an NPC whose current appearance was
+					// overridden (copy so the authored NPC isn't mutated).
+					if st.WorldDescription(worldTarget("npc", nid)) != "" {
+						cp := *n
+						cp.Appearance = ""
+						n = &cp
+					}
 					sb.WriteString(FormatNPC(adv, n))
 					sb.WriteString("\n\n")
 				}

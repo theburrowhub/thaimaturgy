@@ -16,6 +16,10 @@ const (
 	// Heimdallm review).
 	maxWorldChangeLen        = 400
 	maxWorldChangesPerTarget = 12
+	// maxWorldDescriptionLen bounds a full current-description override (v2). It is
+	// generous (a rewritten room/NPC description) but still capped so one call
+	// can't blow up the prompt or store unbounded untrusted text.
+	maxWorldDescriptionLen = 4000
 )
 
 // sanitizeWorldChange normalizes a DM-recorded change for safe, bounded storage.
@@ -46,6 +50,42 @@ func sanitizeWorldChange(s string) string {
 	// and stores invalid UTF-8 (which JSON would then corrupt).
 	if r := []rune(out); len(r) > maxWorldChangeLen {
 		out = strings.TrimSpace(string(r[:maxWorldChangeLen])) + "…"
+	}
+	return out
+}
+
+// sanitizeWorldDescription normalizes a full current-description override (v2).
+// Like sanitizeWorldChange the text is UNTRUSTED (model-generated), but a full
+// description may legitimately span paragraphs, so newlines are preserved (other
+// control chars and tabs are dropped/spaced); runs of 3+ blank lines are
+// collapsed, and the result is length-capped by runes.
+func sanitizeWorldDescription(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\n':
+			b.WriteRune('\n')
+		case r == '\t':
+			b.WriteRune(' ')
+		case unicode.IsControl(r):
+			// drop other control characters (can't inject role/fence markers)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	out := strings.TrimSpace(b.String())
+	for strings.Contains(out, "\n\n\n") {
+		out = strings.ReplaceAll(out, "\n\n\n", "\n\n")
+	}
+	// Neutralize runs of 3+ hyphens: with newlines preserved, an attacker-crafted
+	// description could otherwise forge the "--- END CURRENT WORLD STATE ---"
+	// delimiter on its own line and break out of the untrusted data block. Killing
+	// every 3+ hyphen run makes a fence line impossible to reconstruct.
+	for strings.Contains(out, "---") {
+		out = strings.ReplaceAll(out, "---", "—")
+	}
+	if r := []rune(out); len(r) > maxWorldDescriptionLen {
+		out = strings.TrimSpace(string(r[:maxWorldDescriptionLen])) + "…"
 	}
 	return out
 }
@@ -192,6 +232,17 @@ type SessionState struct {
 	// Empty for sessions that never edited the world (backward compatible).
 	WorldEdits map[string][]WorldChange `json:"world_edits,omitempty"`
 
+	// WorldDescriptions is the mutable-world v2: the DM-recorded CURRENT
+	// player-facing description of a target ("kind:id", kind ∈ room|npc) that
+	// wholly SUPERSEDES the authored text. When one is set, grounding shows ONLY
+	// this (the authored read-aloud/appearance is suppressed), so the model never
+	// sees a stale original alongside a "superseding" note — removing the confusion
+	// and the size cap of the WorldEdits bullet log. Model-generated ⇒ delivered as
+	// untrusted data, never in the system prompt. Empty for sessions that never set
+	// a full description (backward compatible; WorldEdits still handles small
+	// incremental consequences).
+	WorldDescriptions map[string]string `json:"world_descriptions,omitempty"`
+
 	// Mode selects oracle behaviour: assistant (default) or virtual DM. It can be
 	// toggled at any point during a session.
 	Mode SessionMode `json:"mode,omitempty"`
@@ -283,6 +334,9 @@ func (s *SessionState) ensureInitialized() {
 	if s.WorldEdits == nil {
 		s.WorldEdits = make(map[string][]WorldChange)
 	}
+	if s.WorldDescriptions == nil {
+		s.WorldDescriptions = make(map[string]string)
+	}
 	if s.Log == nil {
 		s.Log = &SessionLog{Entries: []LogEntry{}, MaxSize: 0}
 	}
@@ -314,13 +368,14 @@ func (s *SessionState) record(e LogEntry) {
 func NewSessionState(name string, adv *Adventure) *SessionState {
 	now := time.Now()
 	s := &SessionState{
-		Name:            name,
-		VisitedRooms:    make(map[string]bool),
-		KnownNPCs:       make(map[string]*NPCStatus),
-		TriggeredEvents: make(map[string]bool),
-		Flags:           make(map[string]bool),
-		Variables:       make(map[string]string),
-		WorldEdits:      make(map[string][]WorldChange),
+		Name:              name,
+		VisitedRooms:      make(map[string]bool),
+		KnownNPCs:         make(map[string]*NPCStatus),
+		TriggeredEvents:   make(map[string]bool),
+		Flags:             make(map[string]bool),
+		Variables:         make(map[string]string),
+		WorldEdits:        make(map[string][]WorldChange),
+		WorldDescriptions: make(map[string]string),
 		// Unbounded (MaxSize 0): persist the complete timeline and conversation so a
 		// session can be reopened with full context. The oracle only sends a recent
 		// window to the model, so unbounded storage doesn't grow the prompt.
@@ -568,6 +623,7 @@ func (s *SessionState) ImportStructured(src *SessionState) {
 	s.Flags = src.Flags
 	s.Variables = src.Variables
 	s.WorldEdits = src.WorldEdits
+	s.WorldDescriptions = src.WorldDescriptions
 	s.Party = src.Party
 	s.Quests = src.Quests
 	s.Characters = src.Characters
@@ -659,6 +715,41 @@ func (s *SessionState) WorldChangesFor(target string) []WorldChange {
 	out := make([]WorldChange, len(src))
 	copy(out, src)
 	return out
+}
+
+// SetWorldDescription records the CURRENT full player-facing description of a
+// target ("kind:id"), superseding the authored text (mutable-world v2). A blank
+// description CLEARS the override (revert to authored). Returns the stored
+// (sanitized) description and whether an override remains set.
+func (s *SessionState) SetWorldDescription(target, desc string) (string, bool) {
+	clean := sanitizeWorldDescription(desc)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.WorldDescriptions == nil {
+		s.WorldDescriptions = make(map[string]string)
+	}
+	if clean == "" {
+		delete(s.WorldDescriptions, target)
+		s.record(LogEntry{Type: LogWorld, Message: "World description cleared (" + target + ")",
+			Data: map[string]any{"target": target}})
+		s.touch()
+		return "", false
+	}
+	s.WorldDescriptions[target] = clean
+	// The full text isn't logged (avoid noise/spoilers in the timeline); LogWorld
+	// entries are filtered from the recent-timeline dump and from /recap.
+	s.record(LogEntry{Type: LogWorld, Message: "World description updated (" + target + ")",
+		Data: map[string]any{"target": target}})
+	s.touch()
+	return clean, true
+}
+
+// WorldDescription returns the current-description override for a target under
+// the lock ("" when none is set).
+func (s *SessionState) WorldDescription(target string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.WorldDescriptions[target]
 }
 
 // AppendLog appends a pre-formed timeline entry — used to replay into the live
