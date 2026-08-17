@@ -13,6 +13,7 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/apiclient"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 )
 
 // This file is the desktop GUI's REMOTE mode (#60): with --server, the app talks
@@ -164,22 +165,36 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 	logScroll := container.NewVScroll(logBox)
 
 	input := widget.NewEntry()
-	input.SetPlaceHolder("Ask the oracle, or type a /command…")
-	var sendBtn *widget.Button
-	sending := false
-	send := func() {
-		text := input.Text
-		if text == "" || sending {
+
+	var sendBtn, modeBtn, beginBtn, restBtn *widget.Button
+	var applyRemoteMode func(*domain.SessionState)
+	busy := false
+	setBusy := func(b bool) {
+		busy = b
+		for _, w := range []interface {
+			Enable()
+			Disable()
+		}{input, sendBtn, modeBtn, beginBtn, restBtn} {
+			if b {
+				w.Disable()
+			} else {
+				w.Enable()
+			}
+		}
+	}
+
+	// runCmd sends a command or oracle input; for state-mutating commands it then
+	// refetches the session and reconciles the party + mode UI.
+	runCmd := func(text string, echo bool) {
+		if text == "" || busy {
 			return
 		}
-		sending = true
-		input.SetText("")
-		input.Disable()
-		sendBtn.Disable()
-		appendTx("» ", text)
+		setBusy(true)
+		if echo {
+			appendTx("» ", text)
+		}
 		go func() {
 			resp, isCmd, err := g.remoteTurn(name, text)
-			// If a state-mutating command succeeded, refetch to refresh the party.
 			var fresh *domain.SessionState
 			if isCmd && err == nil {
 				fctx, fcancel := bg(15)
@@ -187,9 +202,7 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 				fcancel()
 			}
 			fyne.Do(func() {
-				sending = false
-				input.Enable()
-				sendBtn.Enable()
+				setBusy(false)
 				if err != nil {
 					appendTx("⚠ ", err.Error())
 				} else if resp != "" {
@@ -198,12 +211,66 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 				if fresh != nil {
 					fillParty(party, fresh)
 					party.Refresh()
+					applyRemoteMode(fresh)
 				}
 			})
 		}()
 	}
+
+	send := func() {
+		t := input.Text
+		if t == "" || busy {
+			return
+		}
+		input.SetText("")
+		runCmd(t, true)
+	}
 	input.OnSubmitted = func(string) { send() }
 	sendBtn = widget.NewButtonWithIcon("Send", theme.MailForwardIcon(), send)
+
+	// Oracle ↔ Virtual DM toggle + Begin/Rest, mirroring the local GUI and web:
+	// they run the shared /mode, /begin and /rest commands on the server.
+	modeBtn = widget.NewButton("Mode: Oracle", func() { runCmd("/mode", false) })
+	beginBtn = widget.NewButtonWithIcon("Begin", theme.MediaSkipNextIcon(), func() { runCmd("/begin", false) })
+	beginBtn.Importance = widget.HighImportance
+	beginBtn.Hide()
+	restBtn = widget.NewButtonWithIcon("Rest", theme.ViewRestoreIcon(), func() {
+		go func() {
+			choice := nativeui.Choice("Rest", "Short or long rest for the party?", "Short rest", "Long rest")
+			if choice == 0 {
+				return
+			}
+			k := "short"
+			if choice == 2 {
+				k = "long"
+			}
+			fyne.Do(func() { runCmd("/rest "+k, false) })
+		}()
+	})
+	restBtn.Hide()
+
+	applyRemoteMode = func(s *domain.SessionState) {
+		dm := s != nil && s.EffectiveMode() == domain.ModeVirtualDM
+		started := dm && s.GameStarted()
+		if dm {
+			modeBtn.SetText("Mode: Virtual DM")
+			input.SetPlaceHolder("What do you do?  (Enter sends)")
+		} else {
+			modeBtn.SetText("Mode: Oracle")
+			input.SetPlaceHolder("Ask the oracle, or type a /command…")
+		}
+		if dm && !started {
+			beginBtn.Show()
+		} else {
+			beginBtn.Hide()
+		}
+		if dm && started {
+			restBtn.Show()
+		} else {
+			restBtn.Hide()
+		}
+	}
+	applyRemoteMode(st)
 
 	back := widget.NewButtonWithIcon("← Library", theme.NavigateBackIcon(), func() { g.showRemoteLibrary() })
 	save := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
@@ -217,7 +284,8 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 	})
 
 	novelBtn := widget.NewButtonWithIcon("Novel", theme.DocumentCreateIcon(), g.openNovelEditor)
-	head := container.NewHBox(back, widget.NewLabelWithStyle(name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), layoutSpacer(), novelBtn, save)
+	head := container.NewHBox(back, widget.NewLabelWithStyle(name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		layoutSpacer(), modeBtn, beginBtn, restBtn, novelBtn, save)
 	left := modernPanel("Party", "", container.NewVScroll(party))
 	center := modernPanel("Transcript", "", transScroll)
 	right := modernPanel("Live log", "", logScroll)
@@ -239,10 +307,28 @@ func (g *gui) remoteTurn(name, text string) (resp string, isCmd bool, err error)
 		if e != nil {
 			return "", true, e
 		}
-		if res.Response != "" {
-			return res.Response, true, nil
+		out := res.Response
+		if out == "" {
+			out = res.Message
 		}
-		return res.Message, true, nil
+		// A command may ask the DM to narrate (e.g. /begin sets the opening scene
+		// via ui_action "oracle"): run that oracle turn and append its narration.
+		if res.UIAction == "oracle" && res.UIArg != "" {
+			ans, oe := g.remote.Oracle(ctx, name, res.UIArg)
+			if oe != nil {
+				return out, true, oe
+			}
+			if ans.Error != "" {
+				return out, true, fmt.Errorf("%s", ans.Error)
+			}
+			if ans.Answer != "" {
+				if out != "" {
+					out += "\n\n"
+				}
+				out += ans.Answer
+			}
+		}
+		return out, true, nil
 	}
 	res, e := g.remote.Oracle(ctx, name, text)
 	if e != nil {
