@@ -35,6 +35,8 @@ Thumbs.db
 # Environment
 .env
 .env.local
+# Local Docker Compose overrides (e.g. bind-mounting the host's ~/.thaimaturgy)
+docker-compose.override.yml
 
 # Build artifacts
 dist/
