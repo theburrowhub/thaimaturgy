@@ -191,6 +191,15 @@ func TestClientTokenAuth(t *testing.T) {
 	if _, err := bad.ListAdventures(ctx); err == nil {
 		t.Error("a wrong token should be rejected")
 	}
+	// A blank token is rejected by a token-protected server, but connects to one
+	// that requires none — the contract the desktop Settings rely on (leave the
+	// token field blank when the server has no token).
+	if err := New(c.base, "").Health(ctx); err == nil {
+		t.Error("a blank token should be rejected by a token-protected server")
+	}
+	if err := liveServer(t, "").Health(ctx); err != nil {
+		t.Errorf("a blank token should connect to a token-less server: %v", err)
+	}
 	// An SSE ticket can be minted with the right token.
 	if tk, err := c.SSETicket(ctx); err != nil || tk == "" {
 		t.Errorf("sse ticket = %q (%v)", tk, err)

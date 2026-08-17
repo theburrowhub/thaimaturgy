@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -10,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/theburrowhub/thaimaturgy/internal/apiclient"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
 
@@ -296,43 +298,64 @@ func (g *gui) startRemoteLogStream(name string, logBox *fyne.Container, logScrol
 	}()
 }
 
-// showRemoteSettings edits the server-side config over the API.
+// showRemoteSettings lets the user change the server connection (host URL + access
+// token) and, when the server is reachable, edit its config (provider/model/lang).
+// The connection fields default to the current values and can be changed even when
+// the server is unreachable (e.g. wrong host/token), so the user can fix them here.
 func (g *gui) showRemoteSettings() {
-	go func() {
-		ctx, cancel := bg(15)
-		defer cancel()
-		cfg, err := g.remote.Config(ctx)
-		fyne.Do(func() {
-			if err != nil {
-				g.showErr(err)
-				return
-			}
-			g.remoteSettingsDialog(cfg)
-		})
-	}()
-}
+	// --- Connection: server URL + access token ---
+	urlEntry := widget.NewEntry()
+	urlEntry.SetText(g.remoteURL)
+	urlEntry.SetPlaceHolder("http://127.0.0.1:8765")
+	tokenEntry := widget.NewPasswordEntry()
+	tokenEntry.SetText(g.remoteToken)
+	tokenEntry.SetPlaceHolder("(leave blank if the server requires no token)")
+	connForm := widget.NewForm(
+		widget.NewFormItem("Server URL", urlEntry),
+		widget.NewFormItem("Access token", tokenEntry),
+	)
 
-func (g *gui) remoteSettingsDialog(cfg *domain.Config) {
+	var pop *widget.PopUp
+	applyConn := func() {
+		url := strings.TrimSpace(urlEntry.Text)
+		if url == "" {
+			g.showErr(fmt.Errorf("server URL is required"))
+			return
+		}
+		// Rebuild the client with the new host/token and reconnect. A blank token
+		// connects without one (allowed when the server requires none).
+		g.remoteURL = url
+		g.remoteToken = strings.TrimSpace(tokenEntry.Text)
+		g.remote = apiclient.New(g.remoteURL, g.remoteToken)
+		g.stopRemoteSession()
+		pop.Hide()
+		g.showRemoteLibrary()
+	}
+
+	// --- Server settings (provider/model/language) — needs a live connection ---
 	provider := widget.NewEntry()
-	provider.SetText(string(cfg.Provider))
 	model := widget.NewEntry()
-	model.SetText(cfg.Model)
 	lang := widget.NewEntry()
-	lang.SetText(string(cfg.Language))
-	form := widget.NewForm(
+	srvForm := widget.NewForm(
 		widget.NewFormItem("Provider", provider),
 		widget.NewFormItem("Model", model),
 		widget.NewFormItem("Language", lang),
 	)
-	var pop *widget.PopUp
-	saveBtn := widget.NewButton("Save", func() {
-		cfg.Provider = domain.ProviderType(provider.Text)
-		cfg.Model = model.Text
-		cfg.Language = domain.Language(lang.Text)
+	srvForm.Hide()
+	srvStatus := widget.NewLabel("Loading server settings…")
+	srvStatus.Wrapping = fyne.TextWrapWord
+	var loaded *domain.Config
+	saveSrv := widget.NewButtonWithIcon("Save server settings", theme.DocumentSaveIcon(), func() {
+		if loaded == nil {
+			return
+		}
+		loaded.Provider = domain.ProviderType(strings.TrimSpace(provider.Text))
+		loaded.Model = strings.TrimSpace(model.Text)
+		loaded.Language = domain.Language(strings.TrimSpace(lang.Text))
 		go func() {
 			ctx, cancel := bg(15)
 			defer cancel()
-			err := g.remote.SaveConfig(ctx, cfg)
+			err := g.remote.SaveConfig(ctx, loaded)
 			fyne.Do(func() {
 				if err != nil {
 					g.showErr(err)
@@ -342,13 +365,42 @@ func (g *gui) remoteSettingsDialog(cfg *domain.Config) {
 			})
 		}()
 	})
+	saveSrv.Hide()
+
 	content := container.NewVBox(
-		widget.NewLabelWithStyle("Server settings", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
-		form, container.NewHBox(saveBtn, widget.NewButton("Close", func() { pop.Hide() })),
+		widget.NewLabelWithStyle("Connection", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		connForm,
+		container.NewHBox(widget.NewButtonWithIcon("Apply & reconnect", theme.ConfirmIcon(), applyConn)),
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Server settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		srvStatus, srvForm, saveSrv,
+		widget.NewSeparator(),
+		container.NewHBox(widget.NewButton("Close", func() { pop.Hide() })),
 	)
 	pop = widget.NewModalPopUp(container.NewPadded(content), g.win.Canvas())
-	pop.Resize(fyne.NewSize(420, 260))
+	pop.Resize(fyne.NewSize(480, 460))
 	pop.Show()
+
+	// Load the server config in the background; on failure the connection fields
+	// above still work, so the user can correct the URL/token and reconnect.
+	go func() {
+		ctx, cancel := bg(15)
+		defer cancel()
+		cfg, err := g.remote.Config(ctx)
+		fyne.Do(func() {
+			if err != nil {
+				srvStatus.SetText("Could not reach the server (" + err.Error() + "). Fix the URL/token above and Apply & reconnect.")
+				return
+			}
+			loaded = cfg
+			provider.SetText(string(cfg.Provider))
+			model.SetText(cfg.Model)
+			lang.SetText(string(cfg.Language))
+			srvStatus.Hide()
+			srvForm.Show()
+			saveSrv.Show()
+		})
+	}()
 }
 
 // stopRemoteSession cancels the current session's SSE stream, if any.

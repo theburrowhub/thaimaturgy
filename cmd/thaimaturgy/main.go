@@ -110,6 +110,8 @@ type gui struct {
 	// client against a thaimaturgy-server over the HTTP API instead of the
 	// in-process core. nil in the default local mode.
 	remote       *apiclient.Client
+	remoteURL    string             // the server URL the client targets (editable in Settings)
+	remoteToken  string             // the bearer token used to connect ("" = none)
 	remoteName   string             // the open remote session, if any
 	remoteCancel context.CancelFunc // cancels the open session's SSE stream
 }
@@ -173,6 +175,7 @@ func main() {
 	g.win = g.app.NewWindow("thAImaturgy — DM Oracle")
 	g.win.Resize(fyne.NewSize(1200, 780))
 	if url := strings.TrimSpace(*serverURL); url != "" {
+		g.remoteURL, g.remoteToken = url, serverToken
 		g.remote = apiclient.New(url, serverToken)
 		g.showRemoteLibrary()
 	} else {
