@@ -113,6 +113,10 @@ func TestRetrievalReflectsOverride(t *testing.T) {
 	if strings.Contains(lw.Content, "as authored") || !strings.Contains(lw.Content, "scorched ruin") {
 		t.Errorf("list_world_changes should report the override, not 'as authored':\n%s", lw.Content)
 	}
+	// The override must keep its untrusted-data framing here too (no bare prose).
+	if !strings.Contains(lw.Content, "untrusted") || !strings.Contains(lw.Content, "CURRENT WORLD STATE") {
+		t.Errorf("list_world_changes must wrap the override as untrusted data:\n%s", lw.Content)
+	}
 }
 
 // record_world_change is rejected for a target that has a full override (else the

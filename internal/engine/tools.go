@@ -704,9 +704,12 @@ func (tr *ToolRouter) listWorldChanges(id string, args map[string]any) types.Too
 		return errResult(id, fmt.Sprintf("no %s with id %q", kind, eid))
 	}
 	// A full current-description override supersedes the authored text and the
-	// bullet log, so report it (never claim "as authored" when one is set).
+	// bullet log, so report it (never claim "as authored" when one is set). Render
+	// it THROUGH FormatWorldState so the model-generated text keeps its untrusted
+	// data-block framing here too, never delivered as bare (injectable) prose.
 	if desc := tr.state().WorldDescription(worldTarget(kind, eid)); desc != "" {
-		return okResult(id, fmt.Sprintf("%s %q has a full CURRENT description (set via set_world_description) that supersedes the authored text:\n%s", kind, name, desc))
+		return okResult(id, fmt.Sprintf("%s %q has a full CURRENT description (set via set_world_description) that supersedes the authored text:\n\n%s",
+			kind, name, FormatWorldState("this "+kind, desc, nil)))
 	}
 	changes := tr.state().WorldChangesFor(worldTarget(kind, eid))
 	if len(changes) == 0 {
