@@ -63,6 +63,11 @@ type fileConfig struct {
 		Speed   float64 `yaml:"speed"`
 	} `yaml:"tts"`
 
+	SpoilerGuard struct {
+		Enabled bool   `yaml:"enabled"`
+		Model   string `yaml:"model,omitempty"`
+	} `yaml:"spoiler_guard"`
+
 	Telegram struct {
 		BotToken     string   `yaml:"bot_token"`               // token to host the multiplayer bot
 		ChatID       int64    `yaml:"chat_id"`                 // optional: restrict the bot to this chat
@@ -108,6 +113,9 @@ func fromConfig(c *domain.Config) fileConfig {
 	fc.TTS.Model = c.TTS.Model
 	fc.TTS.Speed = c.TTS.Speed
 
+	fc.SpoilerGuard.Enabled = c.SpoilerGuard.Enabled
+	fc.SpoilerGuard.Model = c.SpoilerGuard.Model
+
 	fc.Telegram.BotToken = c.TelegramToken
 	fc.Telegram.ChatID = c.TelegramChatID
 	fc.Telegram.AllowedUsers = c.TelegramAllowedUsers
@@ -150,6 +158,9 @@ func toConfig(fc *fileConfig, c *domain.Config) {
 	c.TTS.Voice = domain.TTSVoice(fc.TTS.Voice)
 	c.TTS.Model = fc.TTS.Model
 	c.TTS.Speed = fc.TTS.Speed
+
+	c.SpoilerGuard.Enabled = fc.SpoilerGuard.Enabled
+	c.SpoilerGuard.Model = fc.SpoilerGuard.Model
 
 	c.TelegramToken = fc.Telegram.BotToken
 	c.TelegramChatID = fc.Telegram.ChatID
