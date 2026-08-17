@@ -77,6 +77,13 @@ func sanitizeWorldDescription(s string) string {
 	for strings.Contains(out, "\n\n\n") {
 		out = strings.ReplaceAll(out, "\n\n\n", "\n\n")
 	}
+	// Neutralize runs of 3+ hyphens: with newlines preserved, an attacker-crafted
+	// description could otherwise forge the "--- END CURRENT WORLD STATE ---"
+	// delimiter on its own line and break out of the untrusted data block. Killing
+	// every 3+ hyphen run makes a fence line impossible to reconstruct.
+	for strings.Contains(out, "---") {
+		out = strings.ReplaceAll(out, "---", "—")
+	}
 	if r := []rune(out); len(r) > maxWorldDescriptionLen {
 		out = strings.TrimSpace(string(r[:maxWorldDescriptionLen])) + "…"
 	}

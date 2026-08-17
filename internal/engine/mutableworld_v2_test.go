@@ -92,6 +92,64 @@ func TestSetWorldDescriptionTool(t *testing.T) {
 	}
 }
 
+// Retrieval tools must reflect the override too (not just current-room
+// grounding): get_room/get_npc suppress the authored text and show the current
+// description; list_world_changes reports the override. (#97 review)
+func TestRetrievalReflectsOverride(t *testing.T) {
+	s := worldSession()
+	tr := NewToolRouter(s)
+	s.State.SetWorldDescription(worldTarget("room", "altar"), "The altar room is a scorched ruin.")
+	s.State.SetWorldDescription(worldTarget("npc", "warden"), "The Warden lies dead.")
+
+	gr := call(tr, "get_room", map[string]any{"room_id": "altar"})
+	if strings.Contains(gr.Content, "A suit of armor stands beside the altar.") || !strings.Contains(gr.Content, "scorched ruin") {
+		t.Errorf("get_room should show the current description, not the authored:\n%s", gr.Content)
+	}
+	gn := call(tr, "get_npc", map[string]any{"npc_id": "warden"})
+	if strings.Contains(gn.Content, "A silent guardian.") || !strings.Contains(gn.Content, "lies dead") {
+		t.Errorf("get_npc should show the current description, not the authored:\n%s", gn.Content)
+	}
+	lw := call(tr, "list_world_changes", map[string]any{"kind": "room", "id": "altar"})
+	if strings.Contains(lw.Content, "as authored") || !strings.Contains(lw.Content, "scorched ruin") {
+		t.Errorf("list_world_changes should report the override, not 'as authored':\n%s", lw.Content)
+	}
+}
+
+// record_world_change is rejected for a target that has a full override (else the
+// note would be silently dropped). (#97 review)
+func TestRecordWorldChangeRejectedWhenOverridden(t *testing.T) {
+	s := worldSession()
+	tr := NewToolRouter(s)
+	s.State.SetWorldDescription(worldTarget("room", "altar"), "scorched ruin")
+	res := call(tr, "record_world_change", map[string]any{"kind": "room", "id": "altar", "change": "a door is broken"})
+	if res.Error == "" {
+		t.Error("record_world_change on an overridden target should be rejected with guidance")
+	}
+}
+
+// A MISSING description must not silently clear an override; an explicit empty
+// string still clears. (#97 review)
+func TestSetWorldDescriptionRequiresField(t *testing.T) {
+	s := worldSession()
+	tr := NewToolRouter(s)
+	tgt := worldTarget("room", "altar")
+	s.State.SetWorldDescription(tgt, "scorched ruin")
+	// Field omitted → error, override untouched.
+	if res := call(tr, "set_world_description", map[string]any{"kind": "room", "id": "altar"}); res.Error == "" {
+		t.Error("a missing description must be rejected, not treated as a clear")
+	}
+	if s.State.WorldDescription(tgt) == "" {
+		t.Error("the override must survive a rejected (missing-description) call")
+	}
+	// Explicit empty string → clears.
+	if res := call(tr, "set_world_description", map[string]any{"kind": "room", "id": "altar", "description": ""}); res.Error != "" {
+		t.Errorf("explicit empty description should clear: %v", res.Error)
+	}
+	if s.State.WorldDescription(tgt) != "" {
+		t.Error("explicit empty should have cleared the override")
+	}
+}
+
 // A world override takes precedence over a scene's read-aloud (#84): with both,
 // the prompt shows neither authored nor scene text, only the world state does.
 func TestWorldDescriptionBeatsScene(t *testing.T) {
