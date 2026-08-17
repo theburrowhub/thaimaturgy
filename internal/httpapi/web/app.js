@@ -956,6 +956,10 @@ async function loadSettings() {
   const ttsEnabled = g("TTS enabled", checkbox(c.tts && c.tts.enabled));
   const ttsVoice = g("TTS voice", selectFrom(["alloy", "echo", "fable", "onyx", "nova", "shimmer"], (c.tts && c.tts.voice) || "alloy"));
 
+  sec("Spoiler guard (Virtual DM)");
+  const sgEnabled = g("Review DM narration for spoilers", checkbox(c.spoiler_guard && c.spoiler_guard.enabled));
+  const sgModel = g("Review model (optional; blank = oracle model)", input((c.spoiler_guard && c.spoiler_guard.model) || ""));
+
   sec("API keys (write-only)");
   const kOpenAI = g("OpenAI API key", passwordInput());
   const kAnthropic = g("Anthropic API key", passwordInput());
@@ -967,7 +971,7 @@ async function loadSettings() {
   const tgUsers = g("Allowed users (one numeric id per line)", textarea((c.telegram_allowed_users || []).join("\n"), 3));
 
   const save = el("button", null, "Save settings"); save.type = "submit"; f.append(save);
-  settingsRefs = { provider, model, runModel, editModel, lang, importLang, temp, maxTokens, importMax, oracleIters, timeout, autosave, autosaveInt, ttsEnabled, ttsVoice, kOpenAI, kAnthropic, kGemini, tgToken, tgChat, tgUsers };
+  settingsRefs = { provider, model, runModel, editModel, lang, importLang, temp, maxTokens, importMax, oracleIters, timeout, autosave, autosaveInt, ttsEnabled, ttsVoice, sgEnabled, sgModel, kOpenAI, kAnthropic, kGemini, tgToken, tgChat, tgUsers };
 }
 
 $("#settings-form").addEventListener("submit", async (e) => {
@@ -988,6 +992,7 @@ $("#settings-form").addEventListener("submit", async (e) => {
   cfg.auto_save = r.autosave.checked;
   cfg.auto_save_interval = parseInt(r.autosaveInt.value, 10) || 0;
   cfg.tts = Object.assign({}, cfgCache.tts || {}, { enabled: r.ttsEnabled.checked, voice: r.ttsVoice.value });
+  cfg.spoiler_guard = Object.assign({}, cfgCache.spoiler_guard || {}, { enabled: r.sgEnabled.checked, model: r.sgModel.value.trim() });
   cfg.telegram_chat_id = parseInt(r.tgChat.value, 10) || 0;
   cfg.telegram_allowed_users = r.tgUsers.value.split("\n").map((s) => s.trim()).filter(Boolean);
   // Secrets are write-only: send what was typed (empty = keep current, per the server).

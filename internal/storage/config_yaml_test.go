@@ -125,3 +125,25 @@ func TestConfigTelegramRoundTripAndPerms(t *testing.T) {
 		t.Errorf("chat id round-trip = %d", loaded.TelegramChatID)
 	}
 }
+
+func TestConfigSpoilerGuardRoundTrip(t *testing.T) {
+	clearProviderEnv(t)
+	store, _ := NewWithPath(t.TempDir())
+
+	c := domain.DefaultConfig()
+	if c.SpoilerGuard.Enabled {
+		t.Error("spoiler guard should default to disabled")
+	}
+	c.SpoilerGuard.Enabled = true
+	c.SpoilerGuard.Model = "gpt-4o-mini"
+	if err := store.SaveConfig(c); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	loaded, err := store.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if !loaded.SpoilerGuard.Enabled || loaded.SpoilerGuard.Model != "gpt-4o-mini" {
+		t.Errorf("spoiler guard round-trip = %+v", loaded.SpoilerGuard)
+	}
+}

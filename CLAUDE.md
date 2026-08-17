@@ -136,6 +136,6 @@ THAIM_MODEL              # Model ID
 Config is an organized **`config.yaml`** in the OS config dir
 (`os.UserConfigDir()/thaimaturgy/config.yaml`), shared by all frontends,
 auto-generated on first run and migrated from any legacy `config.json` (no secrets
-written). Sections: provider, ui, session, oracle, import, tts. The nested YAML maps
+written). Sections: provider, ui, session, oracle, import, tts, spoiler_guard. The nested YAML maps
 to/from the flat `domain.Config` in `storage/config_yaml.go`. Adventures live in
 `~/.thaimaturgy/adventures/`, sessions in `~/.thaimaturgy/sessions/`.

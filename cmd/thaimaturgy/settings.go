@@ -61,6 +61,12 @@ func (g *gui) showSettings() {
 		ttsVoice.SetSelected(string(cfg.TTS.Voice))
 	}
 
+	spoilerGuard := widget.NewCheck("", nil)
+	spoilerGuard.SetChecked(cfg.SpoilerGuard.Enabled)
+	spoilerModel := widget.NewEntry()
+	spoilerModel.SetText(cfg.SpoilerGuard.Model)
+	spoilerModel.SetPlaceHolder("(optional: blank = oracle model)")
+
 	openaiKey := widget.NewPasswordEntry()
 	anthropicKey := widget.NewPasswordEntry()
 	geminiKey := widget.NewPasswordEntry()
@@ -96,6 +102,8 @@ func (g *gui) showSettings() {
 		widget.NewFormItem("Auto-save interval (s)", autoSaveInterval),
 		widget.NewFormItem("TTS enabled", ttsEnabled),
 		widget.NewFormItem("TTS voice", ttsVoice),
+		widget.NewFormItem("Spoiler guard (Virtual DM)", spoilerGuard),
+		widget.NewFormItem("Spoiler-guard model", spoilerModel),
 		widget.NewFormItem("OpenAI API key", openaiKey),
 		widget.NewFormItem("Anthropic API key", anthropicKey),
 		widget.NewFormItem("Gemini API key", geminiKey),
@@ -120,6 +128,8 @@ func (g *gui) showSettings() {
 		cfg.AutoSaveInterval = parseInt(autoSaveInterval.Text, cfg.AutoSaveInterval)
 		cfg.TTS.Enabled = ttsEnabled.Checked
 		cfg.TTS.Voice = domain.TTSVoice(ttsVoice.Selected)
+		cfg.SpoilerGuard.Enabled = spoilerGuard.Checked
+		cfg.SpoilerGuard.Model = strings.TrimSpace(spoilerModel.Text)
 		if k := strings.TrimSpace(openaiKey.Text); k != "" {
 			cfg.OpenAIAPIKey = k
 		}
