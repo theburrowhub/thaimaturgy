@@ -85,10 +85,11 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 		totalTokens += chat.Usage.TotalTokens
 
 		if len(chat.ToolCalls) == 0 {
-			resp.Answer = chat.Content
+			answer := o.reviewSpoilers(ctx, chat.Content)
+			resp.Answer = answer
 			resp.LatencyMs = totalLatency
 			resp.TokensUsed = totalTokens
-			o.session.State.AddAssistantMessage(chat.Content)
+			o.session.State.AddAssistantMessage(answer)
 			o.session.MarkModified()
 			return resp
 		}
@@ -254,6 +255,7 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	if merged, e := readSessionFile(sessPath); e == nil {
 		mergeSessionState(st, merged, oldLogLen)
 	}
+	answer = o.reviewSpoilers(ctx, answer)
 	st.AddAssistantMessage(answer)
 	o.session.MarkModified()
 	resp.Answer = answer

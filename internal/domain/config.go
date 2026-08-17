@@ -38,6 +38,17 @@ type TTSConfig struct {
 	Speed   float64  `json:"speed"`
 }
 
+// SpoilerGuardConfig configures the anti-spoiler reviewer: a second AI pass that,
+// in virtual-DM mode, checks the DM's player-facing narration for leaks of
+// hidden/future content and rewrites it minimally before it reaches players.
+// Disabled by default (opt-in) — it costs one extra model call per DM turn.
+type SpoilerGuardConfig struct {
+	Enabled bool `json:"enabled"`
+	// Model overrides the model used for the review pass (may be a cheaper/faster
+	// one). Empty → the active oracle model.
+	Model string `json:"model,omitempty"`
+}
+
 type Config struct {
 	Provider    ProviderType `json:"provider"`
 	Model       string       `json:"model"`
@@ -93,6 +104,9 @@ type Config struct {
 
 	TTS TTSConfig `json:"tts"`
 
+	// SpoilerGuard reviews virtual-DM narration for leaks before players see it.
+	SpoilerGuard SpoilerGuardConfig `json:"spoiler_guard"`
+
 	// Telegram multiplayer bot. The token lets the app launch the bot to host the
 	// current virtual-DM game; ChatID (optional) restricts it to one chat.
 	TelegramToken  string `json:"telegram_token,omitempty"`
@@ -135,6 +149,8 @@ func DefaultConfig() *Config {
 			Model:   "tts-1",
 			Speed:   1.0,
 		},
+
+		SpoilerGuard: SpoilerGuardConfig{Enabled: false},
 	}
 }
 
