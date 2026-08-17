@@ -83,6 +83,18 @@ machine-checkable signal:
 - Optional post-generation check: flag (not block) a narration that contains a
   long verbatim substring of a `secret`/`background` field, surfaced as a
   `🛠 DEBUG` note to the tester, never to players.
+  - **Implemented (#89) — the anti-spoiler reviewer.** A stronger version of this
+    idea ships as an opt-in second AI pass (`Oracle.reviewSpoilers`,
+    `internal/engine/spoilerguard.go`): in virtual-DM mode it compares the DM's
+    player-facing narration against what the players already know vs. the
+    hidden/future material (`background`, current-room `dm_notes`, present NPCs'
+    `secrets`/`motivations`, and the names of not-yet-met NPCs / untriggered
+    events / later scenes) and **rewrites it minimally** to remove leaks before
+    players see it — catching paraphrased leaks a verbatim-substring check would
+    miss. It is **fail-open** (any error/timeout/truncation returns the narration
+    unchanged) and **disabled by default**. Enable it in Settings ("Spoiler guard
+    (Virtual DM)") or via `spoiler_guard.enabled` in `config.yaml`; an optional
+    `spoiler_guard.model` runs the review on a cheaper/faster model.
 
 ### 4d. Authoring guidance
 Document in `authoring-guide.md` which fields are player-facing vs DM-only and how
