@@ -236,6 +236,19 @@ var AvailableTools = []types.Tool{
 		}`),
 	},
 	{
+		Name:        "set_world_description",
+		Description: "Replace the ENTIRE current player-facing description of a room or NPC after the party changed it (e.g. a hall after a fire, a rearranged vault, a wounded guard). Unlike record_world_change (which appends a small note), this sets the full new description and HIDES the original, so later narration reads only the new state and can never slip back to the old one. Prefer this when the location/NPC now reads substantially differently. Send an empty description to revert to the authored text.",
+		Parameters: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"kind":{"type":"string","enum":["room","npc"],"description":"What kind of entity to re-describe"},
+				"id":{"type":"string","description":"The entity's ID"},
+				"description":{"type":"string","description":"The full current description as the players would now perceive it (empty to revert to the authored text)"}
+			},
+			"required":["kind","id"]
+		}`),
+	},
+	{
 		Name:        "advance_quest",
 		Description: "Create or update a quest/objective's status (active, completed, failed).",
 		Parameters: json.RawMessage(`{
@@ -445,6 +458,8 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 		return tr.recordWorldChange(call.ID, args)
 	case "list_world_changes":
 		return tr.listWorldChanges(call.ID, args)
+	case "set_world_description":
+		return tr.setWorldDescription(call.ID, args)
 	case "advance_quest":
 		return tr.advanceQuest(call.ID, args)
 	case "update_party_member":
@@ -619,6 +634,25 @@ func (tr *ToolRouter) recordWorldChange(id string, args map[string]any) types.To
 	}
 	tr.session.MarkModified()
 	return okResult(id, fmt.Sprintf("Recorded change to %s %q. Future reads of it will reflect this state.", kind, name))
+}
+
+func (tr *ToolRouter) setWorldDescription(id string, args map[string]any) types.ToolResult {
+	kind, _ := args["kind"].(string)
+	eid, _ := args["id"].(string)
+	desc, _ := args["description"].(string)
+	if kind != "room" && kind != "npc" {
+		return errResult(id, "kind must be one of room|npc")
+	}
+	name, ok := tr.entityName(kind, eid)
+	if !ok {
+		return errResult(id, fmt.Sprintf("no %s with id %q", kind, eid))
+	}
+	_, set := tr.state().SetWorldDescription(worldTarget(kind, eid), desc)
+	tr.session.MarkModified()
+	if set {
+		return okResult(id, fmt.Sprintf("Updated the current description of %s %q; the authored text is now hidden and future narration uses only this.", kind, name))
+	}
+	return okResult(id, fmt.Sprintf("Reverted %s %q to its authored description.", kind, name))
 }
 
 func (tr *ToolRouter) listWorldChanges(id string, args map[string]any) types.ToolResult {

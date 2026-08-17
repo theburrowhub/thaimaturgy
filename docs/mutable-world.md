@@ -61,3 +61,30 @@ treated as **untrusted**:
 3. Later the party returns. The grounding for the altar room now shows the
    authored text **and** the current-state block, so the DM narrates the empty
    altar and does **not** describe the armor back in its original place.
+
+## v2 — full current-description override (single source of truth, #96)
+
+The bullet log above layers *notes* on top of the authored text, so the model
+sees **both** the original description and the superseding notes and must
+reconcile them — it can under-weight the change and narrate the stale original.
+For a location/NPC that now reads *substantially* differently (a hall after a
+fire, a rearranged vault, a wounded guard), the DM can instead set the **full
+current description**, which **replaces** the authored text entirely:
+
+- Tool `set_world_description{kind:"room"|"npc", id, description}` stores the
+  current player-facing description in `SessionState.WorldDescriptions`
+  (`"kind:id"` → text). An empty `description` reverts to the authored text.
+- When an override is set, grounding **suppresses** the authored
+  `read_aloud`/`appearance` from the (trusted) system prompt and shows **only**
+  the current description — so there is a **single source of truth** and no stale
+  original to confuse the model.
+- Same untrusted handling as v1: the override is still model-generated, so it is
+  delivered in the `CURRENT WORLD STATE` data block, never elevated to the system
+  prompt. It is sanitized (control chars dropped, newlines kept, length-capped by
+  `maxWorldDescriptionLen`) but not squashed to one line, so a rewritten
+  description can span paragraphs — removing v1's `maxWorldChangeLen`/count cap
+  for this case.
+- Precedence: a world-description override wins over a scene `read_aloud` (#84)
+  and the authored text; per target it is used *instead of* the bullet log.
+- Persisted in the session and restored on resume; modules/sessions that never
+  set one keep exactly the v1 behavior.
