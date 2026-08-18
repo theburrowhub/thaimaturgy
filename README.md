@@ -161,7 +161,8 @@ Type a question to consult the oracle, or a slash command:
 | `/search <query>` | Search the whole module |
 | `/map [zone]` · `/art <id\|path>` | Open a map/art image in your OS viewer |
 | `/note <text>` · `/flag key=true` | Feed the running session state |
-| `/roll <dice>` · `/quests` · `/party` · `/status` | Utilities |
+| `/quests` · `/status` | System-neutral utilities |
+| `/roll <dice>` · `/party` | Built-in D&D 5e utilities (unavailable to other rules packages) |
 | `/save [name]` · `/load [name]` · `/quit` | Session management |
 
 Navigation: `TAB` switch panels · `Ctrl+↑/↓` or `PgUp/PgDn` scroll · `ESC` library ·
@@ -169,10 +170,10 @@ Navigation: `TAB` switch panels · `Ctrl+↑/↓` or `PgUp/PgDn` scroll · `ESC`
 
 ## Creating adventures
 
-The quickest way is the **visual module editor** (a separate binary):
+The quickest way is the **visual module editor integrated into the desktop app**:
 
 ```bash
-make run-edit      # form-based editor: build content, import images, package .tar.gz
+make run           # choose Create Adventure, or edit an installed adventure
 ```
 
 It edits every field through forms, imports images into the module's `assets/`,
