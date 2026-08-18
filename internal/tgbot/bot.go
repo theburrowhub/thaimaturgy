@@ -196,8 +196,13 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 	playerID := strconv.FormatInt(m.From.ID, 10)
 	display := displayName(m.From)
 	arg := strings.TrimSpace(m.CommandArguments())
+	command := m.Command()
+	if isLegacyDNDCommand(command) && !sessionHasLegacyDND5E(b.session) {
+		b.reply(m, "This command requires the exact built-in D&D 5e rules package.")
+		return
+	}
 
-	switch m.Command() {
+	switch command {
 	case "begin", "beginadventure":
 		b.startGame(m)
 	case "start", "help":
@@ -328,6 +333,23 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 	default:
 		b.delegateToEngine(m)
 	}
+}
+
+func isLegacyDNDCommand(command string) bool {
+	switch command {
+	case "roll", "rest", "hp", "condition", "cond", "uncondition", "uncond", "gold", "xp", "item", "inv", "setnote":
+		return true
+	default:
+		return false
+	}
+}
+
+func sessionHasLegacyDND5E(session *domain.Session) bool {
+	if session == nil || session.State == nil {
+		return false
+	}
+	runtime, exists, err := session.State.RulesRuntimeSnapshotStrict()
+	return err == nil && exists && engine.IsBuiltinDND5ELock(runtime.Lock)
 }
 
 // logText renders the recent session timeline for players (issue #25). It hides

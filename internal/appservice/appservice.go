@@ -48,6 +48,17 @@ var ErrNameConflict = errors.New("another party member already uses that name")
 // would be clobbered, so the caller should reload and re-apply.
 var ErrNovelConflict = errors.New("the novel changed since it was loaded")
 
+// ErrDNDUtilitiesUnavailable is returned when a caller tries to use a legacy
+// character-sheet or party mutation outside the exact built-in D&D 5e package.
+// Other packages expose their mechanical state exclusively through game_*.
+var ErrDNDUtilitiesUnavailable = errors.New("legacy D&D utilities require the exact built-in D&D 5e rules package")
+
+// SessionCapabilities is a derived, non-persisted view used by frontends to
+// hide compatibility controls that do not belong to the loaded package.
+type SessionCapabilities struct {
+	LegacyDND5E bool `json:"legacy_dnd5e"`
+}
+
 // Service is the facade. It is safe for concurrent use.
 type Service struct {
 	store            *storage.Storage
@@ -158,6 +169,31 @@ func (s *Service) RulesDiagnostics() error {
 		return nil
 	}
 	return s.rulesEnvironment.Diagnostics
+}
+
+// Capabilities returns compatibility features authorized by the open session's
+// exact attested lock. Package ID or display labels alone never enable them.
+func (s *Service) Capabilities(name string) (SessionCapabilities, error) {
+	os, ok := s.Get(name)
+	if !ok {
+		return SessionCapabilities{}, fmt.Errorf("session %q is not open", name)
+	}
+	runtime, exists, err := os.Session.State.RulesRuntimeSnapshotStrict()
+	if err != nil {
+		return SessionCapabilities{}, err
+	}
+	return SessionCapabilities{LegacyDND5E: exists && engine.IsBuiltinDND5ELock(runtime.Lock)}, nil
+}
+
+func (s *Service) requireDNDUtilities(name string) error {
+	capabilities, err := s.Capabilities(name)
+	if err != nil {
+		return err
+	}
+	if !capabilities.LegacyDND5E {
+		return ErrDNDUtilitiesUnavailable
+	}
+	return nil
 }
 
 // persist saves a session and writes roster progression back (#33). The caller
@@ -618,6 +654,9 @@ func (s *Service) withOpenSession(name string, fn func(os *OpenSession) (mutated
 
 // Party returns a snapshot of an open session's party.
 func (s *Service) Party(name string) ([]domain.Character, error) {
+	if err := s.requireDNDUtilities(name); err != nil {
+		return nil, err
+	}
 	os, ok := s.Get(name)
 	if !ok {
 		return nil, fmt.Errorf("session %q is not open", name)
@@ -627,6 +666,9 @@ func (s *Service) Party(name string) ([]domain.Character, error) {
 
 // SetParty replaces an open session's party.
 func (s *Service) SetParty(name string, party []*domain.Character) error {
+	if err := s.requireDNDUtilities(name); err != nil {
+		return err
+	}
 	return s.withOpenSession(name, func(os *OpenSession) (bool, error) {
 		os.Session.State.SetParty(party)
 		return true, nil
@@ -643,6 +685,9 @@ func (s *Service) DefaultParty(name string) error {
 // the (long) AI call started, so a concurrent edit isn't clobbered. It returns
 // ErrPartyConflict otherwise.
 func (s *Service) PlanParty(ctx context.Context, name, prompt string) ([]domain.Character, error) {
+	if err := s.requireDNDUtilities(name); err != nil {
+		return nil, err
+	}
 	os, ok := s.Get(name)
 	if !ok {
 		return nil, fmt.Errorf("session %q is not open", name)
@@ -675,6 +720,9 @@ func (s *Service) PlanParty(ctx context.Context, name, prompt string) ([]domain.
 // the live record still matches base (optimistic concurrency); it returns
 // ErrCharacterConflict otherwise. The character's ID is preserved.
 func (s *Service) UpdateCharacter(name, charName string, base, edited *domain.Character) error {
+	if err := s.requireDNDUtilities(name); err != nil {
+		return err
+	}
 	conflict := false
 	found := false
 	nameConflict := false
@@ -727,6 +775,9 @@ func (s *Service) UpdateCharacter(name, charName string, base, edited *domain.Ch
 // that succeeded — so no successful roster write is left unrecorded — and returns
 // an error naming the member that failed.
 func (s *Service) SavePartyToRoster(name string) error {
+	if err := s.requireDNDUtilities(name); err != nil {
+		return err
+	}
 	var saveErr error
 	err := s.withOpenSession(name, func(os *OpenSession) (bool, error) {
 		snap := os.Session.State.PartySnapshot()

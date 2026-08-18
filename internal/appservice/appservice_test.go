@@ -1,7 +1,9 @@
 package appservice
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,6 +98,61 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	if os.Session.Adventure.ID != "crypt" {
 		t.Errorf("resumed adventure = %q; want crypt", os.Session.Adventure.ID)
+	}
+}
+
+func TestForeignRulesSessionRejectsLegacyDNDUtilities(t *testing.T) {
+	svc, store := newService(t)
+	adv := &domain.Adventure{
+		SchemaVersion: domain.SchemaVersion,
+		ID:            "pbta-game",
+		Title:         "PbtA Game",
+		System:        "PbtA",
+		Ruleset:       &rules.Requirement{ID: "pbta", Version: "0.1.0"},
+		Zones:         []domain.Zone{{ID: "z", Name: "Zone", Rooms: []domain.Room{{ID: "r", Name: "Room"}}}},
+	}
+	dir := store.AdventureDir(adv.ID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.MarshalIndent(adv, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, storage.AdventureFile), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	name, err := svc.NewSession(adv.ID)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	capabilities, err := svc.Capabilities(name)
+	if err != nil || capabilities.LegacyDND5E {
+		t.Fatalf("Capabilities = %+v, %v", capabilities, err)
+	}
+
+	checks := []struct {
+		name string
+		run  func() error
+	}{
+		{"read party", func() error { _, err := svc.Party(name); return err }},
+		{"set party", func() error { return svc.SetParty(name, domain.DefaultParty()) }},
+		{"default party", func() error { return svc.DefaultParty(name) }},
+		{"plan party", func() error { _, err := svc.PlanParty(context.Background(), name, "heroes"); return err }},
+		{"update character", func() error { return svc.UpdateCharacter(name, "x", &domain.Character{}, &domain.Character{}) }},
+		{"save party", func() error { return svc.SavePartyToRoster(name) }},
+		{"telegram", func() error { _, err := svc.StartTelegramHost(name); return err }},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			if err := check.run(); !errors.Is(err, ErrDNDUtilitiesUnavailable) {
+				t.Fatalf("error = %v; want ErrDNDUtilitiesUnavailable", err)
+			}
+		})
+	}
+	opened, _ := svc.Get(name)
+	if party := opened.Session.State.PartySnapshot(); len(party) != 0 {
+		t.Fatalf("foreign legacy party mutated: %+v", party)
 	}
 }
 

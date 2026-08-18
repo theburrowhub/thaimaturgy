@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 )
@@ -20,6 +21,10 @@ import (
 // decides the roster; stats are generated from D&D rules.
 func (g *gui) showPartyEditor() {
 	if g.session == nil {
+		return
+	}
+	if !g.hasLegacyDND5E() {
+		g.showErr(appservice.ErrDNDUtilitiesUnavailable)
 		return
 	}
 

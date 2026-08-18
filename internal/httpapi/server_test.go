@@ -95,6 +95,10 @@ func TestRESTFlow(t *testing.T) {
 	if resp.StatusCode != 200 || state["adventure_id"] != "crypt" {
 		t.Fatalf("get session = %d (%v)", resp.StatusCode, state)
 	}
+	capabilities, ok := state["rules_capabilities"].(map[string]any)
+	if !ok || capabilities["legacy_dnd5e"] != true {
+		t.Fatalf("session capabilities = %#v; want exact D&D compatibility", state["rules_capabilities"])
+	}
 
 	// Run a command.
 	resp, cmd := doJSON(t, "POST", ts.URL+"/api/sessions/"+name+"/command", `{"input":"/note a torch gutters"}`)

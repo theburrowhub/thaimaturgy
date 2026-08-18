@@ -21,6 +21,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/apiclient"
+	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/auth"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
@@ -1129,6 +1130,18 @@ func (g *gui) modeIsDM() bool {
 	return g.session != nil && g.session.State.EffectiveMode() == domain.ModeVirtualDM
 }
 
+func stateHasLegacyDND5E(state *domain.SessionState) bool {
+	if state == nil {
+		return false
+	}
+	runtime, exists, err := state.RulesRuntimeSnapshotStrict()
+	return err == nil && exists && engine.IsBuiltinDND5ELock(runtime.Lock)
+}
+
+func (g *gui) hasLegacyDND5E() bool {
+	return g.session != nil && stateHasLegacyDND5E(g.session.State)
+}
+
 // applyMode reflects the session's current mode in the UI: the toggle button
 // label, the input placeholder, and whether the left panel shows the adventure
 // browser (oracle) or the player-character sheet (virtual DM, tree hidden to
@@ -1138,6 +1151,7 @@ func (g *gui) applyMode() {
 		return
 	}
 	dm := g.modeIsDM()
+	legacyDND5E := g.hasLegacyDND5E()
 	if g.modeBtn != nil {
 		if dm {
 			g.modeBtn.SetText("Mode: Virtual DM")
@@ -1176,11 +1190,18 @@ func (g *gui) applyMode() {
 	// The Telegram host button is only meaningful in virtual-DM mode; leaving DM
 	// mode stops any running bot.
 	if g.telegramBtn != nil {
-		if dm {
+		if dm && legacyDND5E {
 			g.telegramBtn.Show()
 		} else {
 			g.stopTelegram("_📴 Telegram bot stopped (left DM mode)._")
 			g.telegramBtn.Hide()
+		}
+	}
+	if g.diceBtn != nil {
+		if legacyDND5E {
+			g.diceBtn.Show()
+		} else {
+			g.diceBtn.Hide()
 		}
 	}
 	// The Begin button appears only in virtual-DM mode while the game hasn't begun;
@@ -1193,7 +1214,7 @@ func (g *gui) applyMode() {
 		}
 	}
 	if g.restBtn != nil {
-		if dm && g.session.State.GameStarted() {
+		if dm && legacyDND5E && g.session.State.GameStarted() {
 			g.restBtn.Show()
 		} else {
 			g.restBtn.Hide()
@@ -1207,6 +1228,18 @@ func (g *gui) applyMode() {
 // party member.
 func (g *gui) refreshPCPanel() {
 	if g.pcSheet == nil || g.session == nil {
+		return
+	}
+	if !g.hasLegacyDND5E() {
+		packageID := "the loaded rules package"
+		if runtime, exists, err := g.session.State.RulesRuntimeSnapshotStrict(); err == nil && exists {
+			packageID = runtime.Lock.ID
+		}
+		g.pcSheet.Objects = []fyne.CanvasObject{
+			widget.NewLabelWithStyle("Package-managed characters", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			wrapLabel(fmt.Sprintf("%s owns mechanical character state through the game_* tools. The legacy D&D 5e sheet is unavailable for this session.", packageID)),
+		}
+		g.pcSheet.Refresh()
 		return
 	}
 	objs := []fyne.CanvasObject{
@@ -1255,7 +1288,7 @@ func (g *gui) onModeChanged() {
 		return
 	}
 	dm := g.modeIsDM()
-	if dm {
+	if dm && g.hasLegacyDND5E() {
 		g.session.State.EnsureParty()
 	}
 	g.applyMode()
@@ -1304,6 +1337,10 @@ func (g *gui) restParty() {
 	if g.session == nil || !g.modeIsDM() {
 		return
 	}
+	if !g.hasLegacyDND5E() {
+		g.showErr(appservice.ErrDNDUtilitiesUnavailable)
+		return
+	}
 	if g.busy || g.hosting {
 		g.showErr(fmt.Errorf("finish the current oracle turn or stop Telegram hosting before resting"))
 		return
@@ -1337,6 +1374,10 @@ func (g *gui) toggleTelegram() {
 	}
 	if !g.modeIsDM() {
 		g.showErr(fmt.Errorf("switch to Virtual DM mode to host a Telegram game"))
+		return
+	}
+	if !g.hasLegacyDND5E() {
+		g.showErr(appservice.ErrDNDUtilitiesUnavailable)
 		return
 	}
 	token := strings.TrimSpace(g.config.TelegramToken)

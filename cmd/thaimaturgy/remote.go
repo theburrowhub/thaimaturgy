@@ -318,6 +318,7 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 
 	applyRemoteMode = func(s *domain.SessionState) {
 		dm := s != nil && s.EffectiveMode() == domain.ModeVirtualDM
+		legacyDND5E := stateHasLegacyDND5E(s)
 		started := dm && s.GameStarted()
 		switch {
 		case hosting:
@@ -337,14 +338,14 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 		} else {
 			beginBtn.Hide()
 		}
-		if dm && started {
+		if dm && legacyDND5E && started {
 			restBtn.Show()
 		} else {
 			restBtn.Hide()
 		}
 		// The host toggle belongs to virtual-DM mode; keep it visible while
 		// hosting even if the mode readout lags.
-		if dm || hosting {
+		if (dm && legacyDND5E) || hosting {
 			tgBtn.Show()
 		} else {
 			tgBtn.Hide()
@@ -602,6 +603,10 @@ func (g *gui) stopRemoteSession() {
 // fillParty (re)builds a party container from a session snapshot.
 func fillParty(party *fyne.Container, st *domain.SessionState) {
 	party.Objects = nil
+	if !stateHasLegacyDND5E(st) {
+		party.Add(widget.NewLabelWithStyle("Characters are managed by the loaded rules package.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}))
+		return
+	}
 	for i := range st.Characters {
 		party.Objects = append(party.Objects, buildPCSheet(st.Characters[i])...)
 	}

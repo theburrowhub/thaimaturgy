@@ -96,7 +96,6 @@ func run(advID, sessionName, token string, chatID int64) error {
 		state = domain.NewSessionState(sessionName, adv)
 	}
 	state.SetMode(domain.ModeVirtualDM)
-	state.EnsureParty()
 
 	rulesEnvironment, err := runtimecatalog.Load(context.Background(), store.BasePath())
 	if err != nil {
@@ -110,6 +109,10 @@ func run(advID, sessionName, token string, chatID int64) error {
 		return err
 	}
 	session.PersistRules = store.SaveSession
+	if !engine.SupportsDNDUtilities(session) {
+		return fmt.Errorf("the Telegram player controller currently requires the exact built-in D&D 5e rules package")
+	}
+	state.EnsureParty()
 	oracle := engine.NewOracle(session, providers.New(config))
 	if err := store.SaveSession(state); err != nil {
 		return err
