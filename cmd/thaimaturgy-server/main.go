@@ -75,6 +75,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("service: %v", err)
 	}
+	defer svc.Close()
 	if diagnostics := svc.RulesDiagnostics(); diagnostics != nil {
 		log.Printf("rules catalog diagnostics: %v", diagnostics)
 	}

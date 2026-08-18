@@ -58,8 +58,12 @@ type Service struct {
 	config   *domain.Config
 	sessions map[string]*OpenSession // by session name
 
-	configMu   sync.Mutex  // serializes SaveConfig's persist+adopt as one op
-	autosaveCh chan string // session names queued for background save
+	configMu sync.Mutex // serializes SaveConfig's persist+adopt as one op
+
+	autosaveMu     sync.RWMutex // coordinates sends with shutdown
+	autosaveCh     chan string  // session names queued for background save
+	autosaveDone   chan struct{}
+	autosaveClosed bool
 
 	nameMu    sync.Mutex             // guards nameLocks
 	nameLocks map[string]*sync.Mutex // per-session-name lifecycle locks
@@ -140,6 +144,7 @@ func New(store *storage.Storage, config *domain.Config, provider providers.Provi
 		rulesEnvironment: rulesEnvironment,
 		sessions:         make(map[string]*OpenSession),
 		autosaveCh:       make(chan string, 128),
+		autosaveDone:     make(chan struct{}),
 		nameLocks:        make(map[string]*sync.Mutex),
 	}
 	go s.autosaveLoop()
@@ -767,16 +772,43 @@ func (s *Service) DeleteCharacter(id string) error { return s.store.DeleteCharac
 // Autosave enqueues an open session for a background save (FIFO by name, so saves
 // commit in request order). No-op if the session isn't open.
 func (s *Service) Autosave(name string) {
+	if s == nil {
+		return
+	}
 	if _, ok := s.Get(name); !ok {
+		return
+	}
+	s.autosaveMu.RLock()
+	defer s.autosaveMu.RUnlock()
+	if s.autosaveClosed {
 		return
 	}
 	s.autosaveCh <- name
 }
 
 func (s *Service) autosaveLoop() {
+	defer close(s.autosaveDone)
 	for name := range s.autosaveCh {
 		s.doAutosave(name)
 	}
+}
+
+// Close drains the autosave queue and waits for the background worker to stop.
+// It is safe to call more than once and concurrently with Autosave. Open
+// sessions remain registered; callers that need their lifecycle side effects
+// should close those sessions explicitly before closing the service.
+func (s *Service) Close() {
+	if s == nil {
+		return
+	}
+	s.autosaveMu.Lock()
+	if !s.autosaveClosed {
+		s.autosaveClosed = true
+		close(s.autosaveCh)
+	}
+	done := s.autosaveDone
+	s.autosaveMu.Unlock()
+	<-done
 }
 
 // doAutosave saves a session by name under its opMu, skipping it if it closed

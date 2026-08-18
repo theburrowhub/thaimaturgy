@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
@@ -37,6 +38,7 @@ func newService(t *testing.T) (*Service, *storage.Storage) {
 	if err != nil {
 		t.Fatalf("service: %v", err)
 	}
+	t.Cleanup(service.Close)
 	return service, store
 }
 
@@ -167,6 +169,48 @@ func TestExecuteCommandAndAutosave(t *testing.T) {
 	if !found {
 		t.Error("the note did not persist through the facade")
 	}
+}
+
+func TestServiceCloseDrainsAutosavesAndIsIdempotent(t *testing.T) {
+	svc, store := newService(t)
+	name, err := svc.NewSession("crypt")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	if _, err := svc.ExecuteCommand(name, "/note persisted before shutdown"); err != nil {
+		t.Fatalf("ExecuteCommand: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				svc.Close()
+			}()
+		}
+		wg.Wait()
+		svc.Autosave(name) // shutdown turns later enqueue attempts into no-ops
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Service.Close did not stop the autosave worker")
+	}
+
+	reloaded, err := store.LoadSession(name)
+	if err != nil {
+		t.Fatalf("LoadSession: %v", err)
+	}
+	for _, entry := range reloaded.Log.Entries {
+		if entry.Type == domain.LogNote && entry.Message == "persisted before shutdown" {
+			return
+		}
+	}
+	t.Fatal("Close returned before the queued autosave was durable")
 }
 
 func TestNewSessionConcurrentUniqueNames(t *testing.T) {

@@ -41,6 +41,7 @@ func liveServer(t *testing.T, token string) *Client {
 	if err != nil {
 		t.Fatalf("service: %v", err)
 	}
+	t.Cleanup(svc.Close)
 	ts := httptest.NewServer(httpapi.New(svc, token).Handler())
 	t.Cleanup(ts.Close)
 	return New(ts.URL, token)

@@ -47,6 +47,7 @@ func newTestServer(t *testing.T, token string) *httptest.Server {
 	if err != nil {
 		t.Fatalf("service: %v", err)
 	}
+	t.Cleanup(svc.Close)
 	ts := httptest.NewServer(New(svc, token).Handler())
 	t.Cleanup(ts.Close)
 	return ts
@@ -349,6 +350,7 @@ func TestConfigSecretsWriteOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("service: %v", err)
 	}
+	t.Cleanup(svc.Close)
 	var rebuilt int
 	ts := httptest.NewServer(New(svc, "").OnConfigSaved(func(*domain.Config) { rebuilt++ }).Handler())
 	t.Cleanup(ts.Close)
