@@ -116,6 +116,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/sessions/{name}", s.deleteSession)
 	mux.HandleFunc("POST /api/sessions/{name}/command", s.command)
 	mux.HandleFunc("POST /api/sessions/{name}/oracle", s.oracle)
+	mux.HandleFunc("GET /api/sessions/{name}/telegram", s.telegramStatus)
+	mux.HandleFunc("POST /api/sessions/{name}/telegram/start", s.startTelegramHost)
+	mux.HandleFunc("POST /api/sessions/{name}/telegram/stop", s.stopTelegramHost)
 	mux.HandleFunc("GET /api/sessions/{name}/party", s.getParty)
 	mux.HandleFunc("PUT /api/sessions/{name}/party", s.setParty)
 	mux.HandleFunc("POST /api/sessions/{name}/party/default", s.defaultParty)
@@ -694,6 +697,32 @@ func (s *Server) oracle(w http.ResponseWriter, r *http.Request) {
 		out["error"] = resp.Error.Error()
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// telegramStatus reports whether a session is currently hosted on Telegram.
+func (s *Server) telegramStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.svc.TelegramHostStatus(r.PathValue("name")))
+}
+
+// startTelegramHost binds the server-configured Telegram bot to an open session
+// and starts hosting a multiplayer game on it. The token comes from the server
+// config (write-only); the request carries no secret.
+func (s *Server) startTelegramHost(w http.ResponseWriter, r *http.Request) {
+	username, err := s.svc.StartTelegramHost(r.PathValue("name"))
+	if err != nil {
+		httpError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, appservice.TelegramStatus{Hosting: true, Username: username})
+}
+
+// stopTelegramHost stops a session's Telegram host (no-op if it isn't hosting).
+func (s *Server) stopTelegramHost(w http.ResponseWriter, r *http.Request) {
+	if err := s.svc.StopTelegramHost(r.PathValue("name")); err != nil {
+		httpError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, appservice.TelegramStatus{})
 }
 
 func (s *Server) getParty(w http.ResponseWriter, r *http.Request) {

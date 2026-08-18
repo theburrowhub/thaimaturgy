@@ -25,6 +25,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
+	"github.com/theburrowhub/thaimaturgy/internal/tgbot"
 )
 
 // ErrCharacterConflict is returned by UpdateCharacter when the live character no
@@ -82,6 +83,12 @@ type OpenSession struct {
 	// wins the lock after closure bails instead of acting on a dead session.
 	opMu   sync.Mutex
 	closed bool
+
+	// tg is the Telegram bot hosting this session (nil when not hosting), set and
+	// cleared under opMu. While it is non-nil the turn drivers reject other
+	// clients (ErrSessionHosted) so the bot is the sole driver of the Oracle.
+	tg       *tgbot.Bot
+	tgCancel context.CancelFunc
 
 	errMu       sync.Mutex
 	lastSaveErr error // most recent save failure (nil once a save succeeds)
@@ -415,6 +422,7 @@ func (s *Service) CloseSession(name string) error {
 	if os.closed {
 		return nil
 	}
+	os.stopHostLocked() // stop any Telegram host before the final save + teardown
 	if err := s.persist(os); err != nil {
 		return fmt.Errorf("not closing %q — final save failed (retry): %w", name, err)
 	}
@@ -479,6 +487,10 @@ func (s *Service) ExecuteCommand(name, raw string) (*engine.CommandResult, error
 		os.opMu.Unlock()
 		return nil, fmt.Errorf("session %q is not open", name)
 	}
+	if os.tg != nil {
+		os.opMu.Unlock()
+		return nil, ErrSessionHosted
+	}
 	res := os.Cmd.Execute(engine.ParseCommand(raw))
 	os.opMu.Unlock()
 	if res != nil && res.Success {
@@ -501,6 +513,10 @@ func (s *Service) AskOracle(ctx context.Context, name, input string) (*engine.Re
 		os.opMu.Unlock()
 		return nil, fmt.Errorf("session %q is not open", name)
 	}
+	if os.tg != nil {
+		os.opMu.Unlock()
+		return nil, ErrSessionHosted
+	}
 	resp := os.Oracle.Ask(ctx, input)
 	os.opMu.Unlock()
 	s.Autosave(name)
@@ -520,6 +536,10 @@ func (s *Service) withOpenSession(name string, fn func(os *OpenSession) (mutated
 	if os.closed {
 		os.opMu.Unlock()
 		return fmt.Errorf("session %q is not open", name)
+	}
+	if os.tg != nil {
+		os.opMu.Unlock()
+		return ErrSessionHosted
 	}
 	mutated, err := fn(os)
 	os.opMu.Unlock()
