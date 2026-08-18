@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/types"
 )
 
@@ -145,6 +146,26 @@ func TestMCPMutationReceiptSurvivesRetryConflictAndRestart(t *testing.T) {
 	runtime, ok := restoredState.RulesRuntimeSnapshot()
 	if !ok || len(runtime.Receipts) != 1 || runtime.Receipts[0].RequestID != call.ID {
 		t.Fatalf("durable mutation receipt ok=%v runtime=%+v", ok, runtime)
+	}
+}
+
+func TestMCPMutationRejectsOversizedArgumentsBeforeApplyingEffect(t *testing.T) {
+	session := createTestSession()
+	router := NewToolRouter(session)
+	call := types.ToolCall{
+		ID: "mcp:oversized-test:0123456789abcdef", Name: "set_variable",
+		Arguments: json.RawMessage(`{"key":"oversized","value":"` + strings.Repeat("x", rules.MaxPayloadBytes) + `"}`),
+	}
+	result := router.Execute(call)
+	if !strings.Contains(result.Error, "arguments exceed") {
+		t.Fatalf("oversized result = %+v", result)
+	}
+	if value := session.State.Variables["oversized"]; value != "" {
+		t.Fatalf("oversized mutation was applied: %d bytes", len(value))
+	}
+	runtime, ok := session.State.RulesRuntimeSnapshot()
+	if !ok || len(runtime.Receipts) != 0 {
+		t.Fatalf("rejected input created a receipt: ok=%v runtime=%+v", ok, runtime)
 	}
 }
 

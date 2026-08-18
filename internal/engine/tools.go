@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/srd"
 	"github.com/theburrowhub/thaimaturgy/internal/types"
 )
@@ -497,6 +499,9 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 }
 
 func (tr *ToolRouter) executeDurableMCPMutation(call types.ToolCall) types.ToolResult {
+	if len(call.Arguments) > rules.MaxPayloadBytes {
+		return errResult(call.ID, fmt.Sprintf("tool arguments exceed %d bytes", rules.MaxPayloadBytes))
+	}
 	// Match the rules gateway lock order. This prevents a concurrent mechanical
 	// checkpoint from invalidating the receipt generation between Begin/Commit.
 	releaseRules := tr.state().LockRulesHost()
@@ -514,11 +519,25 @@ func (tr *ToolRouter) executeDurableMCPMutation(call types.ToolCall) types.ToolR
 		return toolResultFromReceipt(call.ID, receipt)
 	}
 	defer tr.state().AbortRulesRequest(handle)
-	result := tr.executeOnce(call)
+	result := storableMCPMutationResult(tr.executeOnce(call))
 	if _, err := tr.state().CommitRulesRequest(handle, domain.RulesCommit{
 		State: handle.Snapshot.State, ResolutionID: call.ID, Result: storedToolResult(result),
 	}); err != nil {
 		return errResult(call.ID, "commit durable tool mutation: "+err.Error())
+	}
+	return result
+}
+
+func storableMCPMutationResult(result types.ToolResult) types.ToolResult {
+	switch {
+	case result.Content == "" && result.Error == "":
+		result.Content = "Tool completed without a response."
+	case len(result.Error) > rules.MaxPayloadBytes || !utf8.ValidString(result.Error):
+		result.Content = ""
+		result.Error = "Tool failed, but its error exceeded the durable response limit."
+	case len(result.Content) > rules.MaxPayloadBytes || !utf8.ValidString(result.Content):
+		result.Content = "Tool completed successfully, but its response exceeded the durable response limit."
+		result.Error = ""
 	}
 	return result
 }
