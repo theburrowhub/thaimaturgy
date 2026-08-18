@@ -1206,6 +1206,14 @@ type Session struct {
 	StartedAt  time.Time
 	IsModified bool
 
+	// RulesResolver is the runtime-only catalog that can look up the exact rules
+	// artifact pinned in State. Persisted sessions carry the immutable lock, not
+	// executable package implementations.
+	RulesResolver rules.Resolver
+	// DataDirectory is the runtime-only root from which this session's rules
+	// catalog and other process-owned assets were loaded.
+	DataDirectory string
+
 	// PersistRules is an optional runtime-only durability barrier. Transactional
 	// rules gateways invoke it after every applied checkpoint/receipt and before
 	// resuming a ruleset or returning success. Frontends that promise crash
