@@ -1,6 +1,7 @@
 package coc7e
 
 import (
+	_ "embed"
 	"fmt"
 
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
@@ -13,7 +14,8 @@ const (
 	ActionCheck    = "skill.check"
 )
 
-const artifactMaterial = "thaimaturgy builtin rules artifact\npackage=coc7e\nversion=0.1.0\nprotocol=1.0.0\nactions=skill.check\nabi=1\n"
+//go:embed ruleset.go
+var artifactSource string
 
 // Difficulty identifies the requested success threshold.
 type Difficulty string
@@ -107,7 +109,7 @@ func New() *Ruleset {
 
 // NewArtifact returns the stable host-verifiable built-in artifact.
 func NewArtifact() (core.Artifact, error) {
-	return ruleskit.NewArtifact(PackageID, "Call of Cthulhu 7e core resolution", "Percentile difficulty and bonus/penalty dice primitive; no compendium content.", PackageVersion, artifactMaterial, []string{ActionCheck})
+	return ruleskit.NewArtifact(PackageID, "Call of Cthulhu 7e core resolution", "Percentile difficulty and bonus/penalty dice primitive; no compendium content.", PackageVersion, artifactSource, []string{ActionCheck})
 }
 
 // InitialState returns this stateless package's canonical state.

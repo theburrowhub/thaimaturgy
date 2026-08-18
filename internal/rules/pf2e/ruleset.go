@@ -1,6 +1,7 @@
 package pf2e
 
 import (
+	_ "embed"
 	"fmt"
 
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
@@ -13,7 +14,8 @@ const (
 	ActionCheck    = "check.resolve"
 )
 
-const artifactMaterial = "thaimaturgy builtin rules artifact\npackage=pf2e\nversion=0.1.0\nprotocol=1.0.0\nactions=check.resolve\nabi=1\n"
+//go:embed ruleset.go
+var artifactSource string
 
 // Degree is one of PF2e's ordered degrees of success.
 type Degree string
@@ -87,7 +89,7 @@ func New() *Ruleset {
 
 // NewArtifact returns the stable host-verifiable built-in artifact.
 func NewArtifact() (core.Artifact, error) {
-	return ruleskit.NewArtifact(PackageID, "PF2e core resolution", "Four-degree d20 check primitive; no compendium or setting content.", PackageVersion, artifactMaterial, []string{ActionCheck})
+	return ruleskit.NewArtifact(PackageID, "PF2e core resolution", "Four-degree d20 check primitive; no compendium or setting content.", PackageVersion, artifactSource, []string{ActionCheck})
 }
 
 // InitialState returns this stateless package's canonical state.

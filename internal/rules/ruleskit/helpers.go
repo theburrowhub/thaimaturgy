@@ -60,20 +60,6 @@ func MustPayload(value any) core.Payload {
 	return payload
 }
 
-// NewArtifact builds a stable built-in package artifact.
-func NewArtifact(id, name, description, version, material string, capabilities []string) (core.Artifact, error) {
-	manifest := core.Manifest{
-		ID:              id,
-		Name:            name,
-		Description:     description,
-		Version:         version,
-		ProtocolVersion: core.ProtocolVersion,
-		Runtime:         core.Runtime{Kind: core.RuntimeBuiltin},
-		Capabilities:    append([]string(nil), capabilities...),
-	}
-	return core.NewArtifact(manifest, strings.NewReader(material))
-}
-
 // DiceSpecification is the shared auditable random contract. Each returned
 // face is uniform in the inclusive range [1, Sides].
 type DiceSpecification struct {

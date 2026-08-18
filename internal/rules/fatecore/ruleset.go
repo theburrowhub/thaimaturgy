@@ -1,6 +1,7 @@
 package fatecore
 
 import (
+	_ "embed"
 	"fmt"
 	"strings"
 	"unicode"
@@ -16,7 +17,8 @@ const (
 	ActionResolve  = "action.resolve"
 )
 
-const artifactMaterial = "thaimaturgy builtin rules artifact\npackage=fatecore\nversion=0.1.0\nprotocol=1.0.0\nactions=action.resolve\nabi=1\n"
+//go:embed ruleset.go
+var artifactSource string
 
 // Outcome is Fate's comparison band.
 type Outcome string
@@ -97,7 +99,7 @@ func New() *Ruleset {
 
 // NewArtifact returns the stable host-verifiable built-in artifact.
 func NewArtifact() (core.Artifact, error) {
-	return ruleskit.NewArtifact(PackageID, "Fate Core resolution", "Four Fate dice, shifts, outcomes, and explicit invokes; no compendium content.", PackageVersion, artifactMaterial, []string{ActionResolve})
+	return ruleskit.NewArtifact(PackageID, "Fate Core resolution", "Four Fate dice, shifts, outcomes, and explicit invokes; no compendium content.", PackageVersion, artifactSource, []string{ActionResolve})
 }
 
 // InitialState returns this stateless package's canonical state.

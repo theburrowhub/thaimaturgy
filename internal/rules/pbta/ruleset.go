@@ -1,6 +1,7 @@
 package pbta
 
 import (
+	_ "embed"
 	"fmt"
 
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
@@ -13,7 +14,8 @@ const (
 	ActionMove     = "move.resolve"
 )
 
-const artifactMaterial = "thaimaturgy builtin rules artifact\npackage=pbta\nversion=0.1.0\nprotocol=1.0.0\nactions=move.resolve\nabi=1\n"
+//go:embed ruleset.go
+var artifactSource string
 
 const (
 	phaseRoll     = "roll"
@@ -112,7 +114,7 @@ func New() *Ruleset {
 
 // NewArtifact returns the stable host-verifiable built-in artifact.
 func NewArtifact() (core.Artifact, error) {
-	return ruleskit.NewArtifact(PackageID, "PbtA core resolution", "Generic 2d6 move bands and optional weak-hit choice; no move or playbook text.", PackageVersion, artifactMaterial, []string{ActionMove})
+	return ruleskit.NewArtifact(PackageID, "PbtA core resolution", "Generic 2d6 move bands and optional weak-hit choice; no move or playbook text.", PackageVersion, artifactSource, []string{ActionMove})
 }
 
 // InitialState returns this stateless package's canonical state.

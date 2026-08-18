@@ -1,6 +1,7 @@
 package gurps4e
 
 import (
+	_ "embed"
 	"fmt"
 
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
@@ -13,7 +14,8 @@ const (
 	ActionCheck    = "skill.check"
 )
 
-const artifactMaterial = "thaimaturgy builtin rules artifact\npackage=gurps4e\nversion=0.1.0\nprotocol=1.0.0\nactions=skill.check\nabi=1\n"
+//go:embed ruleset.go
+var artifactSource string
 
 // Outcome classifies a 3d6 check.
 type Outcome string
@@ -90,7 +92,7 @@ func New() *Ruleset {
 
 // NewArtifact returns the stable host-verifiable built-in artifact.
 func NewArtifact() (core.Artifact, error) {
-	return ruleskit.NewArtifact(PackageID, "GURPS 4e core resolution", "3d6 roll-under margin and critical primitive; no compendium content.", PackageVersion, artifactMaterial, []string{ActionCheck})
+	return ruleskit.NewArtifact(PackageID, "GURPS 4e core resolution", "3d6 roll-under margin and critical primitive; no compendium content.", PackageVersion, artifactSource, []string{ActionCheck})
 }
 
 // InitialState returns this stateless package's canonical state.

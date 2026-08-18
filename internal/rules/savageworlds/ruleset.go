@@ -1,6 +1,7 @@
 package savageworlds
 
 import (
+	_ "embed"
 	"fmt"
 
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
@@ -13,7 +14,8 @@ const (
 	ActionTraitTest = "trait.check"
 )
 
-const artifactMaterial = "thaimaturgy builtin rules artifact\npackage=savageworlds\nversion=0.1.0\nprotocol=1.0.0\nactions=trait.check\nabi=1\n"
+//go:embed ruleset.go
+var artifactSource string
 
 const (
 	phaseTrait        = "trait"
@@ -110,7 +112,7 @@ func New() *Ruleset {
 
 // NewArtifact returns the stable host-verifiable built-in artifact.
 func NewArtifact() (core.Artifact, error) {
-	return ruleskit.NewArtifact(PackageID, "Savage Worlds core resolution", "Exploding trait/Wild dice, target numbers, and raises; no compendium content.", PackageVersion, artifactMaterial, []string{ActionTraitTest})
+	return ruleskit.NewArtifact(PackageID, "Savage Worlds core resolution", "Exploding trait/Wild dice, target numbers, and raises; no compendium content.", PackageVersion, artifactSource, []string{ActionTraitTest})
 }
 
 // InitialState returns this stateless package's canonical state.

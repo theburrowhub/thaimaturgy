@@ -1,6 +1,7 @@
 package vtm5e
 
 import (
+	_ "embed"
 	"fmt"
 
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
@@ -13,7 +14,8 @@ const (
 	ActionPoolCheck = "pool.check"
 )
 
-const artifactMaterial = "thaimaturgy builtin rules artifact\npackage=vtm5e\nversion=0.1.0\nprotocol=1.0.0\nactions=pool.check\nabi=1\n"
+//go:embed ruleset.go
+var artifactSource string
 
 // Outcome summarizes the mutually significant V5 result state.
 type Outcome string
@@ -96,7 +98,7 @@ func New() *Ruleset {
 
 // NewArtifact returns the stable host-verifiable built-in artifact.
 func NewArtifact() (core.Artifact, error) {
-	return ruleskit.NewArtifact(PackageID, "Vampire 5e core resolution", "Hunger-aware d10 dice-pool primitive; no compendium or setting content.", PackageVersion, artifactMaterial, []string{ActionPoolCheck})
+	return ruleskit.NewArtifact(PackageID, "Vampire 5e core resolution", "Hunger-aware d10 dice-pool primitive; no compendium or setting content.", PackageVersion, artifactSource, []string{ActionPoolCheck})
 }
 
 // InitialState returns this stateless package's canonical state.

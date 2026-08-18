@@ -1,6 +1,7 @@
 package shadowrun6e
 
 import (
+	_ "embed"
 	"fmt"
 
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
@@ -13,7 +14,8 @@ const (
 	ActionPoolCheck = "pool.check"
 )
 
-const artifactMaterial = "thaimaturgy builtin rules artifact\npackage=shadowrun6e\nversion=0.1.0\nprotocol=1.0.0\nactions=pool.check\nabi=1\n"
+//go:embed ruleset.go
+var artifactSource string
 
 // Outcome summarizes success and glitch state.
 type Outcome string
@@ -91,7 +93,7 @@ func New() *Ruleset {
 
 // NewArtifact returns the stable host-verifiable built-in artifact.
 func NewArtifact() (core.Artifact, error) {
-	return ruleskit.NewArtifact(PackageID, "Shadowrun 6e core resolution", "d6 hits and glitches primitive; no compendium or setting content.", PackageVersion, artifactMaterial, []string{ActionPoolCheck})
+	return ruleskit.NewArtifact(PackageID, "Shadowrun 6e core resolution", "d6 hits and glitches primitive; no compendium or setting content.", PackageVersion, artifactSource, []string{ActionPoolCheck})
 }
 
 // InitialState returns this stateless package's canonical state.

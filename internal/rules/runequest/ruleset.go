@@ -1,6 +1,7 @@
 package runequest
 
 import (
+	_ "embed"
 	"fmt"
 
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
@@ -13,7 +14,8 @@ const (
 	ActionSkillTest = "skill.check"
 )
 
-const artifactMaterial = "thaimaturgy builtin rules artifact\npackage=runequest\nversion=0.1.0\nprotocol=1.0.0\nactions=skill.check\nabi=1\n"
+//go:embed ruleset.go
+var artifactSource string
 
 // Outcome is the degree returned by a skill check.
 type Outcome string
@@ -90,7 +92,7 @@ func New() *Ruleset {
 
 // NewArtifact returns the stable host-verifiable built-in artifact.
 func NewArtifact() (core.Artifact, error) {
-	return ruleskit.NewArtifact(PackageID, "RuneQuest core resolution", "Percentile roll-under degree primitive; no proprietary compendium content.", PackageVersion, artifactMaterial, []string{ActionSkillTest})
+	return ruleskit.NewArtifact(PackageID, "RuneQuest core resolution", "Percentile roll-under degree primitive; no proprietary compendium content.", PackageVersion, artifactSource, []string{ActionSkillTest})
 }
 
 // InitialState returns this stateless package's canonical state.
