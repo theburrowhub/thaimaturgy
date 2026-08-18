@@ -50,3 +50,18 @@ func TestOracleNamespacesProviderToolIDsAcrossTurns(t *testing.T) {
 		t.Fatalf("distinct turns reused a receipt: draws=%d log=%d", draws, session.State.LogLen())
 	}
 }
+
+func TestOracleNamespacesPersistedReceiptsAcrossInstances(t *testing.T) {
+	session := createTestSession()
+	first := NewOracle(session, nil)
+	second := NewOracle(session, nil)
+	if first.executionNamespace == "" || second.executionNamespace == "" ||
+		first.executionNamespace == second.executionNamespace {
+		t.Fatalf("oracle namespaces = %q, %q", first.executionNamespace, second.executionNamespace)
+	}
+	firstID := "oracle:" + first.executionNamespace + ":1:0:0"
+	secondID := "oracle:" + second.executionNamespace + ":1:0:0"
+	if firstID == secondID {
+		t.Fatalf("fresh Oracle instances generated colliding receipt IDs: %q", firstID)
+	}
+}

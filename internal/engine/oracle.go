@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -23,15 +25,32 @@ type Oracle struct {
 	provider    providers.Provider
 	toolRouter  *ToolRouter
 	askSequence atomic.Uint64
+	// executionNamespace distinguishes idempotency keys emitted by different
+	// Oracle instances. askSequence alone restarts at one after process/session
+	// reload and would otherwise collide with persisted receipts.
+	executionNamespace string
 }
 
 // NewOracle builds an oracle for a session and provider.
 func NewOracle(session *domain.Session, provider providers.Provider) *Oracle {
 	return &Oracle{
-		session:    session,
-		provider:   provider,
-		toolRouter: NewToolRouter(session),
+		session:            session,
+		provider:           provider,
+		toolRouter:         NewToolRouter(session),
+		executionNamespace: newOracleExecutionNamespace(),
 	}
+}
+
+var oracleNamespaceFallback atomic.Uint64
+
+func newOracleExecutionNamespace() string {
+	var entropy [12]byte
+	if _, err := rand.Read(entropy[:]); err == nil {
+		return hex.EncodeToString(entropy[:])
+	}
+	// crypto/rand failures are exceptional, but NewOracle has historically been
+	// infallible. Preserve that API while retaining process-local uniqueness.
+	return fmt.Sprintf("fallback-%d-%d", time.Now().UnixNano(), oracleNamespaceFallback.Add(1))
 }
 
 // SetProvider swaps the active LLM provider.
@@ -109,7 +128,7 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 			// protocol, but they are not guaranteed unique across turns (Gemini's
 			// adapter synthesizes name/index IDs). The host owns the idempotency key,
 			// so namespace it by this Ask and loop position before execution.
-			call.ID = fmt.Sprintf("oracle:%d:%d:%d", askID, iteration, callIndex)
+			call.ID = fmt.Sprintf("oracle:%s:%d:%d:%d", o.executionNamespace, askID, iteration, callIndex)
 			result := o.toolRouter.Execute(call)
 			content := result.Content
 			if result.Error != "" {

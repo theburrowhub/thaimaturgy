@@ -93,10 +93,24 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, path)
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	// Best-effort directory sync makes the rename durable on filesystems that
+	// require it. Some supported platforms reject syncing directories, so the
+	// successfully replaced file remains the operation's portable guarantee.
+	if directory, err := os.Open(dir); err == nil {
+		_ = directory.Sync()
+		_ = directory.Close()
+	}
+	return nil
 }
 
 func (s *Storage) BasePath() string { return s.basePath }
@@ -230,7 +244,7 @@ func (s *Storage) SaveSession(state *domain.SessionState) error {
 		return fmt.Errorf("failed to marshal session: %w", err)
 	}
 
-	if err := os.WriteFile(s.sessionPath(state.Name), data, 0644); err != nil {
+	if err := atomicWriteFile(s.sessionPath(state.Name), data, 0644); err != nil {
 		return fmt.Errorf("failed to write session file: %w", err)
 	}
 

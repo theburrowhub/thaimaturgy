@@ -34,7 +34,7 @@ func TestServePropagatesStableOpaqueToolCallID(t *testing.T) {
 	provider := &recordingToolProvider{}
 	var output bytes.Buffer
 	afterCalls := 0
-	if err := Serve(strings.NewReader(input), &output, provider, func() { afterCalls++ }); err != nil {
+	if err := serveWithNamespace(strings.NewReader(input), &output, provider, func() { afterCalls++ }, "test-process-a"); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.calls) != 3 || afterCalls != 3 {
@@ -49,11 +49,23 @@ func TestServePropagatesStableOpaqueToolCallID(t *testing.T) {
 	}
 }
 
+func TestServeNamespacesIDsAcrossServerInstances(t *testing.T) {
+	requestID := json.RawMessage(`"request 7"`)
+	first := mcpToolCallID("process-a", requestID)
+	second := mcpToolCallID("process-b", requestID)
+	if first == second {
+		t.Fatalf("separate MCP instances generated the same receipt ID: %q", first)
+	}
+	if first != mcpToolCallID("process-a", requestID) {
+		t.Fatal("an MCP retry within one instance did not keep its receipt ID")
+	}
+}
+
 func TestMCPToolCallIDOmitsMissingAndNullIDs(t *testing.T) {
-	if got := mcpToolCallID(nil); got != "" {
+	if got := mcpToolCallID("test", nil); got != "" {
 		t.Fatalf("nil ID = %q", got)
 	}
-	if got := mcpToolCallID(json.RawMessage(" null ")); got != "" {
+	if got := mcpToolCallID("test", json.RawMessage(" null ")); got != "" {
 		t.Fatalf("null ID = %q", got)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"os"
+	"path/filepath"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
@@ -50,8 +51,33 @@ func RunSubcommand(args []string) error {
 	router := engine.NewToolRouter(session)
 	save := func() {
 		if b, err := json.MarshalIndent(&st, "", "  "); err == nil {
-			_ = os.WriteFile(*sessPath, b, 0644)
+			_ = replaceFile(*sessPath, b, 0644)
 		}
 	}
 	return mcptools.Serve(os.Stdin, os.Stdout, router, save)
+}
+
+func replaceFile(path string, data []byte, mode os.FileMode) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".tmp-"+filepath.Base(path)+"-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Chmod(mode); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, path)
 }
