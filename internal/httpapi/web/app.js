@@ -671,7 +671,13 @@ $("#telegram").onclick = async () => {
       appendLine("log", "Stopped hosting on Telegram.");
     }
   } catch (e) { if (gen === openGen) appendLine("err", "⚠ " + e.message); }
-  finally { tgBusy = false; applyModeUI(); } // recompute UI for whatever session is current now
+  finally {
+    // Only clear busy / refresh for the CURRENT session: a stale reply (the user
+    // switched away and may have started a toggle on the new session) must not
+    // re-enable the new session's in-flight toggle. openSession resets tgBusy on
+    // switch, so the obsolete generation leaks nothing.
+    if (gen === openGen) { tgBusy = false; applyModeUI(); }
+  }
 };
 
 $("#rest").onclick = () => {
