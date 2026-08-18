@@ -168,7 +168,9 @@ del protocolo.
 
 La cuota de pasos se aplica tanto a la inicialización de módulos como a cada
 función. La cancelación o deadline del `context.Context` interrumpe activamente
-el thread Starlark. El runtime es deliberadamente *in-process*: los límites
+el thread Starlark; con un contexto cancelable, el intérprete cede el scheduler
+y comprueba la cancelación cada 1.024 pasos sin ampliar la cuota total. El
+runtime es deliberadamente *in-process*: los límites
 reducen el consumo accidental o abusivo, pero un despliegue que acepte autores
 completamente hostiles debe añadir aislamiento de proceso y límites de memoria
 del sistema operativo.

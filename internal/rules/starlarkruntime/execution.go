@@ -3,12 +3,16 @@ package starlarkruntime
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync/atomic"
 
 	star "go.starlark.net/starlark"
 )
 
-const stepLimitReason = "host execution step limit exceeded"
+const (
+	stepLimitReason  = "host execution step limit exceeded"
+	contextPollSteps = uint64(1024)
+)
 
 func runStarlark(ctx context.Context, name string, limits Limits, execute func(*star.Thread) error) error {
 	if ctx == nil {
@@ -22,12 +26,35 @@ func runStarlark(ctx context.Context, name string, limits Limits, execute func(*
 		Name: name,
 		// Suppress print: scripts get no output channel or host side effect.
 		Print: func(*star.Thread, string) {},
-		OnMaxSteps: func(thread *star.Thread) {
+	}
+	thread.OnMaxSteps = func(thread *star.Thread) {
+		if ctx.Done() != nil {
+			// Yield at bounded interpreter intervals. Besides making cancellation
+			// responsive on a single busy scheduler, this lets an already-due timer
+			// publish ctx.Err before the hard quota wins the same race.
+			runtime.Gosched()
+			if err := ctx.Err(); err != nil {
+				thread.Cancel(err.Error())
+				return
+			}
+		}
+		steps := thread.ExecutionSteps()
+		if steps >= limits.MaxExecutionSteps {
 			stepLimit.Store(true)
 			thread.Cancel(stepLimitReason)
-		},
+			return
+		}
+		next := steps + contextPollSteps
+		if next > limits.MaxExecutionSteps {
+			next = limits.MaxExecutionSteps
+		}
+		thread.SetMaxExecutionSteps(next)
 	}
-	thread.SetMaxExecutionSteps(limits.MaxExecutionSteps)
+	firstCheckpoint := limits.MaxExecutionSteps
+	if ctx.Done() != nil && firstCheckpoint > contextPollSteps {
+		firstCheckpoint = contextPollSteps
+	}
+	thread.SetMaxExecutionSteps(firstCheckpoint)
 
 	finished := make(chan struct{})
 	if ctx.Done() != nil {

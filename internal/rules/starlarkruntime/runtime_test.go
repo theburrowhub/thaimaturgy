@@ -417,7 +417,9 @@ func TestExecutionStepQuotaStopsProgram(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	_, err = loaded.Ruleset.ListActions(context.Background(), core.CatalogRequest{
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, err = loaded.Ruleset.ListActions(ctx, core.CatalogRequest{
 		Snapshot: testSnapshot(t, loaded), Principal: testPrincipal(),
 	})
 	if !errors.Is(err, ErrExecutionLimit) {
