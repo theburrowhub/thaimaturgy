@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
@@ -12,6 +13,26 @@ import (
 // turn reports the same provider-side ID even though it is a distinct call.
 type repeatingToolIDProvider struct {
 	calls int
+}
+
+func TestOraclePromptIdentifiesExactMechanicalAuthority(t *testing.T) {
+	oracle := NewOracle(createTestSession(), nil)
+	prompt := oracle.buildSystemPrompt()
+	snapshot, ok := oracle.session.State.RulesSnapshot()
+	if !ok {
+		t.Fatal("test session was not pinned to its rules artifact")
+	}
+	for _, required := range []string{
+		"=== LOADED RULES PACKAGE ===",
+		snapshot.Ruleset.ID + "@" + snapshot.Ruleset.Version,
+		snapshot.Ruleset.Digest,
+		"game_list_actions",
+		"Do not calculate or invent a result outside that interface.",
+	} {
+		if !strings.Contains(prompt, required) {
+			t.Fatalf("rules authority prompt omitted %q", required)
+		}
+	}
 }
 
 func (p *repeatingToolIDProvider) Name() string         { return "repeating-tool-id" }

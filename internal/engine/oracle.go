@@ -455,6 +455,12 @@ func (o *Oracle) buildSystemPrompt() string {
 		fmt.Fprintf(&sb, " (%s)", adv.System)
 	}
 	sb.WriteString("\n")
+	if snapshot, ok := st.RulesSnapshot(); ok {
+		sb.WriteString("\n=== LOADED RULES PACKAGE ===\n")
+		fmt.Fprintf(&sb, "Exact identity: %s@%s (%s, protocol %s)\n",
+			snapshot.Ruleset.ID, snapshot.Ruleset.Version, snapshot.Ruleset.Digest, snapshot.Ruleset.ProtocolVersion)
+		sb.WriteString("This package is the mechanical authority. Use game_list_actions and game_get_action_schema to discover its typed actions, game_submit_intent to resolve them, game_respond for pending input, and game_explain for visible rules. Do not calculate or invent a result outside that interface.\n")
+	}
 	writeSection(&sb, "Summary", adv.Summary)
 	writeSection(&sb, "Context", adv.Context)
 	writeSection(&sb, "Background (DM eyes only)", adv.Background)
@@ -676,7 +682,7 @@ func (o *Oracle) UpdateSummary(ctx context.Context) error {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("Summarize the following D&D session timeline into a concise recap (<300 words) of what the party has done, key decisions, and open threads:\n\n")
+	sb.WriteString("Summarize the following tabletop RPG session timeline into a concise recap (<300 words) of what the party has done, key decisions, and open threads:\n\n")
 	for _, e := range o.session.State.RecentLog(0) {
 		fmt.Fprintf(&sb, "- [%s] %s\n", e.Type, e.Message)
 	}
