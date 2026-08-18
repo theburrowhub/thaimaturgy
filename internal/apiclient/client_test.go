@@ -104,6 +104,41 @@ func TestClientRoundTrip(t *testing.T) {
 	}
 }
 
+// TestClientConfigWithAuth: the server exposes the auto-detected credential as a
+// read-only auth_source, ConfigWithAuth returns it alongside the config, and the
+// plain Config still decodes (ignoring auth_source).
+func TestClientConfigWithAuth(t *testing.T) {
+	store, err := storage.NewWithPath(t.TempDir())
+	if err != nil {
+		t.Fatalf("storage: %v", err)
+	}
+	cfg := domain.DefaultConfig()
+	cfg.AuthSource = "Claude Code login (Keychain)"
+	svc, err := appservice.New(store, cfg, nil)
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+	t.Cleanup(svc.Close)
+	ts := httptest.NewServer(httpapi.New(svc, "").Handler())
+	t.Cleanup(ts.Close)
+	c := New(ts.URL, "")
+
+	got, src, err := c.ConfigWithAuth(context.Background())
+	if err != nil {
+		t.Fatalf("ConfigWithAuth: %v", err)
+	}
+	if src != "Claude Code login (Keychain)" {
+		t.Errorf("auth source = %q; want the detected credential", src)
+	}
+	if got == nil || got.Provider != cfg.Provider {
+		t.Errorf("config = %+v; want provider %q", got, cfg.Provider)
+	}
+	// The plain Config() path stays compatible (auth_source is ignored).
+	if _, err := c.Config(context.Background()); err != nil {
+		t.Errorf("Config: %v", err)
+	}
+}
+
 func TestClientErrorSurface(t *testing.T) {
 	ctx := context.Background()
 	c := liveServer(t, "")

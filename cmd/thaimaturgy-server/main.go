@@ -36,6 +36,9 @@ import (
 var shutdownSignals = []os.Signal{os.Interrupt, syscall.SIGTERM}
 
 func main() {
+	// When invoked as the MCP tools subprocess (by the oracle's Claude-CLI backend,
+	// which re-execs this binary via os.Executable()), serve the session tools over
+	// stdio and exit — never start the HTTP server. Mirrors the GUI and bot.
 	if len(os.Args) > 1 && os.Args[1] == mcptools.SubcommandArg {
 		if err := mcpserve.RunSubcommand(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "mcp-tools:", err)
@@ -43,6 +46,7 @@ func main() {
 		}
 		return
 	}
+
 	addr := flag.String("addr", envOr("THAIM_ADDR", "127.0.0.1:8765"), "listen address (host:port)")
 	token := flag.String("token", os.Getenv("THAIM_SERVER_TOKEN"), "require this bearer token on /api/ (recommended when not on loopback)")
 	flag.Parse()

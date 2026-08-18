@@ -1019,12 +1019,19 @@ func (s *Server) deleteRosterCharacter(w http.ResponseWriter, r *http.Request) {
 
 // getConfig returns the active configuration with secrets redacted. Secrets are
 // write-only over the API: the UI shows blank fields and PUT treats an empty
-// value as "leave unchanged" (see putConfig). The response keeps the plain
-// domain.Config shape so existing clients (apiclient) keep working.
+// value as "leave unchanged" (see putConfig). The response embeds the plain
+// domain.Config shape (so existing clients keep working) plus a read-only
+// auth_source describing the credential the server auto-detected (e.g. "Claude
+// Code login (Keychain)", "Gemini CLI"); AuthSource is json:"-" on the config so
+// it is surfaced only through this extra field and never round-trips on save.
 func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 	c := s.svc.Config()
+	authSource := c.AuthSource
 	c.OpenAIAPIKey, c.AnthropicAPIKey, c.GeminiAPIKey, c.TelegramToken = "", "", "", ""
-	writeJSON(w, http.StatusOK, c)
+	writeJSON(w, http.StatusOK, struct {
+		*domain.Config
+		AuthSource string `json:"auth_source,omitempty"`
+	}{Config: c, AuthSource: authSource})
 }
 
 // putConfig saves configuration. It starts from the CURRENT config and decodes
