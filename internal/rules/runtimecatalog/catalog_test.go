@@ -44,6 +44,9 @@ func TestLoadRegistersBuiltinsAndCreatesSeparatedStore(t *testing.T) {
 		}
 	}
 	wantRoot := filepath.Join(dataDirectory, "rulesets")
+	if environment.DataDirectory != dataDirectory {
+		t.Fatalf("data directory = %q, want %q", environment.DataDirectory, dataDirectory)
+	}
 	if environment.Store.Root() != wantRoot {
 		t.Fatalf("store root = %q, want %q", environment.Store.Root(), wantRoot)
 	}

@@ -33,6 +33,7 @@ import (
 type Environment struct {
 	Catalog       *catalog.Catalog
 	Store         *bundlestore.Store
+	DataDirectory string
 	ExternalLocks []rules.Lock
 	Diagnostics   error
 }
@@ -47,7 +48,12 @@ func Load(ctx context.Context, dataDirectory string) (*Environment, error) {
 	if strings.TrimSpace(dataDirectory) == "" {
 		return nil, errors.New("rules runtime catalog: data directory is required")
 	}
+	dataDirectory = strings.TrimSpace(dataDirectory)
 
+	dataDirectory, err := filepath.Abs(dataDirectory)
+	if err != nil {
+		return nil, fmt.Errorf("rules runtime catalog: resolve data directory: %w", err)
+	}
 	available := catalog.New()
 	if err := registerBuiltins(ctx, available); err != nil {
 		return nil, fmt.Errorf("rules runtime catalog: register built-ins: %w", err)
@@ -63,6 +69,7 @@ func Load(ctx context.Context, dataDirectory string) (*Environment, error) {
 	return &Environment{
 		Catalog:       available,
 		Store:         store,
+		DataDirectory: dataDirectory,
 		ExternalLocks: append([]rules.Lock(nil), external...),
 		Diagnostics:   diagnostics,
 	}, nil
