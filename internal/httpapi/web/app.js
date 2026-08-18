@@ -266,6 +266,8 @@ async function openSession(name) {
     renderParty();
     renderLog();
     hosting = false;
+    tgReady = false; // toggle stays disabled until refreshTelegram() confirms status
+    tgBusy = false;
     applyModeUI();
     detailPlaceholder();
     subscribeEvents(name, gen);
@@ -616,6 +618,8 @@ $("#begin").onclick = () => runCommand("/begin");
 // While hosting, the bot is the sole driver of the game, so the server rejects
 // turns from the web — the turn controls are disabled until hosting stops.
 let hosting = false;
+let tgReady = false; // initial Telegram status fetched for the current session?
+let tgBusy = false;  // a start/stop request is in flight?
 
 function applyTelegramUI() {
   const btn = $("#telegram");
@@ -624,6 +628,9 @@ function applyTelegramUI() {
   btn.classList.toggle("hidden", !(dm || hosting));
   btn.textContent = hosting ? "Hosting — stop" : "Host: Telegram";
   btn.classList.toggle("active", hosting);
+  // Not usable until the initial status is known (so a toggle can't race the
+  // initial refresh and get overwritten by its late reply), nor mid-request.
+  btn.disabled = !tgReady || tgBusy;
   $("#ask-input").disabled = hosting;
   $("#mode-toggle").disabled = hosting;
   $("#begin").disabled = hosting;
@@ -634,7 +641,7 @@ function applyTelegramUI() {
 }
 
 async function refreshTelegram() {
-  if (!current) { hosting = false; applyTelegramUI(); return; }
+  if (!current) { hosting = false; tgReady = true; applyTelegramUI(); return; }
   // Capture the session generation: if the user switches sessions while this
   // request is in flight, the response is for the OLD session and must not touch
   // the (now different) current session's hosting state.
@@ -644,20 +651,19 @@ async function refreshTelegram() {
     if (gen !== openGen) return;
     hosting = !!r.hosting;
   } catch { if (gen === openGen) hosting = false; }
-  if (gen === openGen) applyTelegramUI();
+  if (gen === openGen) { tgReady = true; applyTelegramUI(); } // enable the toggle only now
 }
 
 $("#telegram").onclick = async () => {
-  if (!current) return;
-  const btn = $("#telegram");
+  if (!current || tgBusy || !tgReady) return; // wait for the initial status; one request at a time
   const gen = openGen;
   const verb = hosting ? "stop" : "start";
-  btn.disabled = true;
+  tgBusy = true;
+  applyTelegramUI(); // disables the button while the request is in flight
   try {
     const r = await api("POST", "/sessions/" + encodeURIComponent(current) + "/telegram/" + verb);
     if (gen !== openGen) return; // session switched under us — ignore stale reply
     hosting = !!r.hosting;
-    applyModeUI(); // re-evaluates visibility + calls applyTelegramUI
     if (hosting) {
       appendLine("log", "Hosting on Telegram" + (r.username ? " as @" + r.username : "") +
         ". Players drive the game from Telegram; turns here are paused until you stop hosting.");
@@ -665,7 +671,7 @@ $("#telegram").onclick = async () => {
       appendLine("log", "Stopped hosting on Telegram.");
     }
   } catch (e) { if (gen === openGen) appendLine("err", "⚠ " + e.message); }
-  finally { btn.disabled = false; } // shared button: always usable for whatever session is current now
+  finally { tgBusy = false; applyModeUI(); } // recompute UI for whatever session is current now
 };
 
 $("#rest").onclick = () => {
