@@ -105,8 +105,10 @@ the source tree, and inputs beyond the runtime limits. It normalizes ZIP order,
 timestamps, modes, and compression, executes the completed bundle through the
 production loader, validates its initial state, and only then publishes it
 atomically. Repacking unchanged bytes is idempotent; an existing different
-output is preserved and reported as a conflict. Run `make example-rules` for a
-complete source package at `examples/rules/simple-d6`.
+output is preserved and reported as a conflict. Publication is serialized by an
+inter-process output lock, so two packers cannot both replace an initially
+absent destination. Run `make example-rules` for a complete source package at
+`examples/rules/simple-d6`.
 
 Use `--data-dir PATH` to target a non-default thAImaturgy data directory. The
 manager computes SHA-256 over the exact ZIP bytes and stores the verified bundle
@@ -139,7 +141,9 @@ Every package is exposed through the same seven tools:
 Mutating calls use durable idempotency receipts. Random exchanges, event
 batches, pending continuations, the exact lock, principal and request identity
 are persisted together with the resulting state. A retry returns the stored
-result instead of drawing or reducing again.
+result instead of drawing or reducing again. Opaque JSON payloads are stored in
+a canonical representation, so indentation, object key order and equivalent
+escaping cannot make a valid persisted snapshot look like a different state.
 
 The legacy dice dialog, D&D character sheet, rests, party editor, and Telegram
 player controller are enabled only for the exact host-attested `dnd5e` built-in

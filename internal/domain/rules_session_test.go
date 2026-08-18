@@ -171,6 +171,28 @@ func TestImportStructuredCopiesOnlyCompatibleRulesBlock(t *testing.T) {
 	}
 }
 
+func TestImportStructuredTreatsNilAndEmptyRuntimeSlicesAsSameGeneration(t *testing.T) {
+	state := NewSessionState("empty-runtime", nil)
+	if _, err := state.BindRules(rulesTestLock(rulesDigestA), rulesTestPayload(t, `{"value":0}`)); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var handoff SessionState
+	if err := json.Unmarshal(encoded, &handoff); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.ImportStructuredChecked(&handoff); err != nil {
+		t.Fatalf("no-op generation-zero handoff: %v", err)
+	}
+	runtime, ok := state.RulesRuntimeSnapshot()
+	if !ok || runtime.Generation != 0 || runtime.Revision != 0 {
+		t.Fatalf("runtime changed during no-op handoff: ok=%v runtime=%+v", ok, runtime)
+	}
+}
+
 func TestImportStructuredDoesNotRollBackOrRewriteEqualRulesGeneration(t *testing.T) {
 	lock := rulesTestLock(rulesDigestA)
 	initial := rulesTestPayload(t, `{"value":"initial"}`)

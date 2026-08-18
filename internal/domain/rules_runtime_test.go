@@ -126,6 +126,135 @@ func TestRulesRuntimeReceiptLimitFailsClosedWithoutForgettingOldIDs(t *testing.T
 	}
 }
 
+func TestRulesRuntimeReceiptByteLimitRejectsBeforeClaimingNewRequest(t *testing.T) {
+	state := NewSessionState("runtime", nil)
+	if _, err := state.BindRules(rulesTestLock(rulesDigestA), rulesTestPayload(t, `{}`)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	maximumField := strings.Repeat("x", maxRulesResultBytes)
+	for i := 0; i < 31; i++ {
+		state.Rules.Receipts = append(state.Rules.Receipts, RulesReceipt{
+			RequestID: fmt.Sprintf("byte-request-%d", i), Tool: "game_submit_intent",
+			Fingerprint: runtimeFingerprint, ResolutionID: fmt.Sprintf("byte-resolution-%d", i),
+			Result: &RulesStoredResult{Content: maximumField, Error: maximumField}, CreatedAt: now, UpdatedAt: now,
+		})
+	}
+	if err := state.Rules.Validate(); err != nil {
+		t.Fatalf("near-capacity runtime must remain valid: %v", err)
+	}
+	if used := rulesReceiptCapacityBytes(state.Rules.Receipts); used >= MaxRulesReceiptBytes {
+		t.Fatalf("fixture already exceeds the aggregate limit: %d", used)
+	}
+
+	if _, _, err := state.BeginRulesRequest(context.Background(), "byte-request-new", "game_submit_intent", runtimeFingerprint); !errors.Is(err, ErrRulesReceiptLimit) {
+		t.Fatalf("new request without worst-case result capacity = %v", err)
+	}
+	if len(state.rulesInFlight) != 0 {
+		t.Fatalf("capacity rejection left %d active claims", len(state.rulesInFlight))
+	}
+	_, retained, err := state.BeginRulesRequest(context.Background(), "byte-request-0", "game_submit_intent", runtimeFingerprint)
+	if err != nil || retained == nil || retained.Result == nil || len(retained.Result.Content) != maxRulesResultBytes {
+		t.Fatalf("retained retry receipt=%+v err=%v", retained, err)
+	}
+}
+
+func TestRulesRuntimeReceiptReservationsPreventConcurrentOvercommit(t *testing.T) {
+	state := NewSessionState("runtime", nil)
+	if _, err := state.BindRules(rulesTestLock(rulesDigestA), rulesTestPayload(t, `{}`)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	maximumField := strings.Repeat("x", maxRulesResultBytes)
+	for i := 0; i < 30; i++ {
+		state.Rules.Receipts = append(state.Rules.Receipts, RulesReceipt{
+			RequestID: fmt.Sprintf("reserved-request-%d", i), Tool: "game_submit_intent",
+			Fingerprint: runtimeFingerprint, ResolutionID: fmt.Sprintf("reserved-resolution-%d", i),
+			Result: &RulesStoredResult{Content: maximumField, Error: maximumField}, CreatedAt: now, UpdatedAt: now,
+		})
+	}
+	if err := state.Rules.Validate(); err != nil {
+		t.Fatalf("reservation fixture must remain valid: %v", err)
+	}
+
+	first := beginRuntimeRequest(t, state, "reservation-first")
+	if _, _, err := state.BeginRulesRequest(context.Background(), "reservation-second", "game_submit_intent", runtimeFingerprint); !errors.Is(err, ErrRulesReceiptLimit) {
+		t.Fatalf("second concurrent reservation = %v", err)
+	}
+	state.AbortRulesRequest(first)
+
+	second := beginRuntimeRequest(t, state, "reservation-second")
+	state.AbortRulesRequest(second)
+}
+
+func TestRulesRuntimeReceiptSlotsAreReservedAcrossConcurrentRequests(t *testing.T) {
+	state := NewSessionState("runtime", nil)
+	if _, err := state.BindRules(rulesTestLock(rulesDigestA), rulesTestPayload(t, `{}`)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	for i := 0; i < MaxRulesReceipts-1; i++ {
+		state.Rules.Receipts = append(state.Rules.Receipts, RulesReceipt{
+			RequestID: fmt.Sprintf("slot-request-%d", i), Tool: "game_submit_intent",
+			Fingerprint: runtimeFingerprint, ResolutionID: fmt.Sprintf("slot-resolution-%d", i),
+			Result: runtimeResult("terminal"), CreatedAt: now, UpdatedAt: now,
+		})
+	}
+
+	first := beginRuntimeRequest(t, state, "slot-first")
+	if _, _, err := state.BeginRulesRequest(context.Background(), "slot-second", "game_submit_intent", runtimeFingerprint); !errors.Is(err, ErrRulesReceiptLimit) {
+		t.Fatalf("second concurrent receipt slot = %v", err)
+	}
+	state.AbortRulesRequest(first)
+
+	second := beginRuntimeRequest(t, state, "slot-second")
+	state.AbortRulesRequest(second)
+}
+
+func TestRulesRuntimeIncompleteReceiptRetainsTerminalCapacity(t *testing.T) {
+	state := NewSessionState("runtime", nil)
+	if _, err := state.BindRules(rulesTestLock(rulesDigestA), rulesTestPayload(t, `{}`)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	maximumField := strings.Repeat("x", maxRulesResultBytes)
+	for i := 0; i < 30; i++ {
+		state.Rules.Receipts = append(state.Rules.Receipts, RulesReceipt{
+			RequestID: fmt.Sprintf("checkpoint-request-%d", i), Tool: "game_submit_intent",
+			Fingerprint: runtimeFingerprint, ResolutionID: fmt.Sprintf("checkpoint-resolution-%d", i),
+			Result: &RulesStoredResult{Content: maximumField, Error: maximumField}, CreatedAt: now, UpdatedAt: now,
+		})
+	}
+
+	handle := beginRuntimeRequest(t, state, "checkpoint-active")
+	response := rulesTestPayload(t, `{"rolls":[4]}`)
+	pending := &RulesPendingResolution{
+		ResolutionID: "checkpoint-active", RequestID: "checkpoint-active",
+		Principal: rules.Principal{ID: "host:oracle", Kind: "llm"},
+		Pending: rules.PendingStep{
+			StepID: "checkpoint-step", Kind: rules.StepKindNeedRandom,
+			State: rulesTestPayload(t, `{"phase":"roll"}`),
+		},
+		Request:   rulesTestPayload(t, `{"method":"dice.roll","specification":{"count":1,"sides":6}}`),
+		Response:  &rules.HostResponse{StepID: "checkpoint-step", Kind: rules.StepKindNeedRandom, Data: response},
+		StepCount: 1,
+	}
+	if _, err := state.CommitRulesRequest(handle, RulesCommit{
+		State: handle.Snapshot.State, Principal: rules.Principal{ID: "host:oracle", Kind: "llm"},
+		ResolutionID: "checkpoint-active", Pending: pending,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := state.BeginRulesRequest(context.Background(), "checkpoint-new", "game_submit_intent", runtimeFingerprint); !errors.Is(err, ErrRulesReceiptLimit) {
+		t.Fatalf("new request consumed incomplete receipt capacity = %v", err)
+	}
+	recovered, receipt, err := state.ResumeRulesRequest(context.Background(), "checkpoint-active")
+	if err != nil || receipt != nil {
+		t.Fatalf("resume incomplete reserved receipt: receipt=%+v err=%v", receipt, err)
+	}
+	state.AbortRulesRequest(recovered)
+}
+
 func TestRulesRuntimeNeverEvictsReceiptForActivePendingResolution(t *testing.T) {
 	state := NewSessionState("runtime", nil)
 	if _, err := state.BindRules(rulesTestLock(rulesDigestA), rulesTestPayload(t, `{}`)); err != nil {

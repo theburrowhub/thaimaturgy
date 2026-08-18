@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 	"unicode"
@@ -21,9 +20,12 @@ const (
 	// an accepted request ID. At the limit, new mutations fail closed until an
 	// explicit archival/checkpoint policy is introduced.
 	MaxRulesReceipts = 4096
-	// MaxRulesReceiptBytes prevents individually valid results from expanding a
-	// loaded session into multi-gigabyte receipt metadata.
+	// MaxRulesReceiptBytes bounds persisted receipt metadata plus the terminal
+	// result capacity reserved for every incomplete receipt.
 	MaxRulesReceiptBytes = 64 << 20
+	// A stored result permits one bounded content and one bounded error field.
+	// BeginRulesRequest reserves the conservative maximum before any effect runs.
+	maxRulesReceiptResultReservation = int64(2 * maxRulesResultBytes)
 	// MaxRulesPending bounds unresolved continuations without silently evicting
 	// one that still needs an authority response.
 	MaxRulesPending     = 64
@@ -273,7 +275,6 @@ func (r RulesSession) validateRuntime() error {
 		return fmt.Errorf("pending rules resolutions exceed %d", MaxRulesPending)
 	}
 	receipts := make(map[string]struct{}, len(r.Receipts))
-	receiptBytes := int64(0)
 	for i, receipt := range r.Receipts {
 		if err := receipt.validate(); err != nil {
 			return fmt.Errorf("rules receipt %d: %w", i, err)
@@ -282,13 +283,9 @@ func (r RulesSession) validateRuntime() error {
 			return fmt.Errorf("duplicate rules receipt %q", receipt.RequestID)
 		}
 		receipts[receipt.RequestID] = struct{}{}
-		receiptBytes += int64(len(receipt.RequestID) + len(receipt.Tool) + len(receipt.Fingerprint) + len(receipt.ResolutionID))
-		if receipt.Result != nil {
-			receiptBytes += int64(len(receipt.Result.Content) + len(receipt.Result.Error))
-		}
-		if receiptBytes > MaxRulesReceiptBytes {
-			return fmt.Errorf("rules receipts exceed %d aggregate bytes", MaxRulesReceiptBytes)
-		}
+	}
+	if receiptBytes := rulesReceiptCapacityBytes(r.Receipts); receiptBytes > MaxRulesReceiptBytes {
+		return fmt.Errorf("rules receipts exceed %d aggregate bytes including terminal capacity", MaxRulesReceiptBytes)
 	}
 	pendings := make(map[string]struct{}, len(r.Pending))
 	for i, pending := range r.Pending {
@@ -391,7 +388,11 @@ func (r RulesSession) ValidateDescendantOf(ancestor RulesSession) error {
 		return fmt.Errorf("%w: ancestor generation %d, candidate %d", ErrRulesGenerationConflict, ancestor.Generation, r.Generation)
 	}
 	if r.Generation == ancestor.Generation {
-		if !reflect.DeepEqual(r, ancestor) {
+		equal, err := rulesSessionsEqual(r, ancestor)
+		if err != nil {
+			return fmt.Errorf("compare equal-generation rules runtimes: %w", err)
+		}
+		if !equal {
 			return fmt.Errorf("%w: generation %d has divergent state", ErrRulesImportConflict, r.Generation)
 		}
 		return nil
@@ -405,6 +406,21 @@ func (r RulesSession) ValidateDescendantOf(ancestor RulesSession) error {
 		}
 	}
 	return nil
+}
+
+func rulesSessionsEqual(left, right RulesSession) (bool, error) {
+	// JSON tags define the durable representation. In particular, omitempty
+	// makes nil and empty audit slices equivalent across an in-memory bind,
+	// snapshot cloning and a JSON handoff.
+	leftJSON, err := json.Marshal(left)
+	if err != nil {
+		return false, err
+	}
+	rightJSON, err := json.Marshal(right)
+	if err != nil {
+		return false, err
+	}
+	return string(leftJSON) == string(rightJSON), nil
 }
 
 func appendRulesLineage(r *RulesSession) error {
@@ -446,10 +462,12 @@ func validRulesLineageDigest(value string) bool {
 }
 
 type rulesRequestFlight struct {
-	tool        string
-	fingerprint string
-	claim       uint64
-	done        chan struct{}
+	tool                 string
+	fingerprint          string
+	claim                uint64
+	reservesReceipt      bool
+	reservedReceiptBytes int64
+	done                 chan struct{}
 }
 
 // RulesRequestHandle is an optimistic snapshot plus a runtime-only ownership
@@ -537,9 +555,6 @@ func (s *SessionState) BeginRulesRequest(ctx context.Context, requestID, tool, f
 				s.mu.Unlock()
 				return RulesRequestHandle{}, &copy, nil
 			}
-		} else if len(s.Rules.Receipts) >= MaxRulesReceipts {
-			s.mu.Unlock()
-			return RulesRequestHandle{}, nil, fmt.Errorf("%w: retry a retained request or create an explicit checkpoint before accepting new mutations", ErrRulesReceiptLimit)
 		}
 		if flight := s.rulesInFlight[requestID]; flight != nil {
 			if flight.tool != tool || flight.fingerprint != fingerprint {
@@ -555,11 +570,37 @@ func (s *SessionState) BeginRulesRequest(ctx context.Context, requestID, tool, f
 				continue
 			}
 		}
+		reservation := int64(0)
+		if receipt == nil {
+			activeReceiptSlots := 0
+			for _, active := range s.rulesInFlight {
+				if active.reservesReceipt {
+					activeReceiptSlots++
+				}
+			}
+			if len(s.Rules.Receipts)+activeReceiptSlots >= MaxRulesReceipts {
+				s.mu.Unlock()
+				return RulesRequestHandle{}, nil, fmt.Errorf("%w: retry a retained request or create an explicit checkpoint before accepting new mutations", ErrRulesReceiptLimit)
+			}
+			// ResolutionID is supplied at commit, so reserve its protocol maximum
+			// together with the largest terminal result. An incomplete persisted
+			// receipt already carries that logical result reservation.
+			reservation = maxRulesReceiptResultReservation + int64(len(requestID)+len(tool)+len(fingerprint)+rules.MaxIdentifierBytes)
+		}
+		usedReceiptBytes := rulesReceiptCapacityBytes(s.Rules.Receipts)
+		for _, active := range s.rulesInFlight {
+			usedReceiptBytes += active.reservedReceiptBytes
+		}
+		if usedReceiptBytes+reservation > MaxRulesReceiptBytes {
+			s.mu.Unlock()
+			return RulesRequestHandle{}, nil, fmt.Errorf("%w: durable receipt capacity cannot reserve %d bytes", ErrRulesReceiptLimit, reservation)
+		}
 
 		s.rulesClaimSeq++
 		claim := s.rulesClaimSeq
 		s.rulesInFlight[requestID] = &rulesRequestFlight{
-			tool: tool, fingerprint: fingerprint, claim: claim, done: make(chan struct{}),
+			tool: tool, fingerprint: fingerprint, claim: claim,
+			reservesReceipt: receipt == nil, reservedReceiptBytes: reservation, done: make(chan struct{}),
 		}
 		handle := RulesRequestHandle{
 			Snapshot:  rules.Snapshot{Ruleset: s.Rules.Lock, Revision: s.Rules.Revision, State: s.Rules.State},
@@ -570,6 +611,19 @@ func (s *SessionState) BeginRulesRequest(ctx context.Context, requestID, tool, f
 		s.mu.Unlock()
 		return handle, nil, nil
 	}
+}
+
+func rulesReceiptCapacityBytes(receipts []RulesReceipt) int64 {
+	var total int64
+	for _, receipt := range receipts {
+		total += int64(len(receipt.RequestID) + len(receipt.Tool) + len(receipt.Fingerprint) + len(receipt.ResolutionID))
+		if receipt.Result != nil {
+			total += int64(len(receipt.Result.Content) + len(receipt.Result.Error))
+		} else {
+			total += maxRulesReceiptResultReservation
+		}
+	}
+	return total
 }
 
 // ResumeRulesRequest reclaims an incomplete retained request using its exact

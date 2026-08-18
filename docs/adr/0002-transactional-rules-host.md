@@ -16,12 +16,17 @@ reintentable y auditable:
   decisiones o adjudicaciones después de guardar y reabrir;
 - draws genéricos con método, fuente, especificación, resultado, step, request,
   lock y principal;
-- revisión mecánica y generación del host como contadores separados.
+- revisión mecánica y generación del host como contadores separados;
+- una cadena causal SHA-256 que atestigua el runtime completo de cada generación.
 
 `Revision` avanza una vez por cada batch que el ruleset procesa con `Reduce`.
 Un commit que solo añade un recibo, un draw o una continuación no inventa una
 revisión mecánica, pero sí avanza `Generation`, necesaria para fusionar cambios
 de un subprocesso MCP aunque el ruleset sea stateless.
+La generación por sí sola no prueba ascendencia: almacenamiento e importación
+aceptan una generación posterior únicamente si su cadena causal contiene como
+prefijo exacto la historia ya persistida. Dos procesos que parten del mismo
+snapshot no pueden sobrescribirse sólo porque uno haya acumulado más commits.
 
 ## Transacción
 
@@ -52,7 +57,10 @@ ruleset rechace después su semántica; nunca se vuelve a sortear.
 Se conservan hasta 4096 recibos y hasta 64 MiB agregados. No se expulsa ni se
 olvida ningún ID aceptado: alcanzar cualquiera de los límites rechaza IDs nuevos
 antes de ejecutar reglas o azar, mientras los retries retenidos siguen
-funcionando. Una futura compactación requerirá un checkpoint/epoch explícito.
+funcionando. Cada solicitud reserva antes de ejecutar el peor tamaño permitido
+para su resultado; las reservas concurrentes también cuentan contra el límite,
+por lo que un commit nunca descubre falta de espacio después de producir un
+efecto. Una futura compactación requerirá un checkpoint/epoch explícito.
 Hay un máximo de 64 resoluciones pendientes; alcanzar el límite rechaza el
 commit completo en vez de perder una continuación activa.
 
@@ -81,6 +89,9 @@ concreto en el host.
 `roll_dice` y `ability_check` atraviesan la misma transacción y conservan su
 texto y entrada de log anteriores. Los bloques de sesión creados antes de este
 ADR, que no tienen eventos, usan su estado actual como raíz inicial al cargarse.
+Las herramientas MCP mutantes de compatibilidad usan los mismos recibos
+durables, incluso cuando no invocan un ruleset, para que un reintento tras una
+respuesta perdida no vuelva a cambiar la ficha o el mundo.
 
 Cada commit invoca, antes de reanudar o devolver, la barrera opcional
 `Session.PersistRules`. Los frontends que prometan durabilidad frente a caída la
