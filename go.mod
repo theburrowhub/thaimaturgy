@@ -11,6 +11,7 @@ require (
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/ncruces/zenity v0.10.14
 	github.com/pdfcpu/pdfcpu v0.13.0
+	go.starlark.net v0.0.0-20260708150628-5395d018f003
 	golang.org/x/image v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
 )
