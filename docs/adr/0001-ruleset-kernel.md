@@ -218,8 +218,16 @@ El primer esqueleto implementa identidad, nombre, versión, protocolo, runtime,
 entrypoint y capabilities. Los demás campos se añadirán de forma aditiva junto
 con el loader; no alteran el lock ni la frontera de resolución.
 
-El instalador/host calcula SHA-256 sobre el bundle exacto e inmutable. La sesión
-fija:
+Para un bundle externo, el instalador/host calcula SHA-256 sobre sus bytes ZIP
+exactos e inmutables. Para una release Go incorporada, calcula el digest sobre
+un framing canónico de las fuentes ejecutables declaradas por el paquete y de
+sus helpers compartidos explícitos (`ruleskit`, `diceexpr`, `jsonstrict`, según
+el paquete). El código del kernel anfitrión no forma parte de ese artefacto:
+`protocol_version` identifica por separado el contrato host-paquete. Un refactor
+compatible del host no invalida locks; un cambio incompatible de envelopes,
+validación o semántica de ejecución exige incrementar `ProtocolVersion`.
+
+La sesión fija:
 
 ```text
 id + version + digest + protocol_version
@@ -229,6 +237,16 @@ La aventura declara un requisito/rango; al crear sesión se resuelve un lock
 exacto. Nunca hay upgrades silenciosos. Si falta el artefacto, la sesión solo
 puede inspeccionarse/exportarse hasta instalarlo. Cambiarlo exige migración
 explícita, validada y registrada.
+
+Las releases incorporadas son inmutables. `internal/rules/runtimecatalog/
+builtins.lock.json` es su ledger central y append-only: una entrada publicada no
+se edita ni se elimina, y su implementación anterior se conserva registrable.
+Cambiar una mecánica o un helper incluido requiere una versión SemVer nueva,
+una definición nueva y añadir su lock al final del ledger; no se reescribe la
+implementación antigua. El arranque valida que cada definición coincide con el
+ledger y que cada entrada histórica tiene una implementación cargable. Cuando
+cambie el protocolo, la compatibilidad o migración de locks anteriores debe
+resolverse explícitamente antes de retirar soporte.
 
 Rulesets y aventuras usan almacenes e instalaciones separados. El actual
 `PackageModule` continúa limitado a `adventure.json` y `assets/`; importar una
@@ -301,8 +319,10 @@ durable de extremo a extremo:
 
 - `internal/rules` implementa el contrato neutral, JSON estricto y acotado,
   unión `Step`, artefactos atestiguados por SHA-256, locks exactos y catálogo
-  concurrente. El digest de cada paquete Go incorporado incluye también el
-  código productivo del kernel que afecta a su comportamiento;
+  concurrente. El digest de cada paquete Go incorporado cubre sus fuentes
+  ejecutables y helpers compartidos declarados, mientras `ProtocolVersion`
+  versiona el contrato del kernel. El ledger append-only impide sobrescribir
+  releases y obliga a conservar sus implementaciones;
 - las sesiones persisten lock, estado inicial y materializado, revisión,
   generación, eventos, draws, continuaciones y recibos. El host hace CAS,
   checkpoint atómico antes de `Resume`, replay desde revisión cero y retries sin

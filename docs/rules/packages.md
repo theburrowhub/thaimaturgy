@@ -40,6 +40,23 @@ All randomness is requested from the host as `dice.roll`; packages only receive
 the audited response. PbtA demonstrates a suspended `need_decision` step. Savage
 Worlds demonstrates several sequential random requests in one resolution.
 
+### Immutable built-in releases
+
+A built-in artifact digest covers the package's explicitly declared executable
+sources and any behavior-affecting shared helpers (`ruleskit`, `diceexpr`, and
+`jsonstrict` where used). It deliberately excludes the host kernel. The
+separate `protocol_version` lock identifies the host/package contract, so a
+compatible host refactor does not strand existing sessions; an incompatible
+contract change requires a new `ProtocolVersion`.
+
+[`builtins.lock.json`](../../internal/rules/runtimecatalog/builtins.lock.json)
+is the central append-only release ledger. Startup checks every implemented
+built-in against it before publishing the catalog, and tests open every ledger
+entry by its exact lock. Never edit or remove a published entry or its matching
+implementation. A mechanics or included-helper change requires a new SemVer
+package version, a retained implementation for the old release, and a new entry
+appended to the ledger.
+
 ## Selecting a package
 
 An adventure declares a dependency, not an executable path:

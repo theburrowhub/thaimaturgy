@@ -83,29 +83,6 @@ func referenceCases() []referenceCase {
 	}
 }
 
-func TestBuiltinArtifactDigestsArePinned(t *testing.T) {
-	want := map[string]string{
-		"pf2e":         "sha256:9f141b514462cb33a55de73d694bb43af6f199eb057713447e3553881d9ffb18",
-		"runequest":    "sha256:9569014ac940f0e7b15c50f3437c608733844c2792016080a80376daacb6a862",
-		"coc7e":        "sha256:37b7e4695d3cf85920f229cdcf00dd18bb6e449bfdfa37e175cc80c4adea9992",
-		"vtm5e":        "sha256:b10043d916e1ef0d40c0ad5db1afb213c55a5dcf3d7b5e57d5e439bc4aefa60f",
-		"shadowrun6e":  "sha256:39f621915ea3bee7cbcae5ae2454a350dfc9bc82ad3aef40ca6898389ae626d6",
-		"pbta":         "sha256:2e79ddd52d520b78138d6989627ba98d5153734f02945791d296ca33f21a533b",
-		"gurps4e":      "sha256:4fae0f6ad06306e5323f1376cf5ef62fb147d151aab60ac3551a380a44abfab1",
-		"fatecore":     "sha256:c3486265929906f91ce54b08606a3a8f3b166b9c257534304a6c7d3c92da6490",
-		"savageworlds": "sha256:0400b1bba7acd7feb5a49fc78b2b178df4fafc43d38a2e5c55311a5e993c0b75",
-	}
-	for _, test := range referenceCases() {
-		artifact, err := test.artifact()
-		if err != nil {
-			t.Fatalf("%s: %v", test.name, err)
-		}
-		if got := artifact.Digest(); got != want[test.name] {
-			t.Errorf("%s digest = %q, want %q", test.name, got, want[test.name])
-		}
-	}
-}
-
 func TestReferenceRulesetsConformToProtocol(t *testing.T) {
 	for _, test := range referenceCases() {
 		t.Run(test.name, func(t *testing.T) {

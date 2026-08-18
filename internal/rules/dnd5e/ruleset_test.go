@@ -10,15 +10,10 @@ import (
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
 )
 
-const artifactDigest = "sha256:4f150b7e64be27f37efb4c62d96878bd372d308b81fbff9879b3f6ac51292206"
-
 func TestManifestArtifactAndActionCatalogAreStable(t *testing.T) {
 	artifact, err := NewArtifact()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if got := artifact.Digest(); got != artifactDigest {
-		t.Fatalf("artifact digest = %q, want %q", got, artifactDigest)
 	}
 
 	ruleset := New()

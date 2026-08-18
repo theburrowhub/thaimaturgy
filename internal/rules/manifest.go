@@ -8,7 +8,9 @@ import (
 	"strings"
 )
 
-// ProtocolVersion is the host/package protocol implemented by this package.
+// ProtocolVersion is the host/package contract implemented by this package.
+// Compatible host refactors keep this value; incompatible envelope, validation,
+// or execution semantics require a new protocol version.
 const ProtocolVersion = "1.0.0"
 
 // RuntimeKind identifies a host-provided package runtime. The constants are

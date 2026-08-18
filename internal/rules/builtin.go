@@ -10,36 +10,28 @@ import (
 )
 
 const (
-	builtinSourceFormat = "thaimaturgy-builtin-source-v1"
+	builtinSourceFormat = "thaimaturgy-builtin-source-v2"
 	maxBuiltinSources   = MaxCollectionItems
 	maxBuiltinBytes     = 8 << 20
-	kernelSourceName    = "host/rules-kernel"
 )
 
-// NewBuiltinArtifact derives a host-attested artifact from the production
-// source embedded in a built-in package. Unlike a hand-maintained ABI string,
-// this makes every source change produce a different digest automatically.
-// Callers should include behavior-affecting shared helpers as separate entries.
+// NewBuiltinArtifact derives a host-attested artifact from the explicitly
+// declared production sources of a built-in package. Unlike a hand-maintained
+// ABI string, this makes every package or shared-helper source change produce a
+// different digest automatically. Host-kernel implementation is deliberately
+// excluded: ProtocolVersion identifies that contract independently.
 func NewBuiltinArtifact(manifest Manifest, sources map[string]string) (Artifact, error) {
 	if manifest.Runtime.Kind != RuntimeBuiltin {
 		return Artifact{}, invalid("builtin.manifest.runtime", "must be %q", RuntimeBuiltin)
 	}
-	if len(sources) == 0 || len(sources) >= maxBuiltinSources {
-		return Artifact{}, invalid("builtin.sources", "must contain 1..%d package files", maxBuiltinSources-1)
-	}
-	if _, reserved := sources[kernelSourceName]; reserved {
-		return Artifact{}, invalid("builtin.sources", "%q is reserved for the host kernel identity", kernelSourceName)
+	if len(sources) == 0 || len(sources) > maxBuiltinSources {
+		return Artifact{}, invalid("builtin.sources", "must contain 1..%d package files", maxBuiltinSources)
 	}
 
-	names := make([]string, 0, len(sources)+1)
-	canonical := make(map[string]string, len(sources)+1)
+	names := make([]string, 0, len(sources))
+	canonical := make(map[string]string, len(sources))
 	total := len(builtinSourceFormat)
-	allSources := make(map[string]string, len(sources)+1)
 	for name, source := range sources {
-		allSources[name] = source
-	}
-	allSources[kernelSourceName] = SourceIdentity()
-	for name, source := range allSources {
 		if err := validateBuiltinSourceName(name); err != nil {
 			return Artifact{}, err
 		}
