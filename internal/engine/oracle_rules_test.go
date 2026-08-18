@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -110,5 +111,38 @@ func TestOracleNamespacesPersistedReceiptsAcrossInstances(t *testing.T) {
 	secondID := "oracle:" + second.executionNamespace + ":1:0:0"
 	if firstID == secondID {
 		t.Fatalf("fresh Oracle instances generated colliding receipt IDs: %q", firstID)
+	}
+}
+
+func TestMergeSessionStateCannotRollBackNewerParentRules(t *testing.T) {
+	session := createTestSession()
+	encoded, err := json.Marshal(session.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var staleChild domain.SessionState
+	if err := json.Unmarshal(encoded, &staleChild); err != nil {
+		t.Fatal(err)
+	}
+
+	handle, receipt, err := session.State.BeginRulesRequest(
+		context.Background(), "parent-ahead", "game_submit_intent", "sha256:"+strings.Repeat("d", 64),
+	)
+	if err != nil || receipt != nil {
+		t.Fatalf("begin receipt=%v err=%v", receipt, err)
+	}
+	if _, err := session.State.CommitRulesRequest(handle, domain.RulesCommit{
+		State: handle.Snapshot.State, ResolutionID: "parent-ahead",
+		Result: &domain.RulesStoredResult{Content: `{"status":"resolved"}`},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mergeSessionState(session.State, &staleChild, staleChild.LogLen()); err != nil {
+		t.Fatal(err)
+	}
+	runtime, ok := session.State.RulesRuntimeSnapshot()
+	if !ok || runtime.Generation != 1 || len(runtime.Receipts) != 1 || runtime.Receipts[0].RequestID != "parent-ahead" {
+		t.Fatalf("stale child rolled parent back: ok=%v runtime=%+v", ok, runtime)
 	}
 }

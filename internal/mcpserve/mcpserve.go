@@ -6,13 +6,16 @@ package mcpserve
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
@@ -67,6 +70,14 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	if st.EffectiveMode() == domain.ModeVirtualDM {
 		st.EnsureParty()
 	}
+	// A prior child may have been interrupted after publishing the canonical
+	// checkpoint (the historical write order) or after publishing only the
+	// handoff (the new recoverable order). Reconcile just the monotonic rules
+	// runtime before loading its exact implementation; ordinary handoff fields
+	// remain owned by the parent turn.
+	if err := reconcileCanonicalRules(store, &st); err != nil {
+		return fmt.Errorf("mcp-tools: reconcile canonical rules: %w", err)
+	}
 	rulesEnvironment, err := runtimecatalog.Load(context.Background(), store.BasePath())
 	if err != nil {
 		return fmt.Errorf("mcp-tools: load rules catalog: %w", err)
@@ -75,29 +86,90 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("mcp-tools: open session: %w", err)
 	}
-	persist := func(state *domain.SessionState) error {
-		if err := store.SaveSession(state); err != nil {
-			return err
-		}
-		encoded, err := json.MarshalIndent(state, "", "  ")
-		if err != nil {
-			return err
-		}
-		return replaceFile(*sessPath, encoded, 0o600)
+	persister := newCheckpointPersister(*sessPath, store.SaveSession)
+	session.PersistRules = persister.Persist
+	// Establish one reconciled snapshot in both destinations before accepting a
+	// tool call. Persist writes the handoff first, so any failure before the
+	// canonical CAS leaves the parent a complete checkpoint it can merge/retry.
+	if err := persister.Persist(&st); err != nil {
+		return fmt.Errorf("mcp-tools: persist initial handoff: %w", err)
 	}
-	session.PersistRules = persist
-	if session.IsModified {
-		if err := persist(&st); err != nil {
-			return fmt.Errorf("mcp-tools: persist rules binding: %w", err)
-		}
-		session.IsModified = false
-	}
+	session.IsModified = false
 	router := engine.NewToolRouter(session)
-	save := func() error { return persist(&st) }
+	// Rules tools already cross PersistRules at each committed checkpoint. The
+	// persister fingerprints the last successful snapshot, so this generic MCP
+	// after-hook still covers ordinary tools without duplicating rules writes.
+	save := func() error { return persister.Persist(&st) }
 	if *requestNamespace != "" {
 		return mcptools.ServeWithNamespace(input, output, router, save, *requestNamespace)
 	}
 	return mcptools.Serve(input, output, router, save)
+}
+
+func reconcileCanonicalRules(store *storage.Storage, handoff *domain.SessionState) error {
+	canonical, err := store.LoadSession(handoff.Name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if canonical.Name != handoff.Name {
+		return fmt.Errorf("canonical session name %q does not match handoff %q", canonical.Name, handoff.Name)
+	}
+	if canonical.AdventureID != handoff.AdventureID {
+		return fmt.Errorf("canonical adventure %q does not match handoff %q", canonical.AdventureID, handoff.AdventureID)
+	}
+	_, err = handoff.ImportRulesRuntimeChecked(canonical)
+	return err
+}
+
+type checkpointPersister struct {
+	handoffPath   string
+	writeHandoff  func(string, []byte, os.FileMode) error
+	saveCanonical func(*domain.SessionState) error
+
+	mu             sync.Mutex
+	hasLast        bool
+	lastSuccessful [sha256.Size]byte
+}
+
+func newCheckpointPersister(handoffPath string, saveCanonical func(*domain.SessionState) error) *checkpointPersister {
+	return &checkpointPersister{
+		handoffPath: handoffPath, writeHandoff: replaceFile, saveCanonical: saveCanonical,
+	}
+}
+
+// Persist publishes the parent-owned handoff before attempting the canonical
+// CAS. If the second write fails, the parent can still merge the complete newer
+// handoff and retry; if the first fails, canonical state is untouched. An exact
+// successful snapshot is skipped when mcptools invokes its generic after-hook.
+func (p *checkpointPersister) Persist(state *domain.SessionState) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if state == nil {
+		return errors.New("nil session checkpoint")
+	}
+	encoded, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal handoff: %w", err)
+	}
+	digest := sha256.Sum256(encoded)
+	if p.hasLast && digest == p.lastSuccessful {
+		return nil
+	}
+	if p.writeHandoff == nil || p.saveCanonical == nil {
+		return errors.New("session checkpoint destinations are not configured")
+	}
+	if err := p.writeHandoff(p.handoffPath, encoded, 0o600); err != nil {
+		return fmt.Errorf("write parent handoff: %w", err)
+	}
+	if err := p.saveCanonical(state); err != nil {
+		return fmt.Errorf("write canonical session: %w", err)
+	}
+	p.lastSuccessful = digest
+	p.hasLast = true
+	return nil
 }
 
 func replaceFile(path string, data []byte, mode os.FileMode) error {
@@ -122,5 +194,15 @@ func replaceFile(path string, data []byte, mode os.FileMode) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporaryPath, path)
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return err
+	}
+	// The handoff is itself a crash-recovery checkpoint. Best-effort directory
+	// sync mirrors the canonical storage writer without rejecting platforms that
+	// do not permit syncing directories.
+	if directory, err := os.Open(filepath.Dir(path)); err == nil {
+		_ = directory.Sync()
+		_ = directory.Close()
+	}
+	return nil
 }

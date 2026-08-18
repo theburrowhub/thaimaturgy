@@ -689,9 +689,35 @@ func (s *SessionState) ImportStructured(src *SessionState) {
 	_ = s.ImportStructuredChecked(src)
 }
 
+// ImportRulesRuntimeChecked reconciles only the transactional rules block from
+// src. It is used by process handoffs that must preserve the receiver's ordinary
+// session fields while adopting a newer durable rules checkpoint. Older source
+// generations are ignored, equal-generation forks and lock changes fail closed,
+// and an absent legacy source never removes an existing binding.
+func (s *SessionState) ImportRulesRuntimeChecked(src *SessionState) (bool, error) {
+	if src == nil {
+		return false, errors.New("domain: nil rules import source")
+	}
+	var importedRules *RulesSession
+	runtime, exists, err := src.RulesRuntimeSnapshotStrict()
+	if err != nil {
+		return false, fmt.Errorf("import rules runtime: %w", err)
+	}
+	if exists {
+		importedRules = &runtime
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.importRulesRuntimeLocked(importedRules)
+}
+
 // ImportStructuredChecked is ImportStructured with explicit reporting for a
 // lock mismatch or equal-generation rules fork.
 func (s *SessionState) ImportStructuredChecked(src *SessionState) error {
+	if src == nil {
+		return errors.New("domain: nil structured import source")
+	}
 	var importedRules *RulesSession
 	runtime, exists, err := src.RulesRuntimeSnapshotStrict()
 	if err != nil {
@@ -705,16 +731,8 @@ func (s *SessionState) ImportStructuredChecked(src *SessionState) error {
 	defer s.mu.Unlock()
 	// Reject rules conflicts before copying any other structured field. A failed
 	// merge is all-or-nothing from the caller's perspective.
-	if importedRules != nil && s.Rules != nil {
-		if err := s.Rules.Validate(); err != nil {
-			return fmt.Errorf("current rules runtime: %w", err)
-		}
-		switch {
-		case s.Rules.Lock != importedRules.Lock:
-			return ErrRulesLockConflict
-		case importedRules.Generation == s.Rules.Generation && !reflect.DeepEqual(*s.Rules, *importedRules):
-			return ErrRulesImportConflict
-		}
+	if _, err := s.importRulesRuntimeLocked(importedRules); err != nil {
+		return err
 	}
 	s.CurrentZone = src.CurrentZone
 	s.CurrentRoom = src.CurrentRoom
@@ -734,20 +752,32 @@ func (s *SessionState) ImportStructuredChecked(src *SessionState) error {
 	s.Quests = src.Quests
 	s.Characters = src.Characters
 	s.PC = src.PC
-	// The CLI/MCP subprocess starts from a copy of this session, so normally these
-	// locks are identical. Preserve an existing different lock rather than turning
-	// this merge helper into an implicit ruleset-upgrade path.
-	if importedRules != nil {
+	return nil
+}
+
+// importRulesRuntimeLocked implements the monotonic rules merge shared by full
+// structured imports and rules-only process-handoff reconciliation. s.mu must be
+// held by the caller.
+func (s *SessionState) importRulesRuntimeLocked(importedRules *RulesSession) (bool, error) {
+	if importedRules == nil {
+		return false, nil
+	}
+	if s.Rules != nil {
+		if err := s.Rules.Validate(); err != nil {
+			return false, fmt.Errorf("current rules runtime: %w", err)
+		}
 		switch {
-		case s.Rules == nil:
-			cp := cloneRulesSession(*importedRules)
-			s.Rules = &cp
-		case importedRules.Generation > s.Rules.Generation:
-			cp := cloneRulesSession(*importedRules)
-			s.Rules = &cp
+		case s.Rules.Lock != importedRules.Lock:
+			return false, ErrRulesLockConflict
+		case importedRules.Generation == s.Rules.Generation && !reflect.DeepEqual(*s.Rules, *importedRules):
+			return false, ErrRulesImportConflict
+		case importedRules.Generation <= s.Rules.Generation:
+			return false, nil
 		}
 	}
-	return nil
+	cp := cloneRulesSession(*importedRules)
+	s.Rules = &cp
+	return true, nil
 }
 
 // BindRules pins the session to lock and seeds its opaque state. It returns true
