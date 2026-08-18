@@ -23,22 +23,48 @@ type Catalog struct {
 	registry *rules.Registry
 	mu       sync.RWMutex
 	byID     map[string][]rules.Lock
+	initial  map[rules.Lock]rules.Payload
 }
 
 func New() *Catalog {
-	return &Catalog{registry: rules.NewRegistry(), byID: make(map[string][]rules.Lock)}
+	return &Catalog{
+		registry: rules.NewRegistry(),
+		byID:     make(map[string][]rules.Lock),
+		initial:  make(map[rules.Lock]rules.Payload),
+	}
 }
 
-func (c *Catalog) Register(ctx context.Context, artifact rules.Artifact, implementation rules.Ruleset) error {
+// Register adds one complete loadable package. initialState is validated both
+// structurally and by the package before the exact artifact becomes visible.
+func (c *Catalog) Register(
+	ctx context.Context,
+	artifact rules.Artifact,
+	implementation rules.Ruleset,
+	initialState rules.Payload,
+) error {
 	if c == nil {
 		return fmt.Errorf("rules catalog: nil catalog")
+	}
+	if err := initialState.Validate(); err != nil {
+		return fmt.Errorf("rules catalog: invalid initial state: %w", err)
+	}
+	// Probe the registry contract first so a manifest mismatch or incompatible
+	// protocol cannot execute ValidateState under a forged artifact identity.
+	probe := rules.NewRegistry()
+	if err := probe.Register(ctx, artifact, implementation); err != nil {
+		return err
+	}
+	lock := artifact.Lock()
+	snapshot := rules.Snapshot{Ruleset: lock, State: initialState}
+	if err := implementation.ValidateState(ctx, rules.ValidateStateRequest{Snapshot: snapshot}); err != nil {
+		return fmt.Errorf("rules catalog: ruleset rejected initial state: %w", err)
 	}
 	if err := c.registry.Register(ctx, artifact, implementation); err != nil {
 		return err
 	}
-	lock := artifact.Lock()
 	c.mu.Lock()
 	c.byID[lock.ID] = append(c.byID[lock.ID], lock)
+	c.initial[lock] = initialState
 	slices.SortFunc(c.byID[lock.ID], func(a, b rules.Lock) int {
 		comparison := compareVersions(mustParseVersion(a.Version), mustParseVersion(b.Version))
 		if comparison == 0 {
@@ -50,6 +76,23 @@ func (c *Catalog) Register(ctx context.Context, artifact rules.Artifact, impleme
 	})
 	c.mu.Unlock()
 	return nil
+}
+
+// InitialState returns the immutable seed state registered for one exact lock.
+func (c *Catalog) InitialState(lock rules.Lock) (rules.Payload, error) {
+	if c == nil {
+		return rules.Payload{}, fmt.Errorf("rules catalog: nil catalog")
+	}
+	if err := lock.Validate(); err != nil {
+		return rules.Payload{}, err
+	}
+	c.mu.RLock()
+	state, exists := c.initial[lock]
+	c.mu.RUnlock()
+	if !exists {
+		return rules.Payload{}, fmt.Errorf("%w: initial state for %s@%s", rules.ErrRulesetNotFound, lock.ID, lock.Version)
+	}
+	return state, nil
 }
 
 // Lookup returns the implementation for one exact persisted lock.

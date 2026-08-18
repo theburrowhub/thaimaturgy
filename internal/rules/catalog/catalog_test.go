@@ -9,7 +9,10 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
 )
 
-type manifestRuleset struct{ manifest rules.Manifest }
+type manifestRuleset struct {
+	manifest rules.Manifest
+	stateErr error
+}
 
 func (r manifestRuleset) Manifest(context.Context) (rules.Manifest, error) { return r.manifest, nil }
 func (manifestRuleset) ListActions(context.Context, rules.CatalogRequest) ([]rules.ActionDescriptor, error) {
@@ -27,7 +30,9 @@ func (manifestRuleset) Project(context.Context, rules.ProjectRequest) (rules.Pro
 func (manifestRuleset) Explain(context.Context, rules.ExplainRequest) (rules.Explanation, error) {
 	return rules.Explanation{}, nil
 }
-func (manifestRuleset) ValidateState(context.Context, rules.ValidateStateRequest) error { return nil }
+func (r manifestRuleset) ValidateState(context.Context, rules.ValidateStateRequest) error {
+	return r.stateErr
+}
 func (manifestRuleset) Reduce(context.Context, rules.ReduceRequest) (rules.ReduceResult, error) {
 	return rules.ReduceResult{}, nil
 }
@@ -45,10 +50,47 @@ func registerVersion(t *testing.T, catalog *Catalog, id, version, material strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := catalog.Register(context.Background(), artifact, manifestRuleset{manifest: manifest}); err != nil {
+	initialState, err := rules.NewPayload([]byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Register(context.Background(), artifact, manifestRuleset{manifest: manifest}, initialState); err != nil {
 		t.Fatal(err)
 	}
 	return artifact.Lock()
+}
+
+func TestRegisterValidatesAndRetainsInitialStateAtomically(t *testing.T) {
+	catalog := New()
+	manifest := rules.Manifest{
+		ID: "stateful", Name: "Stateful", Version: "1.0.0", ProtocolVersion: rules.ProtocolVersion,
+		Runtime: rules.Runtime{Kind: rules.RuntimeBuiltin},
+	}
+	artifact, err := rules.NewArtifact(manifest, strings.NewReader("stateful"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := rules.NewPayload([]byte(`{"counter":0}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinel := errors.New("bad state")
+	implementation := manifestRuleset{manifest: manifest, stateErr: sentinel}
+	if err := catalog.Register(context.Background(), artifact, implementation, initial); !errors.Is(err, sentinel) {
+		t.Fatalf("Register error = %v", err)
+	}
+	if _, err := catalog.Lookup(artifact.Lock()); !errors.Is(err, rules.ErrRulesetNotFound) {
+		t.Fatalf("semantically invalid package became visible: %v", err)
+	}
+
+	implementation.stateErr = nil
+	if err := catalog.Register(context.Background(), artifact, implementation, initial); err != nil {
+		t.Fatal(err)
+	}
+	got, err := catalog.InitialState(artifact.Lock())
+	if err != nil || got.String() != initial.String() {
+		t.Fatalf("InitialState = %s, %v", got.String(), err)
+	}
 }
 
 func TestResolveSelectsHighestCompatibleExactArtifact(t *testing.T) {
