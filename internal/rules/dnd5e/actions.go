@@ -16,6 +16,9 @@ const (
 	ActionAbilityCheck = "ability.check"
 
 	RandomMethodDiceRoll = "dice.roll"
+
+	MinDifficultyClass = 0
+	MaxDifficultyClass = 1_000_000
 )
 
 // DiceRandomRequest is the random specification emitted by both supported
@@ -106,6 +109,12 @@ func (c continuation) validate() error {
 		if c.DC == nil {
 			return fmt.Errorf("ability-check continuation is missing dc")
 		}
+		if *c.Modifier < diceexpr.MinModifier || *c.Modifier > diceexpr.MaxModifier {
+			return fmt.Errorf("ability-check modifier must be between %d and %d", diceexpr.MinModifier, diceexpr.MaxModifier)
+		}
+		if *c.DC < MinDifficultyClass || *c.DC > MaxDifficultyClass {
+			return fmt.Errorf("ability-check dc must be between %d and %d", MinDifficultyClass, MaxDifficultyClass)
+		}
 	default:
 		return fmt.Errorf("continuation contains unknown action %q", c.Action)
 	}
@@ -125,13 +134,13 @@ func actionDescriptors() ([]core.ActionDescriptor, error) {
 	checkSchema, err := core.NewPayload([]byte(fmt.Sprintf(`{
 		"type":"object",
 		"properties":{
-			"modifier":{"type":"integer"},
-			"dc":{"type":"integer"},
+			"modifier":{"type":"integer","minimum":%d,"maximum":%d},
+			"dc":{"type":"integer","minimum":%d,"maximum":%d},
 			"label":{"type":"string","maxLength":%d,"description":"What the check is for; UTF-8 text with the same byte limit"}
 		},
 		"required":["modifier","dc"],
 		"additionalProperties":false
-	}`, core.MaxTextBytes)))
+	}`, diceexpr.MinModifier, diceexpr.MaxModifier, MinDifficultyClass, MaxDifficultyClass, core.MaxTextBytes)))
 	if err != nil {
 		return nil, err
 	}
@@ -188,6 +197,12 @@ func (r *Ruleset) startAbilityCheck(request core.StartRequest) (core.Step, error
 	}
 	if args.DC == nil {
 		return rejection(request.Intent.ID, "invalid.arguments", "missing 'dc'"), nil
+	}
+	if *args.Modifier < diceexpr.MinModifier || *args.Modifier > diceexpr.MaxModifier {
+		return rejection(request.Intent.ID, "invalid.arguments", fmt.Sprintf("modifier must be between %d and %d", diceexpr.MinModifier, diceexpr.MaxModifier)), nil
+	}
+	if *args.DC < MinDifficultyClass || *args.DC > MaxDifficultyClass {
+		return rejection(request.Intent.ID, "invalid.arguments", fmt.Sprintf("dc must be between %d and %d", MinDifficultyClass, MaxDifficultyClass)), nil
 	}
 	if len(args.Label) > core.MaxTextBytes {
 		return rejection(request.Intent.ID, "invalid.arguments", fmt.Sprintf("label exceeds %d bytes", core.MaxTextBytes)), nil

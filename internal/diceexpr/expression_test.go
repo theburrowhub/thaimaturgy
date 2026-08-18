@@ -50,6 +50,8 @@ func TestParseMatchesLegacyErrors(t *testing.T) {
 		{strings.Repeat("9", 100) + "d6", "invalid number of dice: " + strings.Repeat("9", 100)},
 		{"1d" + strings.Repeat("9", 100), "invalid dice sides: " + strings.Repeat("9", 100)},
 		{"1d6+" + strings.Repeat("9", 100), "invalid modifier: +" + strings.Repeat("9", 100)},
+		{"1d6+1000001", "modifier must be between -1000000 and 1000000"},
+		{"1d6-1000001", "modifier must be between -1000000 and 1000000"},
 	}
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
@@ -58,6 +60,14 @@ func TestParseMatchesLegacyErrors(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestTotalRejectsIntegerOverflowFromConstructedExpression(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	expr := Expression{Notation: "1d20", NumDice: 1, DiceSides: 20, Modifier: maxInt}
+	if _, err := expr.Total([]int{1}); err == nil || !strings.Contains(err.Error(), "integer range") {
+		t.Fatalf("Total overflow error = %v", err)
 	}
 }
 

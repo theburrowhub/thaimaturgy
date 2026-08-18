@@ -10,7 +10,7 @@ import (
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
 )
 
-const artifactDigest = "sha256:b989ff3eb79a1b31989e50b16dcee44a2d11a7a39815789e424ae848c2163337"
+const artifactDigest = "sha256:4f150b7e64be27f37efb4c62d96878bd372d308b81fbff9879b3f6ac51292206"
 
 func TestManifestArtifactAndActionCatalogAreStable(t *testing.T) {
 	artifact, err := NewArtifact()
@@ -206,6 +206,9 @@ func TestStartReturnsLegacyCompatibleRejections(t *testing.T) {
 		{"invalid notation", ActionDiceRoll, map[string]any{"notation": "nope"}, "invalid.notation", "invalid dice notation: nope (expected format: NdM or NdM+K)"},
 		{"missing modifier", ActionAbilityCheck, map[string]any{"dc": 10}, "invalid.arguments", "missing 'modifier'"},
 		{"missing dc", ActionAbilityCheck, map[string]any{"modifier": 2}, "invalid.arguments", "missing 'dc'"},
+		{"modifier overflow", ActionAbilityCheck, map[string]any{"modifier": int(^uint(0) >> 1), "dc": 10}, "invalid.arguments", "modifier must be between -1000000 and 1000000"},
+		{"negative dc", ActionAbilityCheck, map[string]any{"modifier": 2, "dc": -1}, "invalid.arguments", "dc must be between 0 and 1000000"},
+		{"dc overflow", ActionAbilityCheck, map[string]any{"modifier": 2, "dc": int(^uint(0) >> 1)}, "invalid.arguments", "dc must be between 0 and 1000000"},
 		{"unknown action", "other.action", map[string]any{}, "unknown.action", "unknown action: other.action"},
 	}
 	for _, test := range tests {
