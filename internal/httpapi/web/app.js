@@ -265,9 +265,13 @@ async function openSession(name) {
     renderBrowser();
     renderParty();
     renderLog();
+    hosting = false;
+    tgReady = false; // toggle stays disabled until refreshTelegram() confirms status
+    tgBusy = false;
     applyModeUI();
     detailPlaceholder();
     subscribeEvents(name, gen);
+    refreshTelegram(); // reflect a host already running for this session
   } catch (e) { if (gen === openGen) status(e.message, true); }
 }
 
@@ -603,10 +607,79 @@ function applyModeUI() {
   $("#ask-input").placeholder = dm
     ? "Describe what your character does…  (Enter sends · Shift/Ctrl+Enter = newline)"
     : "Ask the oracle, or type a /command.  (Enter sends · Shift/Ctrl+Enter = newline)";
+  applyTelegramUI();
 }
 
 $("#mode-toggle").onclick = () => runCommand("/mode");
 $("#begin").onclick = () => runCommand("/begin");
+
+// --- Host on Telegram (server-side bot) ---------------------------------
+// The SERVER runs the Telegram bot bound to this session (token from Settings).
+// While hosting, the bot is the sole driver of the game, so the server rejects
+// turns from the web — the turn controls are disabled until hosting stops.
+let hosting = false;
+let tgReady = false; // initial Telegram status fetched for the current session?
+let tgBusy = false;  // a start/stop request is in flight?
+
+function applyTelegramUI() {
+  const btn = $("#telegram");
+  if (!btn) return;
+  const dm = effectiveMode() === "dm";
+  btn.classList.toggle("hidden", !(dm || hosting));
+  btn.textContent = hosting ? "Hosting — stop" : "Host: Telegram";
+  btn.classList.toggle("active", hosting);
+  // Not usable until the initial status is known (so a toggle can't race the
+  // initial refresh and get overwritten by its late reply), nor mid-request.
+  btn.disabled = !tgReady || tgBusy;
+  $("#ask-input").disabled = hosting;
+  $("#mode-toggle").disabled = hosting;
+  $("#begin").disabled = hosting;
+  $("#rest").disabled = hosting;
+  if (hosting) {
+    $("#ask-input").placeholder = "Hosting on Telegram — players drive the game there.";
+  }
+}
+
+async function refreshTelegram() {
+  if (!current) { hosting = false; tgReady = true; applyTelegramUI(); return; }
+  // Capture the session generation: if the user switches sessions while this
+  // request is in flight, the response is for the OLD session and must not touch
+  // the (now different) current session's hosting state.
+  const gen = openGen;
+  try {
+    const r = await api("GET", "/sessions/" + encodeURIComponent(current) + "/telegram");
+    if (gen !== openGen) return;
+    hosting = !!r.hosting;
+  } catch { if (gen === openGen) hosting = false; }
+  if (gen === openGen) { tgReady = true; applyTelegramUI(); } // enable the toggle only now
+}
+
+$("#telegram").onclick = async () => {
+  if (!current || tgBusy || !tgReady) return; // wait for the initial status; one request at a time
+  const gen = openGen;
+  const verb = hosting ? "stop" : "start";
+  tgBusy = true;
+  applyTelegramUI(); // disables the button while the request is in flight
+  try {
+    const r = await api("POST", "/sessions/" + encodeURIComponent(current) + "/telegram/" + verb);
+    if (gen !== openGen) return; // session switched under us — ignore stale reply
+    hosting = !!r.hosting;
+    if (hosting) {
+      appendLine("log", "Hosting on Telegram" + (r.username ? " as @" + r.username : "") +
+        ". Players drive the game from Telegram; turns here are paused until you stop hosting.");
+    } else {
+      appendLine("log", "Stopped hosting on Telegram.");
+    }
+  } catch (e) { if (gen === openGen) appendLine("err", "⚠ " + e.message); }
+  finally {
+    // Only clear busy / refresh for the CURRENT session: a stale reply (the user
+    // switched away and may have started a toggle on the new session) must not
+    // re-enable the new session's in-flight toggle. openSession resets tgBusy on
+    // switch, so the obsolete generation leaks nothing.
+    if (gen === openGen) { tgBusy = false; applyModeUI(); }
+  }
+};
+
 $("#rest").onclick = () => {
   const kind = prompt("Rest type: short or long?", "short");
   if (!kind) return;
@@ -806,6 +879,7 @@ async function askOracle(input) {
 async function submitInput(text) {
   text = text.trim();
   if (!text) return;
+  if (hosting) { status("Hosting on Telegram — stop hosting to take a turn here.", true); return; }
   if (text.startsWith("/")) { appendLine("u", "» " + text); await runCommand(text); }
   else { await askOracle(text); }
 }
