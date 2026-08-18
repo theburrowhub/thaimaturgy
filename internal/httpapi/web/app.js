@@ -1007,6 +1007,10 @@ async function loadSettings() {
   const g = (label, node) => { f.append(field(label, node)); return node; };
   const sec = (t) => f.append(el("div", "label", t));
 
+  // Read-only: the credential the server auto-detected (Claude CLI / Gemini CLI /
+  // OAuth login / env API key). Secrets stay write-only; this only names the source.
+  f.append(el("p", "muted small", "Detected credential (server): " + (c.auth_source || "(none detected)")));
+
   sec("Provider & models");
   const provider = g("Provider", selectFrom(["openai", "anthropic", "gemini", "claude-cli"], c.provider || "openai"));
   const model = g("Model", input(c.model || ""));

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -513,14 +514,74 @@ func (g *gui) showRemoteSettings() {
 		g.showRemoteLibrary()
 	}
 
-	// --- Server settings (provider/model/language) — needs a live connection ---
-	provider := widget.NewEntry()
+	// --- Server settings: full parity with the local Settings form — needs a
+	// live connection. Mirrors cmd/thaimaturgy/settings.go field-for-field. ---
+	provider := widget.NewSelect([]string{
+		string(domain.ProviderOpenAI), string(domain.ProviderAnthropic),
+		string(domain.ProviderGemini), string(domain.ProviderClaudeCLI),
+	}, nil)
 	model := widget.NewEntry()
-	lang := widget.NewEntry()
+	runModel := widget.NewEntry()
+	runModel.SetPlaceHolder("(defaults to Model)")
+	editModel := widget.NewEntry()
+	editModel.SetPlaceHolder("(defaults to Model)")
+	language := widget.NewSelect([]string{string(domain.LangEnglish), string(domain.LangSpanish)}, nil)
+	importLang := widget.NewEntry()
+	importLang.SetPlaceHolder("(follows UI language)")
+	temperature := widget.NewEntry()
+	maxTokens := widget.NewEntry()
+	importTokens := widget.NewEntry()
+	toolIter := widget.NewEntry()
+	timeout := widget.NewEntry()
+	autoSave := widget.NewCheck("", nil)
+	autoSaveInterval := widget.NewEntry()
+	ttsEnabled := widget.NewCheck("", nil)
+	ttsVoice := widget.NewSelect([]string{
+		string(domain.TTSVoiceAlloy), string(domain.TTSVoiceEcho), string(domain.TTSVoiceFable),
+		string(domain.TTSVoiceOnyx), string(domain.TTSVoiceNova), string(domain.TTSVoiceShimmer),
+	}, nil)
+	spoilerGuard := widget.NewCheck("", nil)
+	spoilerModel := widget.NewEntry()
+	spoilerModel.SetPlaceHolder("(optional: blank = oracle model)")
+	openaiKey := widget.NewPasswordEntry()
+	anthropicKey := widget.NewPasswordEntry()
+	geminiKey := widget.NewPasswordEntry()
+	telegramToken := widget.NewPasswordEntry()
+	for _, e := range []*widget.Entry{openaiKey, anthropicKey, geminiKey, telegramToken} {
+		e.SetPlaceHolder("(leave blank to keep the current value)")
+	}
+	telegramChat := widget.NewEntry()
+	telegramChat.SetPlaceHolder("(optional: restrict the bot to one chat)")
+	telegramUsers := widget.NewMultiLineEntry()
+	telegramUsers.SetPlaceHolder("(optional: one numeric user id per line)")
+	credLabel := widget.NewLabel("")
+	credLabel.Wrapping = fyne.TextWrapWord
+
 	srvForm := widget.NewForm(
+		widget.NewFormItem("Detected credential", credLabel),
 		widget.NewFormItem("Provider", provider),
 		widget.NewFormItem("Model", model),
-		widget.NewFormItem("Language", lang),
+		widget.NewFormItem("Run model", runModel),
+		widget.NewFormItem("Edit model", editModel),
+		widget.NewFormItem("UI language", language),
+		widget.NewFormItem("Import language", importLang),
+		widget.NewFormItem("Temperature", temperature),
+		widget.NewFormItem("Max tokens", maxTokens),
+		widget.NewFormItem("Import max output tokens", importTokens),
+		widget.NewFormItem("Oracle max tool iterations", toolIter),
+		widget.NewFormItem("Request timeout (s)", timeout),
+		widget.NewFormItem("Auto-save sessions", autoSave),
+		widget.NewFormItem("Auto-save interval (s)", autoSaveInterval),
+		widget.NewFormItem("TTS enabled", ttsEnabled),
+		widget.NewFormItem("TTS voice", ttsVoice),
+		widget.NewFormItem("Spoiler guard (Virtual DM)", spoilerGuard),
+		widget.NewFormItem("Spoiler-guard model", spoilerModel),
+		widget.NewFormItem("OpenAI API key", openaiKey),
+		widget.NewFormItem("Anthropic API key", anthropicKey),
+		widget.NewFormItem("Gemini API key", geminiKey),
+		widget.NewFormItem("Telegram bot token", telegramToken),
+		widget.NewFormItem("Telegram chat id", telegramChat),
+		widget.NewFormItem("Telegram allowed users", telegramUsers),
 	)
 	srvForm.Hide()
 	srvStatus := widget.NewLabel("Loading server settings…")
@@ -530,9 +591,43 @@ func (g *gui) showRemoteSettings() {
 		if loaded == nil {
 			return
 		}
-		loaded.Provider = domain.ProviderType(strings.TrimSpace(provider.Text))
+		loaded.Provider = domain.ProviderType(provider.Selected)
 		loaded.Model = strings.TrimSpace(model.Text)
-		loaded.Language = domain.Language(strings.TrimSpace(lang.Text))
+		loaded.RunModel = strings.TrimSpace(runModel.Text)
+		loaded.EditModel = strings.TrimSpace(editModel.Text)
+		loaded.Language = domain.Language(language.Selected)
+		loaded.ImportLanguage = strings.TrimSpace(importLang.Text)
+		loaded.Temperature = parseFloat(temperature.Text, loaded.Temperature)
+		loaded.MaxTokens = parseInt(maxTokens.Text, loaded.MaxTokens)
+		loaded.ImportMaxOutputTokens = parseInt(importTokens.Text, loaded.ImportMaxOutputTokens)
+		loaded.OracleMaxToolIterations = parseInt(toolIter.Text, loaded.OracleMaxToolIterations)
+		loaded.RequestTimeoutSeconds = parseInt(timeout.Text, loaded.RequestTimeoutSeconds)
+		loaded.AutoSave = autoSave.Checked
+		loaded.AutoSaveInterval = parseInt(autoSaveInterval.Text, loaded.AutoSaveInterval)
+		loaded.TTS.Enabled = ttsEnabled.Checked
+		loaded.TTS.Voice = domain.TTSVoice(ttsVoice.Selected)
+		loaded.SpoilerGuard.Enabled = spoilerGuard.Checked
+		loaded.SpoilerGuard.Model = strings.TrimSpace(spoilerModel.Text)
+		// Secrets are write-only: send only what was typed. getConfig blanked them,
+		// so an untouched field stays "" and putConfig keeps the server's value.
+		loaded.OpenAIAPIKey = strings.TrimSpace(openaiKey.Text)
+		loaded.AnthropicAPIKey = strings.TrimSpace(anthropicKey.Text)
+		loaded.GeminiAPIKey = strings.TrimSpace(geminiKey.Text)
+		loaded.TelegramToken = strings.TrimSpace(telegramToken.Text)
+		if s := strings.TrimSpace(telegramChat.Text); s == "" {
+			loaded.TelegramChatID = 0
+		} else if v, perr := strconv.ParseInt(s, 10, 64); perr == nil {
+			loaded.TelegramChatID = v
+		} else {
+			g.showErr(fmt.Errorf("Telegram chat id must be a number (e.g. -1001234567890): %q", s))
+			return
+		}
+		loaded.TelegramAllowedUsers = nil
+		for _, line := range strings.Split(telegramUsers.Text, "\n") {
+			if u := strings.TrimSpace(line); u != "" {
+				loaded.TelegramAllowedUsers = append(loaded.TelegramAllowedUsers, u)
+			}
+		}
 		// Capture the client on the UI thread: "Apply & reconnect" can replace
 		// g.remote concurrently, and this config belongs to THIS server — sending it
 		// to a just-applied different server would be wrong (and racy).
@@ -559,30 +654,57 @@ func (g *gui) showRemoteSettings() {
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle("Server settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		srvStatus, srvForm, saveSrv,
-		widget.NewSeparator(),
-		container.NewHBox(widget.NewButton("Close", func() { pop.Hide() })),
 	)
-	pop = widget.NewModalPopUp(container.NewPadded(content), g.win.Canvas())
-	pop.Resize(fyne.NewSize(480, 460))
+	closeBar := container.NewHBox(widget.NewButton("Close", func() { pop.Hide() }))
+	pop = widget.NewModalPopUp(
+		container.NewPadded(container.NewBorder(nil, closeBar, nil, nil, container.NewVScroll(content))),
+		g.win.Canvas(),
+	)
+	pop.Resize(fyne.NewSize(560, 680))
 	pop.Show()
 
-	// Load the server config in the background; on failure the connection fields
-	// above still work, so the user can correct the URL/token and reconnect.
-	// Capture the client (Apply & reconnect may swap g.remote before this returns).
+	// Load the server config (+ detected credential) in the background; on failure
+	// the connection fields above still work, so the user can correct the URL/token
+	// and reconnect. Capture the client (Apply & reconnect may swap g.remote).
 	client := g.remote
 	go func() {
 		ctx, cancel := bg(15)
 		defer cancel()
-		cfg, err := client.Config(ctx)
+		cfg, authSource, err := client.ConfigWithAuth(ctx)
 		fyne.Do(func() {
 			if err != nil {
 				srvStatus.SetText("Could not reach the server (" + err.Error() + "). Fix the URL/token above and Apply & reconnect.")
 				return
 			}
 			loaded = cfg
-			provider.SetText(string(cfg.Provider))
+			provider.SetSelected(string(cfg.Provider))
 			model.SetText(cfg.Model)
-			lang.SetText(string(cfg.Language))
+			runModel.SetText(cfg.RunModel)
+			editModel.SetText(cfg.EditModel)
+			language.SetSelected(string(cfg.Language))
+			importLang.SetText(cfg.ImportLanguage)
+			temperature.SetText(strconv.FormatFloat(cfg.Temperature, 'g', -1, 64))
+			maxTokens.SetText(strconv.Itoa(cfg.MaxTokens))
+			importTokens.SetText(strconv.Itoa(cfg.ImportMaxOutputTokens))
+			toolIter.SetText(strconv.Itoa(cfg.OracleMaxToolIterations))
+			timeout.SetText(strconv.Itoa(cfg.RequestTimeoutSeconds))
+			autoSave.SetChecked(cfg.AutoSave)
+			autoSaveInterval.SetText(strconv.Itoa(cfg.AutoSaveInterval))
+			ttsEnabled.SetChecked(cfg.TTS.Enabled)
+			if cfg.TTS.Voice != "" {
+				ttsVoice.SetSelected(string(cfg.TTS.Voice))
+			}
+			spoilerGuard.SetChecked(cfg.SpoilerGuard.Enabled)
+			spoilerModel.SetText(cfg.SpoilerGuard.Model)
+			if cfg.TelegramChatID != 0 {
+				telegramChat.SetText(strconv.FormatInt(cfg.TelegramChatID, 10))
+			}
+			telegramUsers.SetText(strings.Join(cfg.TelegramAllowedUsers, "\n"))
+			if authSource == "" {
+				credLabel.SetText("(none detected)")
+			} else {
+				credLabel.SetText(authSource)
+			}
 			srvStatus.Hide()
 			srvForm.Show()
 			saveSrv.Show()
