@@ -8,12 +8,26 @@ import (
 	"encoding/json"
 	"flag"
 	"os"
+	"strings"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/mcptools"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
+
+// openStorage opens storage honoring THAIM_DATA_DIR, mirroring the server/GUI/bot
+// startup logic. This matters because the Claude-CLI backend re-execs the SAME
+// binary as this subprocess: if the parent runs with a custom data dir (e.g. the
+// Docker server's THAIM_DATA_DIR=/data), the subprocess must read that same dir —
+// otherwise it would look in the default ~/.thaimaturgy and never find the
+// adventure/session the parent is actually using.
+func openStorage() (*storage.Storage, error) {
+	if dataDir := strings.TrimSpace(os.Getenv("THAIM_DATA_DIR")); dataDir != "" {
+		return storage.NewWithPath(dataDir)
+	}
+	return storage.New()
+}
 
 // RunSubcommand serves the session tools over stdio MCP: it loads the adventure
 // and the session-state temp file, exposes the engine ToolRouter, and writes the
@@ -25,7 +39,7 @@ func RunSubcommand(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	store, err := storage.New()
+	store, err := openStorage()
 	if err != nil {
 		return err
 	}

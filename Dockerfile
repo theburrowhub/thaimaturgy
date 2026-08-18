@@ -18,7 +18,10 @@ COPY --from=build --chown=nonroot:nonroot /out/data /data
 # Data (adventures/sessions/config) lives on a mounted volume; bind to all
 # interfaces (Docker maps the port). A wildcard bind refuses to start without a
 # token, so THAIM_SERVER_TOKEN must be provided.
-ENV THAIM_DATA_DIR=/data THAIM_ADDR=:8765
+# HOME is set so os.UserHomeDir() resolves for the nonroot user: mounting a host
+# ~/.claude/.credentials.json or ~/.gemini/oauth_creds.json into /home/nonroot
+# lets the server reuse a Claude Code / Gemini CLI login (see docs/server-credentials.md).
+ENV THAIM_DATA_DIR=/data THAIM_ADDR=:8765 HOME=/home/nonroot
 EXPOSE 8765
 USER nonroot
 VOLUME ["/data"]
