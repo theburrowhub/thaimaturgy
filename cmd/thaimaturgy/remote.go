@@ -166,27 +166,35 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 
 	input := widget.NewEntry()
 
-	var sendBtn, modeBtn, beginBtn, restBtn *widget.Button
+	var sendBtn, modeBtn, beginBtn, restBtn, tgBtn *widget.Button
 	var applyRemoteMode func(*domain.SessionState)
 	busy := false
-	setBusy := func(b bool) {
-		busy = b
+	hosting := false
+	refreshControls := func() {
+		turnLocked := busy || hosting
 		for _, w := range []interface {
 			Enable()
 			Disable()
 		}{input, sendBtn, modeBtn, beginBtn, restBtn} {
-			if b {
+			if turnLocked {
 				w.Disable()
 			} else {
 				w.Enable()
 			}
 		}
+		// The host toggle stays usable while hosting (to stop it) but not mid-turn.
+		if busy {
+			tgBtn.Disable()
+		} else {
+			tgBtn.Enable()
+		}
 	}
+	setBusy := func(b bool) { busy = b; refreshControls() }
 
 	// runCmd sends a command or oracle input; for state-mutating commands it then
 	// refetches the session and reconciles the party + mode UI.
 	runCmd := func(text string, echo bool) {
-		if text == "" || busy {
+		if text == "" || busy || hosting {
 			return
 		}
 		setBusy(true)
@@ -249,15 +257,74 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 	})
 	restBtn.Hide()
 
+	// Host-on-Telegram toggle (virtual-DM only): the SERVER runs the bot bound to
+	// this session, using the server-configured token. While hosting, the bot is
+	// the sole driver, so this client's turn controls are disabled (the server
+	// would reject them with a "hosted" error anyway).
+	var setHosting func(bool)
+	tgBtn = widget.NewButtonWithIcon("Host: Telegram", theme.ComputerIcon(), func() {
+		if busy {
+			return
+		}
+		wantStop := hosting
+		setBusy(true)
+		go func() {
+			ctx, cancel := bg(30)
+			var st apiclient.TelegramStatus
+			var err error
+			if wantStop {
+				st, err = g.remote.StopTelegramHost(ctx, name)
+			} else {
+				st, err = g.remote.StartTelegramHost(ctx, name)
+			}
+			cancel()
+			fyne.Do(func() {
+				setBusy(false)
+				if err != nil {
+					appendTx("⚠ ", err.Error())
+					return
+				}
+				setHosting(st.Hosting)
+				if st.Hosting {
+					msg := "Hosting on Telegram"
+					if st.Username != "" {
+						msg += " as @" + st.Username
+					}
+					appendTx("", msg+". Players drive the game from Telegram; turns here are paused until you stop hosting.")
+				} else {
+					appendTx("", "Stopped hosting on Telegram.")
+				}
+			})
+		}()
+	})
+	tgBtn.Hide()
+	setHosting = func(h bool) {
+		hosting = h
+		if h {
+			tgBtn.SetText("Hosting — stop")
+			tgBtn.Importance = widget.HighImportance
+			input.SetPlaceHolder("Hosting on Telegram — players drive the game there")
+		} else {
+			tgBtn.SetText("Host: Telegram")
+			tgBtn.Importance = widget.MediumImportance
+		}
+		tgBtn.Refresh()
+		refreshControls()
+	}
+
 	applyRemoteMode = func(s *domain.SessionState) {
 		dm := s != nil && s.EffectiveMode() == domain.ModeVirtualDM
 		started := dm && s.GameStarted()
 		if dm {
 			modeBtn.SetText("Mode: Virtual DM")
-			input.SetPlaceHolder("What do you do?  (Enter sends)")
+			if !hosting {
+				input.SetPlaceHolder("What do you do?  (Enter sends)")
+			}
 		} else {
 			modeBtn.SetText("Mode: Oracle")
-			input.SetPlaceHolder("Ask the oracle, or type a /command…")
+			if !hosting {
+				input.SetPlaceHolder("Ask the oracle, or type a /command…")
+			}
 		}
 		if dm && !started {
 			beginBtn.Show()
@@ -268,6 +335,13 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 			restBtn.Show()
 		} else {
 			restBtn.Hide()
+		}
+		// The host toggle belongs to virtual-DM mode; keep it visible while
+		// hosting even if the mode readout lags.
+		if dm || hosting {
+			tgBtn.Show()
+		} else {
+			tgBtn.Hide()
 		}
 	}
 	applyRemoteMode(st)
@@ -285,7 +359,7 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 
 	novelBtn := widget.NewButtonWithIcon("Novel", theme.DocumentCreateIcon(), g.openNovelEditor)
 	head := container.NewHBox(back, widget.NewLabelWithStyle(name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		layoutSpacer(), modeBtn, beginBtn, restBtn, novelBtn, save)
+		layoutSpacer(), modeBtn, beginBtn, restBtn, tgBtn, novelBtn, save)
 	left := modernPanel("Party", "", container.NewVScroll(party))
 	center := modernPanel("Transcript", "", transScroll)
 	right := modernPanel("Live log", "", logScroll)
@@ -295,6 +369,21 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 	g.win.SetContent(container.NewBorder(head, bottom, nil, nil, body))
 
 	g.startRemoteLogStream(name, logBox, logScroll)
+
+	// Reflect any Telegram host already running for this session (e.g. started
+	// from the web or a previous GUI), so the toggle opens in the right state.
+	go func() {
+		ctx, cancel := bg(15)
+		ts, err := g.remote.TelegramStatus(ctx, name)
+		cancel()
+		if err != nil || !ts.Hosting {
+			return
+		}
+		fyne.Do(func() {
+			setHosting(true)
+			applyRemoteMode(st)
+		})
+	}()
 }
 
 // remoteTurn runs one command/oracle turn synchronously (call from a goroutine),

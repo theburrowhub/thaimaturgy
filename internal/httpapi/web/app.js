@@ -265,9 +265,11 @@ async function openSession(name) {
     renderBrowser();
     renderParty();
     renderLog();
+    hosting = false;
     applyModeUI();
     detailPlaceholder();
     subscribeEvents(name, gen);
+    refreshTelegram(); // reflect a host already running for this session
   } catch (e) { if (gen === openGen) status(e.message, true); }
 }
 
@@ -603,10 +605,62 @@ function applyModeUI() {
   $("#ask-input").placeholder = dm
     ? "Describe what your character does…  (Enter sends · Shift/Ctrl+Enter = newline)"
     : "Ask the oracle, or type a /command.  (Enter sends · Shift/Ctrl+Enter = newline)";
+  applyTelegramUI();
 }
 
 $("#mode-toggle").onclick = () => runCommand("/mode");
 $("#begin").onclick = () => runCommand("/begin");
+
+// --- Host on Telegram (server-side bot) ---------------------------------
+// The SERVER runs the Telegram bot bound to this session (token from Settings).
+// While hosting, the bot is the sole driver of the game, so the server rejects
+// turns from the web — the turn controls are disabled until hosting stops.
+let hosting = false;
+
+function applyTelegramUI() {
+  const btn = $("#telegram");
+  if (!btn) return;
+  const dm = effectiveMode() === "dm";
+  btn.classList.toggle("hidden", !(dm || hosting));
+  btn.textContent = hosting ? "Hosting — stop" : "Host: Telegram";
+  btn.classList.toggle("active", hosting);
+  $("#ask-input").disabled = hosting;
+  $("#mode-toggle").disabled = hosting;
+  $("#begin").disabled = hosting;
+  $("#rest").disabled = hosting;
+  if (hosting) {
+    $("#ask-input").placeholder = "Hosting on Telegram — players drive the game there.";
+  }
+}
+
+async function refreshTelegram() {
+  if (!current) { hosting = false; applyTelegramUI(); return; }
+  try {
+    const r = await api("GET", "/sessions/" + encodeURIComponent(current) + "/telegram");
+    hosting = !!r.hosting;
+  } catch { hosting = false; }
+  applyTelegramUI();
+}
+
+$("#telegram").onclick = async () => {
+  if (!current) return;
+  const btn = $("#telegram");
+  btn.disabled = true;
+  try {
+    const verb = hosting ? "stop" : "start";
+    const r = await api("POST", "/sessions/" + encodeURIComponent(current) + "/telegram/" + verb);
+    hosting = !!r.hosting;
+    applyModeUI(); // re-evaluates visibility + calls applyTelegramUI
+    if (hosting) {
+      appendLine("log", "Hosting on Telegram" + (r.username ? " as @" + r.username : "") +
+        ". Players drive the game from Telegram; turns here are paused until you stop hosting.");
+    } else {
+      appendLine("log", "Stopped hosting on Telegram.");
+    }
+  } catch (e) { appendLine("err", "⚠ " + e.message); }
+  finally { btn.disabled = false; }
+};
+
 $("#rest").onclick = () => {
   const kind = prompt("Rest type: short or long?", "short");
   if (!kind) return;
@@ -806,6 +860,7 @@ async function askOracle(input) {
 async function submitInput(text) {
   text = text.trim();
   if (!text) return;
+  if (hosting) { status("Hosting on Telegram — stop hosting to take a turn here.", true); return; }
   if (text.startsWith("/")) { appendLine("u", "» " + text); await runCommand(text); }
   else { await askOracle(text); }
 }
