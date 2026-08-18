@@ -68,6 +68,14 @@ type Service struct {
 	novelJobs  map[string]*NovelJob  // novelization jobs by id (#71)
 
 	novelMu sync.Mutex // serializes the read-modify-write of saved novels (#65)
+
+	// hostMu serializes the Telegram host lifecycle across ALL sessions. The
+	// server has a single Telegram bot token, and Telegram allows only one
+	// getUpdates consumer per bot, so at most one session may host at a time.
+	// hostName is the session currently hosting ("" if none). Lock ordering:
+	// hostMu is always acquired before any OpenSession.opMu.
+	hostMu   sync.Mutex
+	hostName string
 }
 
 // OpenSession is a live, registered play session with its engine bindings.
@@ -413,6 +421,13 @@ func (s *Service) AutosaveError(name string) error {
 func (s *Service) CloseSession(name string) error {
 	unlock := s.lockName(name) // serialize with resume/rename/delete of this name
 	defer unlock()
+	// Stop any Telegram host for this session first (fully: cancel + wait for the
+	// bot). Hold hostMu across the ENTIRE close so a concurrent StartTelegramHost
+	// can't re-host in the gap before the session is marked closed (a later start
+	// then sees closed and bails). Lock order is hostMu → opMu.
+	s.hostMu.Lock()
+	defer s.hostMu.Unlock()
+	s.stopHostLocked(name)
 	os, ok := s.Get(name)
 	if !ok {
 		return nil
@@ -422,7 +437,6 @@ func (s *Service) CloseSession(name string) error {
 	if os.closed {
 		return nil
 	}
-	os.stopHostLocked() // stop any Telegram host before the final save + teardown
 	if err := s.persist(os); err != nil {
 		return fmt.Errorf("not closing %q — final save failed (retry): %w", name, err)
 	}

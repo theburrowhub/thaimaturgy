@@ -45,6 +45,48 @@ func TestTelegramHostStatusAndStopWhenIdle(t *testing.T) {
 	}
 }
 
+// TestStartTelegramHostSingleHost: because the server has ONE bot token (and
+// Telegram allows one getUpdates consumer per bot), a second session's start is
+// refused with ErrAlreadyHosting — before any bot is built (no Telegram
+// network). The first host is faked at Service level.
+func TestStartTelegramHostSingleHost(t *testing.T) {
+	svc, _ := newService(t)
+	cfg := svc.Config()
+	cfg.TelegramToken = "dummy:token" // get past the no-token guard
+	if err := svc.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	a, err := svc.NewSession("crypt")
+	if err != nil {
+		t.Fatalf("NewSession a: %v", err)
+	}
+	b, err := svc.NewSession("crypt")
+	if err != nil {
+		t.Fatalf("NewSession b: %v", err)
+	}
+
+	// Simulate session a already holding the server-wide host.
+	osA, _ := svc.Get(a)
+	svc.hostMu.Lock()
+	svc.hostName = a
+	svc.hostMu.Unlock()
+	osA.opMu.Lock()
+	osA.tg = &tgbot.Bot{}
+	osA.opMu.Unlock()
+
+	if _, err := svc.StartTelegramHost(b); !errors.Is(err, ErrAlreadyHosting) {
+		t.Fatalf("second host = %v; want ErrAlreadyHosting", err)
+	}
+
+	// Clear the fake so nothing tears it down (a bare bot has no live api).
+	svc.hostMu.Lock()
+	svc.hostName = ""
+	svc.hostMu.Unlock()
+	osA.opMu.Lock()
+	osA.tg = nil
+	osA.opMu.Unlock()
+}
+
 // TestHostedSessionRejectsTurns: while a session is hosted, the server's turn
 // drivers (ExecuteCommand, AskOracle) and mutating helpers (SetParty via
 // withOpenSession) reject other clients with ErrSessionHosted, so the bot is the
