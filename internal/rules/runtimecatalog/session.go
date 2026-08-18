@@ -12,6 +12,30 @@ import (
 
 var ErrAdventureRulesRequired = errors.New("rules runtime catalog: adventure has no valid rules package requirement")
 
+// OpenSession is the only production constructor for a mechanically active
+// local session. It resolves or restores the exact package before exposing the
+// session to the engine, then injects the immutable process catalog used for all
+// later exact lookups. Callers remain responsible for assigning PersistRules to
+// their atomic storage operation before constructing an Oracle or ToolRouter.
+func (e *Environment) OpenSession(
+	ctx context.Context,
+	state *domain.SessionState,
+	adventure *domain.Adventure,
+	config *domain.Config,
+) (*domain.Session, error) {
+	_, created, err := e.resolveSessionRules(ctx, state, adventure)
+	if err != nil {
+		return nil, err
+	}
+	session := domain.NewSession(state, adventure, config)
+	session.RulesResolver = e.Catalog
+	session.DataDirectory = e.DataDirectory
+	if created {
+		session.MarkModified()
+	}
+	return session, nil
+}
+
 // resolveSessionRules binds an unpinned session from the adventure requirement,
 // or restores a pinned session by exact lock. It validates the package-owned
 // state and reconstructs it from the immutable initial state and event journal
@@ -32,6 +56,9 @@ func (e *Environment) resolveSessionRules(
 	}
 	if adventure == nil {
 		return nil, false, errors.New("rules runtime catalog: nil adventure")
+	}
+	if state.AdventureID != adventure.ID {
+		return nil, false, fmt.Errorf("rules runtime catalog: session adventure %q does not match loaded adventure %q", state.AdventureID, adventure.ID)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, false, err

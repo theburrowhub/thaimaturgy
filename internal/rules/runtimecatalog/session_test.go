@@ -57,8 +57,9 @@ func TestResolveSessionRulesPinnedLockWinsOverChangedAdventureRequirement(t *tes
 	}
 	before, _, _ := state.RulesRuntimeSnapshotStrict()
 
-	changed := rulesAdventure("dnd5e")
-	implementation, created, err := environment.resolveSessionRules(context.Background(), state, changed)
+	changed := *original
+	changed.Ruleset = &rules.Requirement{ID: "dnd5e", Version: "0.1.0"}
+	implementation, created, err := environment.resolveSessionRules(context.Background(), state, &changed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,6 +69,38 @@ func TestResolveSessionRulesPinnedLockWinsOverChangedAdventureRequirement(t *tes
 	after, _, _ := state.RulesRuntimeSnapshotStrict()
 	if after.Lock != before.Lock || after.Generation != before.Generation || after.State.String() != before.State.String() {
 		t.Fatalf("pinned runtime changed: before=%+v after=%+v", before, after)
+	}
+}
+
+func TestOpenSessionInjectsExactResolverAndMarksOnlyNewBinding(t *testing.T) {
+	environment, err := Load(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adventure := rulesAdventure("pbta")
+	state := domain.NewSessionState("open", adventure)
+	config := domain.DefaultConfig()
+
+	session, err := environment.OpenSession(context.Background(), state, adventure, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.State != state || session.Adventure != adventure || session.Config != config {
+		t.Fatal("OpenSession did not preserve its domain inputs")
+	}
+	if session.RulesResolver != environment.Catalog || session.DataDirectory != environment.DataDirectory {
+		t.Fatalf("runtime injection resolver=%T data=%q", session.RulesResolver, session.DataDirectory)
+	}
+	if !session.IsModified {
+		t.Fatal("new exact binding was not marked for persistence")
+	}
+
+	reopened, err := environment.OpenSession(context.Background(), state, adventure, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.IsModified {
+		t.Fatal("validated pinned session was marked modified")
 	}
 }
 
@@ -92,6 +125,13 @@ func TestResolveSessionRulesFailsClosedWithoutMutatingState(t *testing.T) {
 		{
 			name: "unknown requirement", adventure: &domain.Adventure{ID: "unknown", System: "Mystery system"},
 			want: "no valid rules package requirement",
+		},
+		{
+			name: "different adventure", adventure: rulesAdventure("dnd5e"),
+			prepare: func(_ *testing.T, state *domain.SessionState) {
+				state.AdventureID = "somewhere-else"
+			},
+			want: "does not match loaded adventure",
 		},
 		{
 			name: "missing exact lock", adventure: rulesAdventure("dnd5e"),
