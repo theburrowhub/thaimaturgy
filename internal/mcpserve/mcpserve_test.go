@@ -15,6 +15,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/dnd5e"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/pbta"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
@@ -481,6 +482,78 @@ func TestMCPPBTAEndToEndPersistsExactCatalogAcrossReload(t *testing.T) {
 	}
 	if len(canonicalAfter.PartySnapshot()) != 0 || len(handoffAfter.PartySnapshot()) != 0 {
 		t.Fatal("reloaded foreign MCP server created legacy party state")
+	}
+}
+
+func TestMCPDNDMutationRetryIsIdempotentAcrossReload(t *testing.T) {
+	dataDirectory := t.TempDir()
+	store, err := storage.NewWithPath(dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adventure := &domain.Adventure{
+		SchemaVersion: domain.SchemaVersion,
+		ID:            "mcp-dnd-mutation-e2e",
+		Title:         "MCP D&D mutation E2E",
+		Ruleset:       &rules.Requirement{ID: dnd5e.PackageID, Version: dnd5e.PackageVersion},
+		Zones: []domain.Zone{{
+			ID: "zone", Name: "Zone", Rooms: []domain.Room{{ID: "room", Name: "Room"}},
+		}},
+	}
+	if err := os.MkdirAll(store.AdventureDir(adventure.ID), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveAdventure(adventure.ID, adventure); err != nil {
+		t.Fatal(err)
+	}
+	state := domain.NewSessionState("mcp-dnd-mutation-session", adventure)
+	state.SetMode(domain.ModeVirtualDM)
+	character := domain.NewCharacter("Kael", "Elf", "Wizard")
+	character.MaxHP, character.CurrentHP = 20, 20
+	state.SetParty([]*domain.Character{character})
+	handoffPath := filepath.Join(t.TempDir(), "session.json")
+	writeStateFile(t, handoffPath, state)
+	args := []string{
+		"--data-dir", dataDirectory,
+		"--adventure-id", adventure.ID,
+		"--session", handoffPath,
+		"--request-namespace", "dnd-mutation-turn",
+		"--language", "en",
+		"--rules-timeout-seconds", "17",
+	}
+	input := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_hp","arguments":{"delta":-8}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_hp","arguments":{"delta":-8}}}`,
+	}, "\n")
+
+	firstOutput := runMCPSubcommand(t, args, input)
+	firstResponses := decodeMCPResponses(t, firstOutput)
+	firstResult := mcpToolText(t, firstResponses, "2")
+	canonicalBefore := mustLoadState(t, store, state.Name)
+	if party := canonicalBefore.PartySnapshot(); len(party) != 1 || party[0].CurrentHP != 12 {
+		t.Fatalf("first retry changed HP more than once: %+v", party)
+	}
+	runtimeBefore := mustRulesRuntime(t, canonicalBefore)
+	if len(runtimeBefore.Receipts) != 1 || runtimeBefore.Receipts[0].Tool != "update_hp" {
+		t.Fatalf("durable ordinary-tool receipt = %+v", runtimeBefore.Receipts)
+	}
+
+	secondOutput := runMCPSubcommand(t, args, input)
+	secondResponses := decodeMCPResponses(t, secondOutput)
+	if secondResult := mcpToolText(t, secondResponses, "2"); secondResult != firstResult {
+		t.Fatalf("restart retry result changed: first=%q second=%q", firstResult, secondResult)
+	}
+	canonicalAfter := mustLoadState(t, store, state.Name)
+	if party := canonicalAfter.PartySnapshot(); len(party) != 1 || party[0].CurrentHP != 12 {
+		t.Fatalf("restart retry changed HP again: %+v", party)
+	}
+	if runtimeAfter := mustRulesRuntime(t, canonicalAfter); !reflect.DeepEqual(runtimeBefore, runtimeAfter) {
+		t.Fatalf("restart retry advanced durable runtime: before=%+v after=%+v", runtimeBefore, runtimeAfter)
+	}
+	if handoff := mustReadState(t, handoffPath); !reflect.DeepEqual(mustRulesRuntime(t, handoff), runtimeBefore) {
+		t.Fatal("handoff and canonical receipts diverged after restart")
 	}
 }
 
