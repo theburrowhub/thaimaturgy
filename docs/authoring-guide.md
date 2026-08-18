@@ -86,10 +86,11 @@ If you'd rather write JSON by hand, follow the steps below.
 
    ```json
    {
-     "schema_version": "1.0",
+     "schema_version": "1.2",
      "id": "my-adventure",
      "title": "My Adventure",
      "system": "D&D 5e",
+     "ruleset": {"id": "dnd5e", "version": "0.1.0"},
      "summary": "One-line pitch.",
      "background": "The hidden truth for the DM.",
      "introduction": "How it starts.",
@@ -144,6 +145,9 @@ If you'd rather write JSON by hand, follow the steps below.
   what make the oracle useful for improvisation when players go off-script.
 - **Use IDs everywhere.** Link rooms↔NPCs↔events by ID. The oracle cites IDs so you can
   `/npc <id>` or `/event <id>` to pull the full entry.
+- **Pin the mechanical family explicitly.** Set `ruleset.id` and an exact
+  `ruleset.version`; keep `system` only as a reader-friendly label. Modules cannot
+  carry executable rules code, so importing authored content never installs a plugin.
 - **Document the ending.** A clear `conclusion` (with branches) lets the oracle steer
   toward a satisfying resolution.
 - **Write the opening.** Fill `introduction` and `hooks`: the virtual DM narrates the

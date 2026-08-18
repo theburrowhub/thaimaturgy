@@ -3,6 +3,8 @@ package domain
 import (
 	"strings"
 	"testing"
+
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 )
 
 func validAdv() *Adventure {
@@ -40,6 +42,52 @@ func TestValidateAdventureRequiredFields(t *testing.T) {
 	errs := ValidateAdventure(a, nil)
 	if len(errs) == 0 {
 		t.Fatal("expected errors for empty adventure")
+	}
+}
+
+func TestAdventureRulesRequirementIsExplicitAndLegacyMappingIsClosed(t *testing.T) {
+	explicit := validAdv()
+	explicit.Ruleset = &rules.Requirement{ID: "fatecore", Version: "0.1.0"}
+	explicit.System = "A misleading display label"
+	got, ok := explicit.RulesRequirement()
+	if !ok || got != *explicit.Ruleset {
+		t.Fatalf("explicit requirement = %#v, %v", got, ok)
+	}
+
+	known := &Adventure{System: "La llamada de Cthulhu"}
+	got, ok = known.RulesRequirement()
+	if !ok || got.ID != "coc7e" || got.Version != "0.1.0" {
+		t.Fatalf("legacy requirement = %#v, %v", got, ok)
+	}
+	known.Migrate()
+	if known.Ruleset == nil || *known.Ruleset != got {
+		t.Fatalf("migration did not persist requirement: %#v", known.Ruleset)
+	}
+
+	unknown := &Adventure{System: "Homebrew Mystery"}
+	if got, ok := unknown.RulesRequirement(); ok {
+		t.Fatalf("unknown system was guessed as %#v", got)
+	}
+	unknown.Migrate()
+	if unknown.Ruleset != nil {
+		t.Fatalf("unknown system was migrated as %#v", unknown.Ruleset)
+	}
+
+	invalidExplicit := &Adventure{
+		System:  "D&D 5e",
+		Ruleset: &rules.Requirement{ID: "Bad ID", Version: "0.1.0"},
+	}
+	if got, ok := invalidExplicit.RulesRequirement(); ok {
+		t.Fatalf("invalid explicit requirement fell back to legacy label as %#v", got)
+	}
+}
+
+func TestValidateAdventureRejectsInvalidRulesRequirement(t *testing.T) {
+	adventure := validAdv()
+	adventure.Ruleset = &rules.Requirement{ID: "Bad ID", Version: "latest"}
+	errs := ValidateAdventure(adventure, nil)
+	if len(errs) == 0 || !strings.Contains(errs[0].Error(), "invalid ruleset requirement") {
+		t.Fatalf("validation errors = %v", errs)
 	}
 }
 

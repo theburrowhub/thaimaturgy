@@ -1,9 +1,10 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "id": "the-curfew-bell",
   "title": "The Curfew Bell",
   "author": "thAImaturgy examples",
   "system": "D&D 5e",
+  "ruleset": {"id": "dnd5e", "version": "0.1.0"},
   "language": "en",
   "summary": "A market town welcomes visitors by day, but a tolling bell empties its streets at dusk — and something moves once the watch locks the gates.",
   "context": "A short investigation for a party of 1st-2nd level. It shows how one location can be run as two scenes: the same square, bustling by day and deserted under curfew. Use it as a template for phase-based adventures.",

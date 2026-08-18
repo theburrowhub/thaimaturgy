@@ -376,7 +376,7 @@ const systemPrompt = `You are an expert tabletop RPG (D&D 5e) module designer. Y
 
 Output ONLY a JSON object (no prose, no markdown fences) with this shape:
 {
-  "schema_version":"1.1","id":"kebab-case-id","title":"...","author":"","system":"D&D 5e","language":"en","start_room":"id of the room where the party begins",
+  "schema_version":"1.2","id":"kebab-case-id","title":"...","author":"","system":"D&D 5e","ruleset":{"id":"dnd5e","version":"0.1.0"},"language":"en","start_room":"id of the room where the party begins",
   "summary":"...","context":"how to position/run it: setting, tone, recommended level & party, campaign fit, prerequisites","background":"the FULL in-world history/backstory for the DM (keep every paragraph)","introduction":"how it starts","conclusion":"possible endings","hooks":["..."],
   "images":[{"id":"<image_id>","kind":"map|art","description":"..."}],
   "zones":[{"id":"...","name":"...","overview":"DM summary","description":"...","image_ids":["<image_id>"],

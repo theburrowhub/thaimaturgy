@@ -1,9 +1,10 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.2",
   "id": "the-sunken-crypt",
   "title": "The Sunken Crypt",
   "author": "thAImaturgy examples",
   "system": "D&D 5e",
+  "ruleset": {"id": "dnd5e", "version": "0.1.0"},
   "language": "en",
   "summary": "A one-session dungeon crawl for 3-5 characters of levels 2-3. The village of Mistmoor is plagued by nightly hauntings since a spring flood cracked open an ancient crypt beneath the marsh. The party must descend into the sunken crypt, uncover the source of the unrest, and lay the restless dead to peace.",
   "background": "Three centuries ago, the knight-commander Sir Alden Vail was entombed in a marsh crypt with the cursed blade Sorrowmourn, which had driven him to slaughter his own men. Priests bound his spirit with a warding sigil. This spring's flood cracked the crypt and washed away the sigil-stone, freeing Alden's wraith. Every night it walks Mistmoor seeking soldiers to punish. The wraith cannot rest until Sorrowmourn is destroyed or re-consecrated. The goblin scavenger Grask has also crept in through the flood breach and is looting the outer tombs, unaware of what sleeps deeper.",
