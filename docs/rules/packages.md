@@ -76,6 +76,11 @@ make build-rules
 ./bin/thaimaturgy-rules list
 ```
 
+The desktop app, server, bot, and MCP subprocess load an immutable catalog when
+their process starts. Restart long-running thAImaturgy processes after an
+install so new sessions can resolve the package. Sessions that are already
+bound keep their exact ID, version, digest, and protocol lock.
+
 `pack` refuses symlinks, non-regular files, non-portable paths, output inside
 the source tree, and inputs beyond the runtime limits. It normalizes ZIP order,
 timestamps, modes, and compression, executes the completed bundle through the

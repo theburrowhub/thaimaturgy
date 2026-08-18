@@ -86,6 +86,9 @@ Cada commit invoca, antes de reanudar o devolver, la barrera opcional
 `Session.PersistRules`. Los frontends que prometan durabilidad frente a caída la
 conectan a su reemplazo atómico del archivo; si queda nil se conserva el contrato
 histórico de memoria más autosave, sin afirmar durabilidad de proceso.
+La aplicación de escritorio, el servicio HTTP, el bot y el subprocesso MCP ya
+conectan esta barrera al archivo canónico de sesión; MCP actualiza además su
+copia temporal antes de contestar a la llamada.
 El namespace global de IDs por instancia/conexión se resuelve en los adapters de
 Oracle y MCP, no en el host. Las resoluciones hijas requieren el catálogo
 multi-ruleset y no se presentan como una decisión humana.

@@ -21,4 +21,7 @@ make build-rules
 ./bin/thaimaturgy-rules install dist/rules/simple-d6.rules.zip
 ```
 
+Restart any running thAImaturgy desktop, server, or bot process after the
+install; each process builds its immutable rules catalog at startup.
+
 The host, rather than the script, supplies and audits the `dice.roll` result.

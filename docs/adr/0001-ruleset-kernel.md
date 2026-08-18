@@ -294,36 +294,40 @@ texto generado permanecen delimitados como datos no confiables.
 Cada fase deja cargables las sesiones existentes. No se retira una tool legacy
 hasta migrar sus consumidores y mantener un periodo de compatibilidad.
 
-### Estado del primer corte (2026-08-18)
+### Estado de implementación (2026-08-18)
 
-Este ADR ya tiene un corte vertical ejecutable, deliberadamente menor que todos
-sus criterios finales:
+El corte vertical cubre ya el protocolo, la distribución local y la ejecución
+durable de extremo a extremo:
 
-- `internal/rules` implementa el contrato neutral, payloads acotados, unión
-  `Step`, artefactos verificados por SHA-256, locks exactos y registro concurrente;
-- las sesiones persisten `lock`, revisión y estado opaco. Las sesiones legacy con
-  sistema vacío o una etiqueta D&D 5e conocida se fijan a `dnd5e@0.1.0`; una
-  etiqueta desconocida o un lock no disponible nunca cae silenciosamente a 5e;
-- el adaptador Go incorporado `dnd5e` implementa dos acciones puras,
-  `dice.roll` y `ability.check`, mediante `need_random` y `resume`. La expresión
-  de dados se extrajo a un paquete sin RNG en vez de llamar de vuelta al engine;
-- el gateway aditivo publica las siete tools `game_*` y conserva
-  `roll_dice`/`ability_check` como aliases con su texto y log anteriores solo
-  cuando el artefacto 5e exacto está cargado; no hay fallback bajo un lock ajeno
-  o inválido. El host da a cada llamada directa un ID por turno/iteración y MCP
-  exige un ID JSON-RPC no nulo, del que deriva un ID opaco estable para que los
-  reintentos normales no repitan el draw;
-- `game_preview` se detiene antes del azar. `game_respond` mantiene ya la
-  superficie estable, aunque este ruleset reducido no produce decisiones o
-  adjudicaciones externas.
+- `internal/rules` implementa el contrato neutral, JSON estricto y acotado,
+  unión `Step`, artefactos atestiguados por SHA-256, locks exactos y catálogo
+  concurrente. El digest de cada paquete Go incorporado incluye también el
+  código productivo del kernel que afecta a su comportamiento;
+- las sesiones persisten lock, estado inicial y materializado, revisión,
+  generación, eventos, draws, continuaciones y recibos. El host hace CAS,
+  checkpoint atómico antes de `Resume`, replay desde revisión cero y retries sin
+  repetir azar ni `Reduce`, también después de reiniciar;
+- las siete tools `game_*` resuelven exclusivamente el paquete fijado que el
+  catálogo de la sesión inyectó. Las utilidades históricas 5e sólo se anuncian y
+  ejecutan para el artefacto `dnd5e` incorporado exacto; no existe fallback desde
+  un lock ajeno, ausente o inválido;
+- hay diez paquetes Go de referencia: d20 (D&D 5e y Pathfinder 2e), d100
+  (RuneQuest y Call of Cthulhu 7e), pools (Vampire 5e y Shadowrun 6e), PbtA,
+  GURPS 4e, Fate Core y Savage Worlds. Cubren azar secuencial, grados, críticos,
+  dados explosivos y una decisión humana persistible;
+- el runtime Starlark carga bundles ZIP inmutables sin APIs de SO, red, reloj o
+  entropía, con imports confinados, cuotas, cancelación, límites estructurales y
+  caché por digest. El CLI permite empaquetar, validar, instalar, descubrir y
+  listar releases sin mezclar código con aventuras;
+- escritorio, servicio HTTP, bot, Oracle/MCP y editor cargan o declaran el mismo
+  requisito. Abrir una sesión resuelve una versión compatible sólo una vez;
+  reabrir exige el digest exacto y verifica replay antes de exponer mecánicas.
 
-La idempotencia de este corte usa una ventana acotada de recibos en memoria del
-router: no sobrevive a reinicio. Dentro de esa ventana, un cliente MCP no puede
-reutilizar el mismo ID JSON-RPC para otra llamada distinta; los IDs monotónicos
-son el contrato de este bridge provisional. Tampoco existen todavía commit de
-eventos, replay, revisión transaccional, persistencia de pendientes/RNG,
-separación total de tools no mecánicas, loader Starlark ni paquetes externos.
-Esos límites son la fase 5 y siguientes, no garantías del corte actual.
+Quedan fuera deliberadamente las resoluciones hijas (`StartChild`, rechazado de
+forma cerrada), el aislamiento de memoria mediante proceso/WASM, firmas de
+editores, un marketplace y migraciones automáticas. Instalar un bundle requiere
+reiniciar los procesos largos para reconstruir su catálogo inmutable y nunca
+actualiza silenciosamente una campaña existente.
 
 ## Consecuencias
 

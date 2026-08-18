@@ -50,6 +50,11 @@ make build-rules
 ./bin/thaimaturgy-rules install ./mi-paquete.rules.zip
 ```
 
+Los procesos de la aplicación cargan un catálogo inmutable al arrancar. Después
+de instalar un bundle hay que reiniciar las instancias de escritorio, servidor
+o bot que deban resolverlo para sesiones nuevas. Una sesión ya fijada conserva
+siempre su lock exacto; reiniciar no la actualiza silenciosamente.
+
 El directorio fuente debe contener `ruleset.json`, el entrypoint y cualquier
 módulo o recurso adicional. No puede contener symlinks, dispositivos ni rutas
 no portables, y la salida debe quedar fuera del árbol fuente. El ZIP se valida
@@ -167,6 +172,11 @@ el thread Starlark. El runtime es deliberadamente *in-process*: los límites
 reducen el consumo accidental o abusivo, pero un despliegue que acepte autores
 completamente hostiles debe añadir aislamiento de proceso y límites de memoria
 del sistema operativo.
+
+El host rechaza actualmente `StartChild`: las resoluciones que coordinan otro
+ruleset quedan reservadas para una fase posterior. Tampoco existe todavía un
+runtime WASM, firma de editores ni marketplace; la instalación local explícita
+y el SHA-256 exacto son la frontera de distribución de este corte.
 
 La implementación usa la API oficial de
 [`go.starlark.net/starlark`](https://pkg.go.dev/go.starlark.net/starlark) y el
