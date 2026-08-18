@@ -132,6 +132,11 @@ func Pack(ctx context.Context, sourceDirectory, outputPath string, loader *starl
 	if err != nil {
 		return Result{}, err
 	}
+	publishLock, err := acquireOutputLock(ctx, destination)
+	if err != nil {
+		return Result{}, err
+	}
+	defer publishLock.Close()
 	identical, err := destinationMatches(destination, temporaryPath)
 	if err != nil {
 		return Result{}, err

@@ -12,7 +12,9 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/starlarkruntime"
@@ -288,6 +290,109 @@ func TestPackPreservesConflictingOrSymlinkDestinations(t *testing.T) {
 			t.Fatalf("symlink target changed to %q", got)
 		}
 	})
+}
+
+func TestConcurrentPackPublishesOneArtifactWithoutClobbering(t *testing.T) {
+	firstSource := copyExampleSource(t, "")
+	secondSource := copyExampleSource(t, "\nConcurrent variant.\n")
+	for attempt := 0; attempt < 10; attempt++ {
+		output := filepath.Join(t.TempDir(), "shared.rules.zip")
+		start := make(chan struct{})
+		type outcome struct {
+			result Result
+			err    error
+		}
+		outcomes := make(chan outcome, 2)
+		var ready sync.WaitGroup
+		ready.Add(2)
+		for _, source := range []string{firstSource, secondSource} {
+			go func(source string) {
+				ready.Done()
+				<-start
+				result, err := Pack(context.Background(), source, output, nil)
+				outcomes <- outcome{result: result, err: err}
+			}(source)
+		}
+		ready.Wait()
+		close(start)
+
+		successes := 0
+		conflicts := 0
+		var winner Result
+		for range 2 {
+			outcome := <-outcomes
+			switch {
+			case outcome.err == nil:
+				successes++
+				winner = outcome.result
+			case errors.Is(outcome.err, ErrDestinationConflict):
+				conflicts++
+			default:
+				t.Fatalf("attempt %d unexpected Pack error: %v", attempt, outcome.err)
+			}
+		}
+		if successes != 1 || conflicts != 1 {
+			t.Fatalf("attempt %d successes=%d conflicts=%d", attempt, successes, conflicts)
+		}
+		file, err := os.Open(output)
+		if err != nil {
+			t.Fatal(err)
+		}
+		loader, err := starlarkruntime.NewLoader(starlarkruntime.Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, loadErr := loader.Load(context.Background(), file)
+		closeErr := file.Close()
+		if loadErr != nil {
+			t.Fatal(loadErr)
+		}
+		if closeErr != nil {
+			t.Fatal(closeErr)
+		}
+		if loaded.Artifact.Lock() != winner.Loaded.Artifact.Lock() {
+			t.Fatalf("attempt %d destination was not the winning artifact", attempt)
+		}
+	}
+}
+
+func TestOutputLockWaitHonorsCancellation(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "locked.rules.zip")
+	held, err := acquireOutputLock(context.Background(), output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	if _, err := acquireOutputLock(ctx, output); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second output lock error = %v", err)
+	}
+}
+
+func copyExampleSource(t *testing.T, readmeSuffix string) string {
+	t.Helper()
+	destination := t.TempDir()
+	entries, err := os.ReadDir(exampleSource(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() {
+			t.Fatalf("unexpected example entry %q", entry.Name())
+		}
+		contents, err := os.ReadFile(filepath.Join(exampleSource(t), entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if entry.Name() == "README.md" {
+			contents = append(contents, readmeSuffix...)
+		}
+		if err := os.WriteFile(filepath.Join(destination, entry.Name()), contents, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return destination
 }
 
 func TestSimpleD6ExampleRunsCompleteStatefulProtocolAndReplays(t *testing.T) {
