@@ -170,6 +170,7 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 	var applyRemoteMode func(*domain.SessionState)
 	busy := false
 	hosting := false
+	curState := st // latest known session state, for placeholder/mode recompute
 	refreshControls := func() {
 		turnLocked := busy || hosting
 		for _, w := range []interface {
@@ -217,6 +218,7 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 					appendTx("", resp)
 				}
 				if fresh != nil {
+					curState = fresh
 					fillParty(party, fresh)
 					party.Refresh()
 					applyRemoteMode(fresh)
@@ -303,28 +305,32 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 		if h {
 			tgBtn.SetText("Hosting — stop")
 			tgBtn.Importance = widget.HighImportance
-			input.SetPlaceHolder("Hosting on Telegram — players drive the game there")
 		} else {
 			tgBtn.SetText("Host: Telegram")
 			tgBtn.Importance = widget.MediumImportance
 		}
 		tgBtn.Refresh()
 		refreshControls()
+		// Recompute placeholder + mode readout from the latest known session so the
+		// hosting placeholder is applied on start AND cleared on stop.
+		applyRemoteMode(curState)
 	}
 
 	applyRemoteMode = func(s *domain.SessionState) {
 		dm := s != nil && s.EffectiveMode() == domain.ModeVirtualDM
 		started := dm && s.GameStarted()
+		switch {
+		case hosting:
+			input.SetPlaceHolder("Hosting on Telegram — players drive the game there")
+		case dm:
+			input.SetPlaceHolder("What do you do?  (Enter sends)")
+		default:
+			input.SetPlaceHolder("Ask the oracle, or type a /command…")
+		}
 		if dm {
 			modeBtn.SetText("Mode: Virtual DM")
-			if !hosting {
-				input.SetPlaceHolder("What do you do?  (Enter sends)")
-			}
 		} else {
 			modeBtn.SetText("Mode: Oracle")
-			if !hosting {
-				input.SetPlaceHolder("Ask the oracle, or type a /command…")
-			}
 		}
 		if dm && !started {
 			beginBtn.Show()

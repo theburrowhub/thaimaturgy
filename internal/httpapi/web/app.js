@@ -635,20 +635,27 @@ function applyTelegramUI() {
 
 async function refreshTelegram() {
   if (!current) { hosting = false; applyTelegramUI(); return; }
+  // Capture the session generation: if the user switches sessions while this
+  // request is in flight, the response is for the OLD session and must not touch
+  // the (now different) current session's hosting state.
+  const gen = openGen;
   try {
     const r = await api("GET", "/sessions/" + encodeURIComponent(current) + "/telegram");
+    if (gen !== openGen) return;
     hosting = !!r.hosting;
-  } catch { hosting = false; }
-  applyTelegramUI();
+  } catch { if (gen === openGen) hosting = false; }
+  if (gen === openGen) applyTelegramUI();
 }
 
 $("#telegram").onclick = async () => {
   if (!current) return;
   const btn = $("#telegram");
+  const gen = openGen;
+  const verb = hosting ? "stop" : "start";
   btn.disabled = true;
   try {
-    const verb = hosting ? "stop" : "start";
     const r = await api("POST", "/sessions/" + encodeURIComponent(current) + "/telegram/" + verb);
+    if (gen !== openGen) return; // session switched under us — ignore stale reply
     hosting = !!r.hosting;
     applyModeUI(); // re-evaluates visibility + calls applyTelegramUI
     if (hosting) {
@@ -657,8 +664,8 @@ $("#telegram").onclick = async () => {
     } else {
       appendLine("log", "Stopped hosting on Telegram.");
     }
-  } catch (e) { appendLine("err", "⚠ " + e.message); }
-  finally { btn.disabled = false; }
+  } catch (e) { if (gen === openGen) appendLine("err", "⚠ " + e.message); }
+  finally { btn.disabled = false; } // shared button: always usable for whatever session is current now
 };
 
 $("#rest").onclick = () => {
