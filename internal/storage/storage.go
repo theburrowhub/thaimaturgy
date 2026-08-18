@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 
@@ -343,8 +342,8 @@ func validateRulesWrite(current, candidate *domain.SessionState) error {
 			persisted.Generation, persisted.Revision,
 			incoming.Generation, incoming.Revision)
 	}
-	if incoming.Generation == persisted.Generation && !reflect.DeepEqual(incoming, persisted) {
-		return fmt.Errorf("%w: persisted and candidate rules generation %d diverge", domain.ErrRulesImportConflict, persisted.Generation)
+	if err := incoming.ValidateDescendantOf(persisted); err != nil {
+		return fmt.Errorf("candidate rules ancestry: %w", err)
 	}
 	return nil
 }

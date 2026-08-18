@@ -86,6 +86,37 @@ func TestSaveSessionRejectsEqualGenerationFork(t *testing.T) {
 	}
 }
 
+func TestSaveSessionRejectsHigherGenerationFromStaleBranch(t *testing.T) {
+	store, err := NewWithPath(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := newStorageRulesState(t, "higher-fork")
+	if err := store.SaveSession(base); err != nil {
+		t.Fatal(err)
+	}
+	first := cloneStorageState(t, base)
+	staleButBusier := cloneStorageState(t, base)
+	advanceStorageRules(t, first, "first-branch")
+	for _, requestID := range []string{"stale-branch-1", "stale-branch-2"} {
+		advanceStorageRules(t, staleButBusier, requestID)
+	}
+	if err := store.SaveSession(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveSession(staleButBusier); !errors.Is(err, domain.ErrRulesImportConflict) {
+		t.Fatalf("higher-generation stale branch error = %v", err)
+	}
+	loaded, err := store.LoadSession("higher-fork")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, ok := loaded.RulesRuntimeSnapshot()
+	if !ok || runtime.Generation != 1 || len(runtime.Receipts) != 1 || runtime.Receipts[0].RequestID != "first-branch" {
+		t.Fatalf("higher stale branch replaced durable history: ok=%v runtime=%+v", ok, runtime)
+	}
+}
+
 func TestSaveSessionAllowsLegacyBindingButNeverRemovesIt(t *testing.T) {
 	store, err := NewWithPath(t.TempDir())
 	if err != nil {

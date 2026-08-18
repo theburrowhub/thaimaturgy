@@ -2,9 +2,12 @@ package domain
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 	"unicode"
@@ -242,6 +245,27 @@ func (d RulesRandomDraw) validate() error {
 }
 
 func (r RulesSession) validateRuntime() error {
+	if uint64(len(r.Lineage)) != r.Generation {
+		return fmt.Errorf("rules lineage contains %d entries for generation %d", len(r.Lineage), r.Generation)
+	}
+	for i, digest := range r.Lineage {
+		if !validRulesLineageDigest(digest) {
+			return fmt.Errorf("rules lineage entry %d is not a SHA-256 digest", i)
+		}
+	}
+	if len(r.Lineage) > 0 {
+		parent := ""
+		if len(r.Lineage) > 1 {
+			parent = r.Lineage[len(r.Lineage)-2]
+		}
+		expected, err := rulesLineageDigest(r, parent)
+		if err != nil {
+			return fmt.Errorf("compute rules lineage: %w", err)
+		}
+		if r.Lineage[len(r.Lineage)-1] != expected {
+			return errors.New("rules lineage head does not attest the current runtime")
+		}
+	}
 	if len(r.Receipts) > MaxRulesReceipts {
 		return fmt.Errorf("rules receipts exceed %d", MaxRulesReceipts)
 	}
@@ -346,6 +370,79 @@ func (r RulesSession) validateRuntime() error {
 		drawSequences[draw.ResolutionID] = draw.Sequence
 	}
 	return nil
+}
+
+// ValidateDescendantOf proves that r is either the exact same runtime as
+// ancestor or was produced by appending host transactions to it. Generation
+// numbers alone cannot establish this: two processes may independently advance
+// the same old snapshot by different numbers of checkpoints. The lineage prefix
+// binds every later generation to the exact branch it extended.
+func (r RulesSession) ValidateDescendantOf(ancestor RulesSession) error {
+	if err := ancestor.Validate(); err != nil {
+		return fmt.Errorf("ancestor rules runtime: %w", err)
+	}
+	if err := r.Validate(); err != nil {
+		return fmt.Errorf("candidate rules runtime: %w", err)
+	}
+	if r.Lock != ancestor.Lock {
+		return ErrRulesLockConflict
+	}
+	if r.Generation < ancestor.Generation {
+		return fmt.Errorf("%w: ancestor generation %d, candidate %d", ErrRulesGenerationConflict, ancestor.Generation, r.Generation)
+	}
+	if r.Generation == ancestor.Generation {
+		if !reflect.DeepEqual(r, ancestor) {
+			return fmt.Errorf("%w: generation %d has divergent state", ErrRulesImportConflict, r.Generation)
+		}
+		return nil
+	}
+	if r.InitialState.String() != ancestor.InitialState.String() {
+		return fmt.Errorf("%w: rules replay root changed after generation %d", ErrRulesImportConflict, ancestor.Generation)
+	}
+	for i, digest := range ancestor.Lineage {
+		if r.Lineage[i] != digest {
+			return fmt.Errorf("%w: candidate does not descend from generation %d", ErrRulesImportConflict, ancestor.Generation)
+		}
+	}
+	return nil
+}
+
+func appendRulesLineage(r *RulesSession) error {
+	parent := ""
+	if len(r.Lineage) > 0 {
+		parent = r.Lineage[len(r.Lineage)-1]
+	}
+	digest, err := rulesLineageDigest(*r, parent)
+	if err != nil {
+		return err
+	}
+	r.Lineage = append(r.Lineage, digest)
+	return nil
+}
+
+func rulesLineageDigest(r RulesSession, parent string) (string, error) {
+	// Exclude the history vector itself to avoid a circular encoding. Parent
+	// commits to the preceding head, while Runtime commits to every observable
+	// field in the new host generation (including timestamps and audit records).
+	r.Lineage = nil
+	material := struct {
+		Parent  string       `json:"parent,omitempty"`
+		Runtime RulesSession `json:"runtime"`
+	}{Parent: parent, Runtime: r}
+	encoded, err := json.Marshal(material)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+func validRulesLineageDigest(value string) bool {
+	if !strings.HasPrefix(value, "sha256:") || len(value) != len("sha256:")+sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
+	return err == nil
 }
 
 type rulesRequestFlight struct {
@@ -632,6 +729,9 @@ func (s *SessionState) CommitRulesRequest(handle RulesRequestHandle, commit Rule
 		candidate.Receipts = append(candidate.Receipts, receipt)
 	}
 	candidate.Generation++
+	if err := appendRulesLineage(&candidate); err != nil {
+		return RulesReceipt{}, fmt.Errorf("create rules lineage: %w", err)
+	}
 	if err := candidate.Validate(); err != nil {
 		return RulesReceipt{}, fmt.Errorf("invalid rules commit: %w", err)
 	}
@@ -716,6 +816,7 @@ func findRulesPending(pending []RulesPendingResolution, resolutionID string) int
 
 func cloneRulesSession(source RulesSession) RulesSession {
 	copy := source
+	copy.Lineage = append([]string(nil), source.Lineage...)
 	copy.Receipts = make([]RulesReceipt, len(source.Receipts))
 	for i, receipt := range source.Receipts {
 		copy.Receipts[i] = cloneRulesReceipt(receipt)

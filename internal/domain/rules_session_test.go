@@ -224,17 +224,39 @@ func TestImportStructuredDoesNotRollBackOrRewriteEqualRulesGeneration(t *testing
 		})
 	}
 
-	newer := NewSessionState("newer", nil)
-	if _, err := newer.BindRules(lock, initial); err != nil {
+	higherFork := NewSessionState("higher-fork", nil)
+	if _, err := higherFork.BindRules(lock, initial); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"newer-1", "newer-2"} {
-		handle := beginRuntimeRequest(t, newer, id)
-		if _, err := newer.CommitRulesRequest(handle, RulesCommit{
-			State: handle.Snapshot.State, ResolutionID: id, Result: runtimeResult(id),
+	for _, requestID := range []string{"fork-1", "fork-2"} {
+		handle := beginRuntimeRequest(t, higherFork, requestID)
+		if _, err := higherFork.CommitRulesRequest(handle, RulesCommit{
+			State: handle.Snapshot.State, ResolutionID: requestID, Result: runtimeResult(requestID),
 		}); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := dst.ImportStructuredChecked(higherFork); !errors.Is(err, ErrRulesImportConflict) {
+		t.Fatalf("higher-generation fork error = %v", err)
+	}
+	unchanged, ok := dst.RulesRuntimeSnapshot()
+	if !ok || unchanged.Generation != 1 || len(unchanged.Receipts) != 1 || unchanged.Receipts[0].RequestID != "current" {
+		t.Fatalf("higher fork changed receiver: ok=%v runtime=%+v", ok, unchanged)
+	}
+
+	encoded, err := json.Marshal(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer := new(SessionState)
+	if err := json.Unmarshal(encoded, newer); err != nil {
+		t.Fatal(err)
+	}
+	handle = beginRuntimeRequest(t, newer, "newer-2")
+	if _, err := newer.CommitRulesRequest(handle, RulesCommit{
+		State: handle.Snapshot.State, ResolutionID: "newer-2", Result: runtimeResult("newer-2"),
+	}); err != nil {
+		t.Fatal(err)
 	}
 	if err := dst.ImportStructuredChecked(newer); err != nil {
 		t.Fatal(err)

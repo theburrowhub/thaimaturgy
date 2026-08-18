@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -227,6 +226,7 @@ type RulesSession struct {
 	Lock         rules.Lock               `json:"lock"`
 	Revision     uint64                   `json:"revision"`
 	Generation   uint64                   `json:"generation,omitempty"`
+	Lineage      []string                 `json:"lineage,omitempty"`
 	InitialState rules.Payload            `json:"initial_state"`
 	State        rules.Payload            `json:"state"`
 	Receipts     []RulesReceipt           `json:"receipts,omitempty"`
@@ -769,10 +769,16 @@ func (s *SessionState) importRulesRuntimeLocked(importedRules *RulesSession) (bo
 		switch {
 		case s.Rules.Lock != importedRules.Lock:
 			return false, ErrRulesLockConflict
-		case importedRules.Generation == s.Rules.Generation && !reflect.DeepEqual(*s.Rules, *importedRules):
-			return false, ErrRulesImportConflict
 		case importedRules.Generation <= s.Rules.Generation:
+			if importedRules.Generation == s.Rules.Generation {
+				if err := importedRules.ValidateDescendantOf(*s.Rules); err != nil {
+					return false, err
+				}
+			}
 			return false, nil
+		}
+		if err := importedRules.ValidateDescendantOf(*s.Rules); err != nil {
+			return false, err
 		}
 	}
 	cp := cloneRulesSession(*importedRules)

@@ -131,6 +131,14 @@ func TestRulesRuntimeNeverEvictsReceiptForActivePendingResolution(t *testing.T) 
 	if _, err := state.BindRules(rulesTestLock(rulesDigestA), rulesTestPayload(t, `{}`)); err != nil {
 		t.Fatal(err)
 	}
+	now := time.Now().UTC()
+	for i := 0; i < MaxRulesReceipts-1; i++ {
+		state.Rules.Receipts = append(state.Rules.Receipts, RulesReceipt{
+			RequestID: fmt.Sprintf("terminal-%d", i), Tool: "game_submit_intent",
+			Fingerprint: runtimeFingerprint, ResolutionID: fmt.Sprintf("terminal-resolution-%d", i),
+			Result: runtimeResult("terminal"), CreatedAt: now, UpdatedAt: now,
+		})
+	}
 	handle := beginRuntimeRequest(t, state, "active-request")
 	pending := &RulesPendingResolution{
 		ResolutionID: "active-resolution", RequestID: "active-request",
@@ -146,14 +154,6 @@ func TestRulesRuntimeNeverEvictsReceiptForActivePendingResolution(t *testing.T) 
 		Result: runtimeResult("pending"),
 	}); err != nil {
 		t.Fatal(err)
-	}
-	now := time.Now().UTC()
-	for i := 0; i < MaxRulesReceipts-1; i++ {
-		state.Rules.Receipts = append(state.Rules.Receipts, RulesReceipt{
-			RequestID: fmt.Sprintf("terminal-%d", i), Tool: "game_submit_intent",
-			Fingerprint: runtimeFingerprint, ResolutionID: fmt.Sprintf("terminal-resolution-%d", i),
-			Result: runtimeResult("terminal"), CreatedAt: now, UpdatedAt: now,
-		})
 	}
 	runtime, ok := state.RulesRuntimeSnapshot()
 	if !ok || len(runtime.Receipts) != MaxRulesReceipts || len(runtime.Pending) != 1 {
