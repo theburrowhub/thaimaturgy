@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -405,6 +406,16 @@ type ToolRouter struct {
 func NewToolRouter(session *domain.Session) *ToolRouter {
 	gateway, err := newRulesGateway(session)
 	return &ToolRouter{session: session, rules: gateway, rulesErr: err}
+}
+
+// InitializationError reports that a pinned rules session could not restore
+// its exact mechanical gateway. Hosts must fail closed instead of continuing a
+// narrated turn without the package that the prompt declares authoritative.
+func (tr *ToolRouter) InitializationError() error {
+	if tr == nil {
+		return errors.New("nil tool router")
+	}
+	return tr.rulesErr
 }
 
 // GetToolDefinitions returns the tool schema sent to the LLM. In virtual-DM mode

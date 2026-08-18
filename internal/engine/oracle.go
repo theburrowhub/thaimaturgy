@@ -73,6 +73,10 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 		resp.Error = fmt.Errorf("no AI provider configured")
 		return resp
 	}
+	if err := o.toolRouter.InitializationError(); err != nil {
+		resp.Error = fmt.Errorf("rules gateway unavailable: %w", err)
+		return resp
+	}
 
 	// The Claude CLI backend can't drive our tool-calling loop through Chat (it's
 	// text-only); instead we let Claude Code run the loop, calling our tools via an

@@ -105,6 +105,9 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	}
 	session.IsModified = false
 	router := engine.NewToolRouter(session)
+	if err := router.InitializationError(); err != nil {
+		return fmt.Errorf("mcp-tools: initialize rules gateway: %w", err)
+	}
 	// Rules tools already cross PersistRules at each committed checkpoint. The
 	// persister fingerprints the last successful snapshot, so this generic MCP
 	// after-hook still covers ordinary tools without duplicating rules writes.

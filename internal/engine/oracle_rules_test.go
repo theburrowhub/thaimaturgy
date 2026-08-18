@@ -9,6 +9,7 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/dnd5e"
 )
 
@@ -16,6 +17,30 @@ import (
 // turn reports the same provider-side ID even though it is a distinct call.
 type repeatingToolIDProvider struct {
 	calls int
+}
+
+func TestOracleFailsClosedBeforeProviderWhenPinnedGatewayCannotLoad(t *testing.T) {
+	session := createUnboundTestSession()
+	session.RulesResolver = createTestSession().RulesResolver
+	missing := rules.Lock{
+		ID: "missing.rules", Version: "1.0.0", ProtocolVersion: rules.ProtocolVersion,
+		Digest: "sha256:" + strings.Repeat("a", 64),
+	}
+	state, err := rules.PayloadFrom(map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created, err := session.State.BindRules(missing, state); err != nil || !created {
+		t.Fatalf("bind created=%v err=%v", created, err)
+	}
+	provider := &repeatingToolIDProvider{}
+	response := NewOracle(session, provider).Ask(context.Background(), "continue")
+	if response.Error == nil || !strings.Contains(response.Error.Error(), "rules gateway unavailable") {
+		t.Fatalf("response error = %v", response.Error)
+	}
+	if provider.calls != 0 {
+		t.Fatalf("provider calls after failed rules restore = %d", provider.calls)
+	}
 }
 
 func TestForeignRulesPromptDoesNotTreatLegacyDNDStateAsAuthoritative(t *testing.T) {

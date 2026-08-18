@@ -286,7 +286,7 @@ func (exactTestResolver) InitialState(rules.Lock) (rules.Payload, error) {
 	return rules.Payload{}, errors.New("not used")
 }
 
-func TestRulesGatewayRejectsMaterializedStateThatDoesNotReplay(t *testing.T) {
+func TestRulesGatewayRejectsTamperedMaterializedState(t *testing.T) {
 	implementation := &transactionTestRuleset{authority: "host:oracle"}
 	state := domain.NewSessionState("corrupt-replay", nil)
 	initial := transactionPayload(t, map[string]any{"counter": 0})
@@ -313,14 +313,13 @@ func TestRulesGatewayRejectsMaterializedStateThatDoesNotReplay(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// The audit history legitimately reduces to counter=1. Tampering only with
-	// the materialized snapshot remains structurally valid, so the gateway's
-	// defensive replay must catch it.
+	// The audit history legitimately reduces to counter=1. The generation
+	// lineage now detects materialized-state tampering before gateway replay.
 	state.Rules.State = transactionPayload(t, map[string]any{"counter": 2})
 	session := domain.NewSession(state, &domain.Adventure{System: "test.transaction"}, domain.DefaultConfig())
 	session.RulesResolver = exactTestResolver{lock: transactionLock(), implementation: implementation}
 	router := NewToolRouter(session)
-	if router.rules != nil || router.rulesErr == nil || !strings.Contains(router.rulesErr.Error(), "materialized state does not match event history") {
+	if router.rules != nil || router.rulesErr == nil || !strings.Contains(router.rulesErr.Error(), "lineage head does not attest") {
 		t.Fatalf("gateway=%v error=%v", router.rules, router.rulesErr)
 	}
 }
