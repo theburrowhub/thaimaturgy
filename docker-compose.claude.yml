@@ -13,10 +13,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.claude-cli
+    # NATIVE LINUX ONLY: bind mounts keep host ownership, but the image runs as the
+    # `node` user (UID 1000). If your host user isn't 1000, the mounted data dir
+    # won't be writable and the ~/.claude login won't be readable. Uncomment and
+    # export your ids first (`export UID; export GID=$(id -g)`) so the container
+    # runs as you. Not needed on Docker Desktop (macOS/Windows).
+    # user: "${UID:-1000}:${GID:-1000}"
     environment:
       # Drive the game through your Claude Code login/subscription. You can also
       # leave this unset and pick the provider in Settings.
       THAIM_PROVIDER: ${THAIM_PROVIDER:-claude-cli}
+      # Fallback when you DON'T mount a ~/.claude login: the claude CLI reads
+      # ANTHROPIC_API_KEY (note: not the THAIM_ prefix). Harmless if empty.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     # Replace (not merge) the base file's named-volume mount.
     volumes: !override
       - ${HOME}/.thaimaturgy:/data # your adventures/sessions/config
