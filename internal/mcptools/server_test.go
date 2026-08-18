@@ -121,8 +121,45 @@ func TestServeNeverExecutesMalformedToolCallParams(t *testing.T) {
 	if len(provider.calls) != 0 || afterCalls != 0 {
 		t.Fatalf("calls=%d after=%d", len(provider.calls), afterCalls)
 	}
-	if !strings.Contains(output.String(), "requires a tool name") || !strings.Contains(output.String(), "invalid tools/call params") {
+	if !strings.Contains(output.String(), "non-empty exact-case tool name") || !strings.Contains(output.String(), "cannot unmarshal string") {
 		t.Fatalf("malformed calls did not return errors: %s", output.String())
+	}
+}
+
+func TestServeRejectsAmbiguousOrInvalidJSONRPCBeforeExecution(t *testing.T) {
+	input := strings.Join([]string{
+		`{"jsonrpc":`,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","method":"ping","params":{"name":"game_observe","arguments":{}}}`,
+		`{"jsonrpc":"1.0","id":2,"method":"tools/call","params":{"name":"game_observe","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":true,"method":"tools/call","params":{"name":"game_observe","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"game_observe","name":"other","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"Name":"game_observe","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"unknown/method","params":{}}`,
+	}, "\n")
+	provider := &recordingToolProvider{}
+	var output bytes.Buffer
+	afterCalls := 0
+	if err := serveWithNamespace(strings.NewReader(input), &output, provider, func() error { afterCalls++; return nil }, "strict-protocol"); err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.calls) != 0 || afterCalls != 0 {
+		t.Fatalf("ambiguous protocol input executed tools: calls=%d after=%d", len(provider.calls), afterCalls)
+	}
+	for _, marker := range []string{`"code":-32700`, `"code":-32600`, `"code":-32602`, `"code":-32601`} {
+		if !strings.Contains(output.String(), marker) {
+			t.Errorf("protocol output omitted %s: %s", marker, output.String())
+		}
+	}
+}
+
+func TestMCPMetadataBounds(t *testing.T) {
+	protocol := fmt.Sprintf(`{"protocolVersion":%q}`, strings.Repeat("v", maxProtocolVersionBytes+1))
+	if _, err := initializeProtocolVersion(json.RawMessage(protocol)); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized protocol error = %v", err)
+	}
+	params := fmt.Sprintf(`{"name":%q,"arguments":{}}`, strings.Repeat("t", maxToolNameBytes+1))
+	if _, _, err := decodeToolCallParams(json.RawMessage(params)); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized tool name error = %v", err)
 	}
 }
 
