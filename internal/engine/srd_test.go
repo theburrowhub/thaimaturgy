@@ -13,7 +13,7 @@ func srdSession(npcs []domain.NPC) *domain.Session {
 		Zones: []domain.Zone{{ID: "z", Name: "Z", Rooms: []domain.Room{{ID: "r", Name: "R"}}}},
 		NPCs:  npcs,
 	}
-	return domain.NewSession(domain.NewSessionState("s", adv), adv, domain.DefaultConfig())
+	return bindTestDND5E(domain.NewSession(domain.NewSessionState("s", adv), adv, domain.DefaultConfig()))
 }
 
 func TestLookupCreatureTool(t *testing.T) {

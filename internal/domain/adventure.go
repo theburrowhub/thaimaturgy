@@ -3,16 +3,20 @@ package domain
 import (
 	"fmt"
 	"strings"
+
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 )
 
 // SchemaVersion is the current adventure module schema version. Modules declare
 // their own schema_version; the loader warns on mismatch but tries to parse.
 //
 // 1.1 adds the directional zone graph (Zone.Exits) and Adventure.StartRoom.
-// Older 1.0 modules are migrated on load (see Adventure.Migrate).
-const SchemaVersion = "1.1"
+// 1.2 adds an explicit, resolver-owned ruleset requirement; System remains as
+// human-readable legacy metadata.
+// Older modules are migrated on load (see Adventure.Migrate).
+const SchemaVersion = "1.2"
 
-// Adventure is the complete, authored, immutable content of a D&D-style
+// Adventure is the complete, authored, immutable content of a tabletop
 // adventure module. It is loaded from the adventure.json inside a .tar.gz
 // module and never mutated at runtime — the running game state lives in
 // Session instead (see session.go).
@@ -22,8 +26,12 @@ type Adventure struct {
 	Title         string `json:"title"`
 	Author        string `json:"author,omitempty"`
 	System        string `json:"system,omitempty"` // e.g. "D&D 5e"
-	Language      string `json:"language,omitempty"`
-	Summary       string `json:"summary,omitempty"`
+	// Ruleset is an unresolved content dependency. The host resolves it to one
+	// exact id/version/digest/protocol lock when a session starts; adventure
+	// bundles never carry or install executable rules code.
+	Ruleset  *rules.Requirement `json:"ruleset,omitempty"`
+	Language string             `json:"language,omitempty"`
+	Summary  string             `json:"summary,omitempty"`
 
 	// Context positions the adventure for the DM: its setting and tone, the
 	// recommended character level and party, how to fit it into a larger campaign,
@@ -413,6 +421,11 @@ func (a *Adventure) Migrate() {
 	if a == nil {
 		return
 	}
+	if a.Ruleset == nil {
+		if requirement, ok := LegacyRulesRequirement(a.System); ok {
+			a.Ruleset = &requirement
+		}
+	}
 	for zi := range a.Zones {
 		z := &a.Zones[zi]
 		// Normalize room-exit direction strings.
@@ -439,6 +452,54 @@ func (a *Adventure) Migrate() {
 			}
 		}
 	}
+}
+
+// RulesRequirement returns the explicit rules dependency, or the compatibility
+// mapping for a known legacy System label. Unknown labels are never guessed.
+func (a *Adventure) RulesRequirement() (rules.Requirement, bool) {
+	if a == nil {
+		return rules.Requirement{}, false
+	}
+	if a.Ruleset != nil {
+		if a.Ruleset.Validate() != nil {
+			return rules.Requirement{}, false
+		}
+		return *a.Ruleset, true
+	}
+	return LegacyRulesRequirement(a.System)
+}
+
+// LegacyRulesRequirement maps only recognized historical labels to package
+// IDs. Version resolution remains a host concern; these compatibility
+// requirements intentionally select the first built-in contract line.
+func LegacyRulesRequirement(system string) (rules.Requirement, bool) {
+	key := strings.ToLower(strings.TrimSpace(system))
+	id := ""
+	switch key {
+	case "", "d&d 5e", "dnd 5e", "dnd5e", "dungeons & dragons 5e":
+		id = "dnd5e"
+	case "pathfinder 2e", "pathfinder 2nd edition", "pf2e":
+		id = "pf2e"
+	case "runequest", "runequest roleplaying in glorantha", "rqg":
+		id = "runequest"
+	case "call of cthulhu 7e", "call of cthulhu 7th edition", "coc7e", "la llamada de cthulhu":
+		id = "coc7e"
+	case "vampire the masquerade 5e", "vampire: the masquerade 5e", "vtm5e", "vampiro la mascarada":
+		id = "vtm5e"
+	case "shadowrun 6e", "shadowrun sixth world", "shadowrun6e":
+		id = "shadowrun6e"
+	case "pbta", "powered by the apocalypse":
+		id = "pbta"
+	case "gurps", "gurps 4e", "gurps4e":
+		id = "gurps4e"
+	case "fate", "fate core", "fatecore":
+		id = "fatecore"
+	case "savage worlds", "savage worlds adventure edition", "swade":
+		id = "savageworlds"
+	default:
+		return rules.Requirement{}, false
+	}
+	return rules.Requirement{ID: id, Version: rules.VersionConstraint("0.1.0")}, true
 }
 
 // StartRoomID returns the party's entry room: the authored StartRoom when set
@@ -677,6 +738,11 @@ func ValidateAdventure(a *Adventure, imageExists func(relPath string) bool) []er
 	}
 	if strings.TrimSpace(a.Title) == "" {
 		add("adventure: 'title' is required")
+	}
+	if a.Ruleset != nil {
+		if err := a.Ruleset.Validate(); err != nil {
+			add("adventure: invalid ruleset requirement: %v", err)
+		}
 	}
 	if len(a.Zones) == 0 {
 		add("adventure: at least one zone is required")

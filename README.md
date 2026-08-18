@@ -9,11 +9,12 @@
                                                     |___/ |___/
 ```
 
-**An AI oracle for the Dungeon Master.** thAImaturgy is a tool for a human DM running a
-pre-authored D&D-style adventure. You load an **adventure module** (a `.tar.gz` with the
+**An AI oracle for the game master.** thAImaturgy is a tool for a human GM running a
+pre-authored tabletop adventure. You load an **adventure module** (a `.tar.gz` with the
 full adventure and its maps/art), and the app becomes a grounded assistant: it answers
 your questions about what should happen, hands you read-aloud text and NPC roleplay,
-resolves quick mechanics, and tracks the running state of your session.
+resolves mechanics through the adventure's loaded rules package, and tracks the running
+state of your session.
 
 > **v2.0 — a change of purpose.** Earlier versions had the AI *play the DM* while a human
 > played a character. v2 inverts that: **you are the DM**, and the AI is your oracle,
@@ -30,15 +31,20 @@ resolves quick mechanics, and tracks the running state of your session.
 - **Tracks the course of play** — you (and the oracle) record the current room, NPCs
   met, events triggered, story flags, quests, and free-form notes, so answers stay
   contextual as the adventure unfolds.
-- **Roleplay & mechanics support** — NPC voice/motivations/secrets, read-aloud text,
-  stat blocks, and dice (`/roll`, ability checks).
+- **Pluggable, authoritative mechanics** — stable `game_*` tools drive built-in d20,
+  d100, dice-pool, PbtA, 3d6, Fate and Savage Worlds resolvers or separately installed
+  Starlark packages. The model proposes typed actions; the host owns randomness,
+  transactions and audit history.
+- **Roleplay support** — NPC voice/motivations/secrets, read-aloud text, stat blocks,
+  and the authored world remain grounded in the adventure.
 - **Images** — the desktop app renders maps and artwork **inline** (no external viewer).
 - **Adventure browser** — a live tree of zones/rooms, NPCs, events and items; click any
   entry to view its full detail (with inline art) and act on it — move the party to a
   room, mark an NPC met or an event triggered — right beside the oracle chat.
-- **Virtual DM & multiplayer** — toggle to a mode where the AI runs the game for a party
-  of characters, and host it for several players over **Telegram** (`cmd/thaimaturgy-bot`,
-  or the in-app "Telegram" button).
+- **Virtual DM & multiplayer** — toggle to a mode where the AI runs the game. The
+  current character-sheet and **Telegram** player controller are D&D 5e compatibility
+  features; every loaded package remains available to the AI through the neutral
+  `game_*` flow.
 - **One core, thin frontends** — the Fyne desktop app (`cmd/thaimaturgy`) and the Telegram
   bot (`cmd/thaimaturgy-bot`) over the same `internal/` engine. The app and module editor
   use the operating system's **native** file/save/folder pickers and message dialogs.
@@ -77,6 +83,10 @@ make run
 
 # Optional: build the Telegram multiplayer bot
 make build-bot
+
+# Optional: manage external rules packages
+make build-rules
+./bin/thaimaturgy-rules list
 ```
 
 In the app: **Import module…** → select `dist/modules/the-sunken-crypt.tar.gz` → pick the
@@ -151,7 +161,8 @@ Type a question to consult the oracle, or a slash command:
 | `/search <query>` | Search the whole module |
 | `/map [zone]` · `/art <id\|path>` | Open a map/art image in your OS viewer |
 | `/note <text>` · `/flag key=true` | Feed the running session state |
-| `/roll <dice>` · `/quests` · `/party` · `/status` | Utilities |
+| `/quests` · `/status` | System-neutral utilities |
+| `/roll <dice>` · `/party` | Built-in D&D 5e utilities (unavailable to other rules packages) |
 | `/save [name]` · `/load [name]` · `/quit` | Session management |
 
 Navigation: `TAB` switch panels · `Ctrl+↑/↓` or `PgUp/PgDn` scroll · `ESC` library ·
@@ -159,10 +170,10 @@ Navigation: `TAB` switch panels · `Ctrl+↑/↓` or `PgUp/PgDn` scroll · `ESC`
 
 ## Creating adventures
 
-The quickest way is the **visual module editor** (a separate binary):
+The quickest way is the **visual module editor integrated into the desktop app**:
 
 ```bash
-make run-edit      # form-based editor: build content, import images, package .tar.gz
+make run           # choose Create Adventure, or edit an installed adventure
 ```
 
 It edits every field through forms, imports images into the module's `assets/`,
@@ -178,10 +189,13 @@ Reference and hand-authoring:
   schema.
 - **[docs/authoring-guide.md](docs/authoring-guide.md)** — step-by-step authoring and
   packaging (editor and by hand).
+- **[docs/rules/packages.md](docs/rules/packages.md)** — built-in systems, exact session
+  locks, external package installation and the stable LLM tool flow.
 - **`examples/adventures/the-sunken-crypt/`** — a complete example to copy from.
 
 Modules are stored in `~/.thaimaturgy/adventures/`; play sessions in
-`~/.thaimaturgy/sessions/`.
+`~/.thaimaturgy/sessions/`; executable rules bundles in the separate
+`~/.thaimaturgy/rulesets/` store.
 
 ## Development
 
@@ -196,17 +210,20 @@ make modules      # package every example adventure into dist/modules/
 ```
 cmd/thaimaturgy/        Entry point (Fyne desktop app; inline images; editor view)
 cmd/thaimaturgy-bot/    Entry point (Telegram multiplayer bot)
+cmd/thaimaturgy-rules/  External rules-package installer/catalog command
 internal/
   domain/               Core types: adventure.go (module), session.go (play state),
                         character.go, message.go, config.go
   engine/               oracle.go (LLM loop), tools.go (retrieval + session tools),
                         commands.go (DM commands), format.go, dice.go
+  rules/                Versioned package protocol, catalog, host runtimes and built-ins
   providers/            LLM provider interface + OpenAI/Anthropic
   storage/              module.go (import/validate .tar.gz), storage.go (config/sessions)
   tgbot/                Telegram multiplayer front-end (reusable)
   mcpserve/             Shared `__mcp-tools` subcommand (Claude-CLI MCP backend)
   tts/                  Optional OpenAI text-to-speech (narrate read-aloud)
 examples/adventures/    Example modules
+examples/rules/         Complete external Starlark package example
 docs/                   Schema + authoring guides
 ```
 

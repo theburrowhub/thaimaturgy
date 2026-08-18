@@ -37,7 +37,11 @@ func liveServer(t *testing.T, token string) *Client {
 	if err := os.WriteFile(filepath.Join(dir, storage.AdventureFile), data, 0o644); err != nil {
 		t.Fatalf("write adventure: %v", err)
 	}
-	svc := appservice.New(store, domain.DefaultConfig(), nil)
+	svc, err := appservice.New(store, domain.DefaultConfig(), nil)
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+	t.Cleanup(svc.Close)
 	ts := httptest.NewServer(httpapi.New(svc, token).Handler())
 	t.Cleanup(ts.Close)
 	return New(ts.URL, token)
@@ -110,7 +114,11 @@ func TestClientConfigWithAuth(t *testing.T) {
 	}
 	cfg := domain.DefaultConfig()
 	cfg.AuthSource = "Claude Code login (Keychain)"
-	svc := appservice.New(store, cfg, nil)
+	svc, err := appservice.New(store, cfg, nil)
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+	t.Cleanup(svc.Close)
 	ts := httptest.NewServer(httpapi.New(svc, "").Handler())
 	t.Cleanup(ts.Close)
 	c := New(ts.URL, "")

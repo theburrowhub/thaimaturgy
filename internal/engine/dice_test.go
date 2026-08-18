@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"sync"
 	"testing"
 )
 
@@ -206,4 +207,27 @@ func TestSeededRoller(t *testing.T) {
 			t.Errorf("Seeded rollers produced different results: %d vs %d", roll1.Total, roll2.Total)
 		}
 	}
+}
+
+func TestGlobalDiceRollerSupportsConcurrentSessions(t *testing.T) {
+	const workers = 12
+	var wait sync.WaitGroup
+	wait.Add(workers)
+	for range workers {
+		go func() {
+			defer wait.Done()
+			for range 100 {
+				roll, err := RollDice("2d6+1")
+				if err != nil {
+					t.Errorf("RollDice: %v", err)
+					return
+				}
+				if roll.Total < 3 || roll.Total > 13 {
+					t.Errorf("total out of range: %d", roll.Total)
+					return
+				}
+			}
+		}()
+	}
+	wait.Wait()
 }

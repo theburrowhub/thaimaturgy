@@ -1,6 +1,6 @@
-# Adventure Module Schema (v1.1)
+# Adventure Module Schema (v1.2)
 
-An **adventure module** is a `.tar.gz` archive that packages one authored D&D-style
+An **adventure module** is a `.tar.gz` archive that packages one authored tabletop
 adventure plus its map and art images. thAImaturgy imports it, gives the LLM the
 complete adventure as grounded context, and lets a human DM query it during play.
 
@@ -24,12 +24,13 @@ my-adventure.tar.gz
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `schema_version` | string | recommended | Currently `"1.1"`. `1.0` modules still load (migrated on read). |
+| `schema_version` | string | recommended | Currently `"1.2"`. `1.0`/`1.1` modules still load and are migrated on read. |
 | `id` | string | **yes** | Unique, filesystem-safe (used as the folder name). |
 | `start_room` | string | no | ID of the room where the party begins. If omitted, the first authored room is used — set it explicitly so the entry point doesn't depend on the order zones/rooms are written. |
 | `title` | string | **yes** | Display name. |
 | `author` | string | no | |
-| `system` | string | no | e.g. `"D&D 5e"`. |
+| `system` | string | no | Human-readable legacy/display label, e.g. `"D&D 5e"`; it does not select executable code. |
+| `ruleset` | object | recommended | Rules package requirement, e.g. `{"id":"dnd5e","version":"0.1.0"}`. The host resolves this to one exact ID/version/SHA-256/protocol lock when the session starts. |
 | `language` | string | no | `"en"`, `"es"`, … |
 | `summary` | string | no | Short pitch; always sent to the LLM. |
 | `context` | string | no | Positioning/running context: setting, tone, recommended level & party, how to fit it into a campaign, prerequisites, running advice. |
@@ -47,6 +48,12 @@ my-adventure.tar.gz
 | `images` | ImageRef[] | no | Catalog of image assets; entities reference these by ID via `image_ids`. |
 | `scenes` | Scene[] | no | Narrative scenes/phases that can re-dress the same locations as the story advances. See [Scenes](#scene). Omit for a plain location-based adventure. |
 | `meta` | object | no | Free-form metadata. |
+
+The `ruleset.version` value is a dependency constraint understood by the host
+resolver. Use an exact version for reproducible authored content. Adventure archives
+never contain or install executable rules code: rules packages are distributed and
+trusted separately, then matched by the resolver. Known older `system` labels are
+migrated to their corresponding built-in requirement; unknown labels are not guessed.
 
 > **The opening (hook).** `introduction` and `hooks` are sent to the virtual DM
 > so it narrates the premise and the hook (who the party are in this story, who
@@ -205,6 +212,8 @@ keep the room's authored defaults; set fields replace them.
 Import fails (with a listed reason) if any of these do not hold:
 
 - `id` and `title` are present; at least one zone exists.
+- When present, `ruleset.id` is a portable package identifier and
+  `ruleset.version` is a bounded version constraint.
 - Zone, room, NPC, event, and image catalog IDs are non-empty and unique.
 - Every `room.npc_ids` / `room.event_ids` / `npc.default_location` / `exit.to`
   reference points at something that exists.

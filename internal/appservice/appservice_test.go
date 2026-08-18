@@ -1,13 +1,18 @@
 package appservice
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
@@ -31,7 +36,12 @@ func newService(t *testing.T) (*Service, *storage.Storage) {
 	if err := os.WriteFile(filepath.Join(dir, storage.AdventureFile), data, 0644); err != nil {
 		t.Fatalf("write adventure: %v", err)
 	}
-	return New(store, domain.DefaultConfig(), nil), store
+	service, err := New(store, domain.DefaultConfig(), nil)
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+	t.Cleanup(service.Close)
+	return service, store
 }
 
 func TestSessionLifecycle(t *testing.T) {
@@ -49,8 +59,15 @@ func TestSessionLifecycle(t *testing.T) {
 	if name != "crypt" {
 		t.Errorf("first session name = %q; want crypt", name)
 	}
-	if _, ok := svc.Get(name); !ok {
+	opened, ok := svc.Get(name)
+	if !ok {
 		t.Error("new session should be registered/open")
+	}
+	if opened.Session.PersistRules == nil || opened.Session.RulesResolver == nil {
+		t.Fatal("live session is missing its durable rules runtime")
+	}
+	if snapshot, ok := opened.Session.State.RulesSnapshot(); !ok || snapshot.Ruleset.ID != "dnd5e" {
+		t.Fatalf("fresh session rules snapshot = %+v, ok=%v", snapshot, ok)
 	}
 
 	// A second new session for the same adventure gets a distinct name.
@@ -81,6 +98,99 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	if os.Session.Adventure.ID != "crypt" {
 		t.Errorf("resumed adventure = %q; want crypt", os.Session.Adventure.ID)
+	}
+}
+
+func TestForeignRulesSessionRejectsLegacyDNDUtilities(t *testing.T) {
+	svc, store := newService(t)
+	adv := &domain.Adventure{
+		SchemaVersion: domain.SchemaVersion,
+		ID:            "pbta-game",
+		Title:         "PbtA Game",
+		System:        "PbtA",
+		Ruleset:       &rules.Requirement{ID: "pbta", Version: "0.1.0"},
+		Zones:         []domain.Zone{{ID: "z", Name: "Zone", Rooms: []domain.Room{{ID: "r", Name: "Room"}}}},
+	}
+	dir := store.AdventureDir(adv.ID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.MarshalIndent(adv, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, storage.AdventureFile), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	name, err := svc.NewSession(adv.ID)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	capabilities, err := svc.Capabilities(name)
+	if err != nil || capabilities.LegacyDND5E {
+		t.Fatalf("Capabilities = %+v, %v", capabilities, err)
+	}
+
+	checks := []struct {
+		name string
+		run  func() error
+	}{
+		{"read party", func() error { _, err := svc.Party(name); return err }},
+		{"set party", func() error { return svc.SetParty(name, domain.DefaultParty()) }},
+		{"default party", func() error { return svc.DefaultParty(name) }},
+		{"plan party", func() error { _, err := svc.PlanParty(context.Background(), name, "heroes"); return err }},
+		{"update character", func() error { return svc.UpdateCharacter(name, "x", &domain.Character{}, &domain.Character{}) }},
+		{"save party", func() error { return svc.SavePartyToRoster(name) }},
+		{"telegram", func() error { _, err := svc.StartTelegramHost(name); return err }},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			if err := check.run(); !errors.Is(err, ErrDNDUtilitiesUnavailable) {
+				t.Fatalf("error = %v; want ErrDNDUtilitiesUnavailable", err)
+			}
+		})
+	}
+	opened, _ := svc.Get(name)
+	if party := opened.Session.State.PartySnapshot(); len(party) != 0 {
+		t.Fatalf("foreign legacy party mutated: %+v", party)
+	}
+}
+
+func TestResumeSessionMissingExactRulesArtifactFailsWithoutRegistration(t *testing.T) {
+	svc, store := newService(t)
+	adventure, err := store.LoadAdventure("crypt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := domain.NewSessionState("missing-rules", adventure)
+	empty, err := rules.PayloadFrom(map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := rules.Lock{
+		ID: "missing.rules", Version: "1.0.0", ProtocolVersion: rules.ProtocolVersion,
+		Digest: "sha256:" + strings.Repeat("a", 64),
+	}
+	if created, err := state.BindRules(missing, empty); err != nil || !created {
+		t.Fatalf("bind missing lock created=%v err=%v", created, err)
+	}
+	if err := store.SaveSession(state); err != nil {
+		t.Fatal(err)
+	}
+
+	if opened, err := svc.ResumeSession(state.Name); err == nil || opened != nil || !strings.Contains(err.Error(), "exact session lock") {
+		t.Fatalf("ResumeSession opened=%v err=%v", opened, err)
+	}
+	if _, ok := svc.Get(state.Name); ok {
+		t.Fatal("failed resume was registered")
+	}
+	reloaded, err := store.LoadSession(state.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, ok := reloaded.RulesSnapshot()
+	if !ok || snapshot.Ruleset != missing || snapshot.Revision != 0 {
+		t.Fatalf("failed resume mutated persisted rules: %+v ok=%v", snapshot, ok)
 	}
 }
 
@@ -116,6 +226,48 @@ func TestExecuteCommandAndAutosave(t *testing.T) {
 	if !found {
 		t.Error("the note did not persist through the facade")
 	}
+}
+
+func TestServiceCloseDrainsAutosavesAndIsIdempotent(t *testing.T) {
+	svc, store := newService(t)
+	name, err := svc.NewSession("crypt")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	if _, err := svc.ExecuteCommand(name, "/note persisted before shutdown"); err != nil {
+		t.Fatalf("ExecuteCommand: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				svc.Close()
+			}()
+		}
+		wg.Wait()
+		svc.Autosave(name) // shutdown turns later enqueue attempts into no-ops
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Service.Close did not stop the autosave worker")
+	}
+
+	reloaded, err := store.LoadSession(name)
+	if err != nil {
+		t.Fatalf("LoadSession: %v", err)
+	}
+	for _, entry := range reloaded.Log.Entries {
+		if entry.Type == domain.LogNote && entry.Message == "persisted before shutdown" {
+			return
+		}
+	}
+	t.Fatal("Close returned before the queued autosave was durable")
 }
 
 func TestNewSessionConcurrentUniqueNames(t *testing.T) {

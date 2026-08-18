@@ -2,10 +2,15 @@ package engine
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -18,18 +23,36 @@ const defaultMaxToolIterations = 6
 // Oracle drives the DM's dialogue with the LLM, grounding every reply in the
 // loaded adventure module and the running session state.
 type Oracle struct {
-	session    *domain.Session
-	provider   providers.Provider
-	toolRouter *ToolRouter
+	session     *domain.Session
+	provider    providers.Provider
+	toolRouter  *ToolRouter
+	askSequence atomic.Uint64
+	// executionNamespace distinguishes idempotency keys emitted by different
+	// Oracle instances. askSequence alone restarts at one after process/session
+	// reload and would otherwise collide with persisted receipts.
+	executionNamespace string
 }
 
 // NewOracle builds an oracle for a session and provider.
 func NewOracle(session *domain.Session, provider providers.Provider) *Oracle {
 	return &Oracle{
-		session:    session,
-		provider:   provider,
-		toolRouter: NewToolRouter(session),
+		session:            session,
+		provider:           provider,
+		toolRouter:         NewToolRouter(session),
+		executionNamespace: newOracleExecutionNamespace(),
 	}
+}
+
+var oracleNamespaceFallback atomic.Uint64
+
+func newOracleExecutionNamespace() string {
+	var entropy [12]byte
+	if _, err := rand.Read(entropy[:]); err == nil {
+		return hex.EncodeToString(entropy[:])
+	}
+	// crypto/rand failures are exceptional, but NewOracle has historically been
+	// infallible. Preserve that API while retaining process-local uniqueness.
+	return fmt.Sprintf("fallback-%d-%d", time.Now().UnixNano(), oracleNamespaceFallback.Add(1))
 }
 
 // SetProvider swaps the active LLM provider.
@@ -50,6 +73,10 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 		resp.Error = fmt.Errorf("no AI provider configured")
 		return resp
 	}
+	if err := o.toolRouter.InitializationError(); err != nil {
+		resp.Error = fmt.Errorf("rules gateway unavailable: %w", err)
+		return resp
+	}
 
 	// The Claude CLI backend can't drive our tool-calling loop through Chat (it's
 	// text-only); instead we let Claude Code run the loop, calling our tools via an
@@ -57,6 +84,7 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 	if cli, ok := o.provider.(*providers.ClaudeCLIProvider); ok {
 		return o.askViaCLI(ctx, cli, input)
 	}
+	askID := o.askSequence.Add(1)
 
 	o.session.State.AddUserMessage(input)
 
@@ -100,8 +128,14 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 			ToolCalls: chat.ToolCalls,
 		})
 
-		for _, tc := range chat.ToolCalls {
-			result := o.toolRouter.Execute(providers.ConvertToolCallToTypesFormat(tc))
+		for callIndex, tc := range chat.ToolCalls {
+			call := providers.ConvertToolCallToTypesFormat(tc)
+			// Provider IDs correlate the tool response inside that provider's
+			// protocol, but they are not guaranteed unique across turns (Gemini's
+			// adapter synthesizes name/index IDs). The host owns the idempotency key,
+			// so namespace it by this Ask and loop position before execution.
+			call.ID = fmt.Sprintf("oracle:%s:%d:%d:%d", o.executionNamespace, askID, iteration, callIndex)
+			result := o.toolRouter.Execute(call)
 			content := result.Content
 			if result.Error != "" {
 				content = "Error: " + result.Error
@@ -177,6 +211,7 @@ const conversationContextWindow = 60
 // the live session state.
 func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider, input string) *Response {
 	resp := &Response{}
+	askID := o.askSequence.Add(1)
 	st := o.session.State
 	st.AddUserMessage(input)
 
@@ -202,10 +237,17 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 		resp.Error = err
 		return resp
 	}
+	mcpArgs, err := mcpToolSubcommandArgs(
+		o.session, sessPath, fmt.Sprintf("oracle-%s-%d", o.executionNamespace, askID),
+	)
+	if err != nil {
+		resp.Error = err
+		return resp
+	}
 	cfg := map[string]any{"mcpServers": map[string]any{
 		mcptools.ServerName: map[string]any{
 			"command": exe,
-			"args":    []string{mcptools.SubcommandArg, "--adventure-id", st.AdventureID, "--session", sessPath},
+			"args":    mcpArgs,
 		},
 	}}
 	cfgPath, err := tempFile("thaim-mcp-*.json")
@@ -217,7 +259,7 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	if b, e := json.Marshal(cfg); e != nil {
 		resp.Error = e
 		return resp
-	} else if e := os.WriteFile(cfgPath, b, 0644); e != nil {
+	} else if e := os.WriteFile(cfgPath, b, 0o600); e != nil {
 		resp.Error = e
 		return resp
 	}
@@ -244,22 +286,66 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	}
 
 	start := time.Now()
-	answer, err := cli.RunWithMCP(cctx, o.session.Config.Model, o.buildSystemPrompt(), cliInput, cfgPath, allowed)
-	if err != nil {
-		resp.Error = fmt.Errorf("AI request failed: %w", err)
-		return resp
-	}
+	answer, runErr := cli.RunWithMCP(cctx, o.session.Config.Model, o.buildSystemPrompt(), cliInput, cfgPath, allowed)
 	resp.LatencyMs = time.Since(start).Milliseconds()
 
-	// Merge tool mutations back into the live state (in place) and record the reply.
-	if merged, e := readSessionFile(sessPath); e == nil {
-		mergeSessionState(st, merged, oldLogLen)
+	// Merge even when the CLI failed: the MCP child may already have durably
+	// checkpointed a random response, event batch, or external decision. Leaving
+	// the live parent stale would let a later autosave roll the canonical file
+	// back over that checkpoint.
+	merged, err := readSessionFile(sessPath)
+	if err != nil {
+		resp.Error = fmt.Errorf("read tool-mutated session: %w", err)
+		return resp
+	}
+	if err := mergeSessionState(st, merged, oldLogLen); err != nil {
+		resp.Error = fmt.Errorf("merge tool-mutated session: %w", err)
+		return resp
+	}
+	if o.session.PersistRules != nil {
+		if err := o.session.PersistRules(st); err != nil {
+			resp.Error = fmt.Errorf("persist merged tool session: %w", err)
+			return resp
+		}
+	}
+	if runErr != nil {
+		resp.Error = fmt.Errorf("AI request failed: %w", runErr)
+		return resp
 	}
 	answer = o.reviewSpoilers(ctx, answer)
 	st.AddAssistantMessage(answer)
 	o.session.MarkModified()
 	resp.Answer = answer
 	return resp
+}
+
+// mcpToolSubcommandArgs builds the complete execution context for a rules-tool
+// child. Language and the already-bounded effective rules timeout are explicit
+// required arguments, so the child cannot silently substitute its defaults.
+func mcpToolSubcommandArgs(session *domain.Session, sessionPath, requestNamespace string) ([]string, error) {
+	if session == nil || session.State == nil || session.Config == nil {
+		return nil, errors.New("build MCP tools context: session, state, and config are required")
+	}
+	switch session.Config.Language {
+	case domain.LangEnglish, domain.LangSpanish:
+	default:
+		return nil, fmt.Errorf("build MCP tools context: unsupported language %q", session.Config.Language)
+	}
+	if strings.TrimSpace(sessionPath) == "" || strings.TrimSpace(requestNamespace) == "" {
+		return nil, errors.New("build MCP tools context: session path and request namespace are required")
+	}
+	args := []string{
+		mcptools.SubcommandArg,
+		"--adventure-id", session.State.AdventureID,
+		"--session", sessionPath,
+		"--request-namespace", requestNamespace,
+		"--language", string(session.Config.Language),
+		"--rules-timeout-seconds", strconv.Itoa(EffectiveRulesRequestTimeoutSeconds(session)),
+	}
+	if session.DataDirectory != "" {
+		args = append(args, "--data-dir", session.DataDirectory)
+	}
+	return args, nil
 }
 
 // cliMinTimeout is the floor for a Claude-CLI agentic turn (MCP startup + several
@@ -308,7 +394,7 @@ func writeSessionFile(path string, st *domain.SessionState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0644)
+	return os.WriteFile(path, b, 0o600)
 }
 
 func readSessionFile(path string) (*domain.SessionState, error) {
@@ -326,8 +412,10 @@ func readSessionFile(path string) (*domain.SessionState, error) {
 // mergeSessionState copies the mutable structured state from src into dst in
 // place (so holders of dst see the changes) and replays timeline entries added
 // beyond oldLogLen through dst.AppendLog, firing dst's log hook (journal).
-func mergeSessionState(dst, src *domain.SessionState, oldLogLen int) {
-	dst.ImportStructured(src)
+func mergeSessionState(dst, src *domain.SessionState, oldLogLen int) error {
+	if err := dst.ImportStructuredChecked(src); err != nil {
+		return err
+	}
 	if src.Log != nil {
 		entries := src.Log.Entries
 		if oldLogLen < 0 || oldLogLen > len(entries) {
@@ -337,6 +425,7 @@ func mergeSessionState(dst, src *domain.SessionState, oldLogLen int) {
 			dst.AppendLog(e)
 		}
 	}
+	return nil
 }
 
 // worldStateContext renders the DM-recorded world changes (issue #21) for the
@@ -427,6 +516,14 @@ func (o *Oracle) buildSystemPrompt() string {
 		fmt.Fprintf(&sb, " (%s)", adv.System)
 	}
 	sb.WriteString("\n")
+	legacyDND5E := false
+	if snapshot, ok := st.RulesSnapshot(); ok {
+		legacyDND5E = IsBuiltinDND5ELock(snapshot.Ruleset)
+		sb.WriteString("\n=== LOADED RULES PACKAGE ===\n")
+		fmt.Fprintf(&sb, "Exact identity: %s@%s (%s, protocol %s)\n",
+			snapshot.Ruleset.ID, snapshot.Ruleset.Version, snapshot.Ruleset.Digest, snapshot.Ruleset.ProtocolVersion)
+		sb.WriteString("This package is the mechanical authority. Use game_observe for its authorized current projection, game_list_actions and game_get_action_schema to discover typed actions, game_submit_intent to resolve them, game_respond for pending input, and game_explain for visible rules. Do not calculate or invent a result outside that interface.\n")
+	}
 	writeSection(&sb, "Summary", adv.Summary)
 	writeSection(&sb, "Context", adv.Context)
 	writeSection(&sb, "Background (DM eyes only)", adv.Background)
@@ -563,15 +660,17 @@ func (o *Oracle) buildSystemPrompt() string {
 	for _, q := range st.Quests {
 		fmt.Fprintf(&sb, "Quest [%s]: %s\n", q.Status, q.Name)
 	}
-	for _, p := range st.Party {
-		fmt.Fprintf(&sb, "PC %s: HP %d/%d AC %d %s\n", p.Name, p.CurrentHP, p.MaxHP, p.AC, p.Notes)
+	if legacyDND5E {
+		for _, p := range st.Party {
+			fmt.Fprintf(&sb, "PC %s: HP %d/%d AC %d %s\n", p.Name, p.CurrentHP, p.MaxHP, p.AC, p.Notes)
+		}
 	}
 
 	// The party's CURRENT sheets are authoritative and must reach the DM every
 	// turn (in any mode where a party exists), so narration never contradicts a
 	// character's real HP/conditions. Tool results within the turn already reflect
 	// mutations (e.g. update_hp), so this stays consistent mid-turn.
-	if party := st.PartySnapshot(); len(party) > 0 {
+	if party := st.PartySnapshot(); legacyDND5E && len(party) > 0 {
 		header := "\n=== PLAYER PARTY — CURRENT SHEETS (authoritative: never narrate a state that contradicts these — HP, conditions, etc.) ===\n"
 		if st.EffectiveMode() == domain.ModeVirtualDM {
 			// The DM-role instruction only applies when the AI is actually the DM;
@@ -648,7 +747,7 @@ func (o *Oracle) UpdateSummary(ctx context.Context) error {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("Summarize the following D&D session timeline into a concise recap (<300 words) of what the party has done, key decisions, and open threads:\n\n")
+	sb.WriteString("Summarize the following tabletop RPG session timeline into a concise recap (<300 words) of what the party has done, key decisions, and open threads:\n\n")
 	for _, e := range o.session.State.RecentLog(0) {
 		fmt.Fprintf(&sb, "- [%s] %s\n", e.Type, e.Message)
 	}

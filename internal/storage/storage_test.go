@@ -31,6 +31,19 @@ func TestNewStorage(t *testing.T) {
 	}
 }
 
+func TestNewFromEnvironmentUsesSharedDataDirectory(t *testing.T) {
+	dataDirectory := t.TempDir()
+	t.Setenv(DataDirEnv, "  "+dataDirectory+"  ")
+
+	store, err := NewFromEnvironment()
+	if err != nil {
+		t.Fatalf("NewFromEnvironment: %v", err)
+	}
+	if got := store.BasePath(); got != dataDirectory {
+		t.Fatalf("BasePath = %q; want %q", got, dataDirectory)
+	}
+}
+
 func TestSaveAndLoadConfig(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "thaimaturgy-test-*")
 	defer os.RemoveAll(tmpDir)

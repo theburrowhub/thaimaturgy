@@ -1,0 +1,62 @@
+[
+  {
+    "id": "dnd5e",
+    "version": "0.1.0",
+    "protocol_version": "1.0.0",
+    "digest": "sha256:dbe00dfb9e47e141216fac0b14db6a76e7495ea551458f006a8976368c9d1579"
+  },
+  {
+    "id": "pf2e",
+    "version": "0.1.0",
+    "protocol_version": "1.0.0",
+    "digest": "sha256:7a5c7b6195b4a31465daaa5f91a33a23b6755b2732d095ec6495842e54f43474"
+  },
+  {
+    "id": "runequest",
+    "version": "0.1.0",
+    "protocol_version": "1.0.0",
+    "digest": "sha256:fa610ab047e0d3da089fa07db6d89de91283f5f9ee655aad40718c3b5614cf98"
+  },
+  {
+    "id": "coc7e",
+    "version": "0.1.0",
+    "protocol_version": "1.0.0",
+    "digest": "sha256:c8bc5ffa9222f3075416e66c45825f035d937e0ae5d2619d0abbc8b6159546f1"
+  },
+  {
+    "id": "vtm5e",
+    "version": "0.1.0",
+    "protocol_version": "1.0.0",
+    "digest": "sha256:95f3d4d3a5e6f195042de4b7138227620741aa2b0f42f32948f4314efeecbfc8"
+  },
+  {
+    "id": "shadowrun6e",
+    "version": "0.1.0",
+    "protocol_version": "1.0.0",
+    "digest": "sha256:f97f26373c39aed8d59f6b7bdb13d3e9bbfd9c294081600946d07d52ace4c994"
+  },
+  {
+    "id": "pbta",
+    "version": "0.1.0",
+    "protocol_version": "1.0.0",
+    "digest": "sha256:3e447a1b9d708240da52afc625c0432e0f262c1018c9654384b892bf2920df15"
+  },
+  {
+    "id": "gurps4e",
+    "version": "0.1.0",
+    "protocol_version": "1.0.0",
+    "digest": "sha256:082d7696d112283582f7c72bdd3da02523a8a69bc80adadec180a6a2738d6f5f"
+  },
+  {
+    "id": "fatecore",
+    "version": "0.1.0",
+    "protocol_version": "1.0.0",
+    "digest": "sha256:1a5114a3f83f2e6201fa8851b5671232305008c1ce7d9b45376f4e3f4e09b367"
+  },
+  {
+    "id": "savageworlds",
+    "version": "0.1.0",
+    "protocol_version": "1.0.0",
+    "digest": "sha256:1dc5031fc44b6625db0b708d8b1db13df56eb9b9b9c421b57578e8ec8bd879bc"
+  }
+]

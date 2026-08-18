@@ -375,11 +375,13 @@ func extractPDFImages(pdfPath, workingDir string) (map[int][]string, []domain.Im
 // --- helpers -------------------------------------------------------------
 
 func newScaffold(title string) *domain.Adventure {
+	requirement, _ := domain.LegacyRulesRequirement("D&D 5e")
 	return &domain.Adventure{
 		SchemaVersion: domain.SchemaVersion,
 		ID:            slug(title),
 		Title:         title,
 		System:        "D&D 5e",
+		Ruleset:       &requirement,
 		Zones: []domain.Zone{{
 			ID:    "imported",
 			Name:  "Imported",

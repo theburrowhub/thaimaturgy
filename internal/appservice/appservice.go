@@ -24,6 +24,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/runtimecatalog"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 	"github.com/theburrowhub/thaimaturgy/internal/tgbot"
 )
@@ -47,17 +48,33 @@ var ErrNameConflict = errors.New("another party member already uses that name")
 // would be clobbered, so the caller should reload and re-apply.
 var ErrNovelConflict = errors.New("the novel changed since it was loaded")
 
+// ErrDNDUtilitiesUnavailable is returned when a caller tries to use a legacy
+// character-sheet or party mutation outside the exact built-in D&D 5e package.
+// Other packages expose their mechanical state exclusively through game_*.
+var ErrDNDUtilitiesUnavailable = errors.New("legacy D&D utilities require the exact built-in D&D 5e rules package")
+
+// SessionCapabilities is a derived, non-persisted view used by frontends to
+// hide compatibility controls that do not belong to the loaded package.
+type SessionCapabilities struct {
+	LegacyDND5E bool `json:"legacy_dnd5e"`
+}
+
 // Service is the facade. It is safe for concurrent use.
 type Service struct {
-	store    *storage.Storage
-	provider providers.Provider
+	store            *storage.Storage
+	provider         providers.Provider
+	rulesEnvironment *runtimecatalog.Environment
 
 	mu       sync.Mutex // guards config + the sessions registry
 	config   *domain.Config
 	sessions map[string]*OpenSession // by session name
 
-	configMu   sync.Mutex  // serializes SaveConfig's persist+adopt as one op
-	autosaveCh chan string // session names queued for background save
+	configMu sync.Mutex // serializes SaveConfig's persist+adopt as one op
+
+	autosaveMu     sync.RWMutex // coordinates sends with shutdown
+	autosaveCh     chan string  // session names queued for background save
+	autosaveDone   chan struct{}
+	autosaveClosed bool
 
 	nameMu    sync.Mutex             // guards nameLocks
 	nameLocks map[string]*sync.Mutex // per-session-name lifecycle locks
@@ -116,19 +133,67 @@ func (o *OpenSession) SaveError() error {
 	return o.lastSaveErr
 }
 
-// New builds a service over a storage, config, and (optional) LLM provider, and
-// starts the FIFO autosave worker. provider may be nil for non-oracle use.
-func New(store *storage.Storage, config *domain.Config, provider providers.Provider) *Service {
+// New builds a service over a storage, config, and (optional) LLM provider. The
+// executable rules catalog is loaded before the service becomes usable, so a
+// broken store or unavailable exact package fails startup instead of degrading
+// later to another system. provider may be nil for non-oracle use.
+func New(store *storage.Storage, config *domain.Config, provider providers.Provider) (*Service, error) {
+	if store == nil {
+		return nil, errors.New("appservice: storage is required")
+	}
+	if config == nil {
+		return nil, errors.New("appservice: config is required")
+	}
+	rulesEnvironment, err := runtimecatalog.Load(context.Background(), store.BasePath())
+	if err != nil {
+		return nil, fmt.Errorf("appservice: load rules catalog: %w", err)
+	}
 	s := &Service{
-		store:      store,
-		provider:   provider,
-		config:     config,
-		sessions:   make(map[string]*OpenSession),
-		autosaveCh: make(chan string, 128),
-		nameLocks:  make(map[string]*sync.Mutex),
+		store:            store,
+		provider:         provider,
+		config:           config,
+		rulesEnvironment: rulesEnvironment,
+		sessions:         make(map[string]*OpenSession),
+		autosaveCh:       make(chan string, 128),
+		autosaveDone:     make(chan struct{}),
+		nameLocks:        make(map[string]*sync.Mutex),
 	}
 	go s.autosaveLoop()
-	return s
+	return s, nil
+}
+
+// RulesDiagnostics reports rejected external bundles discovered at startup.
+// Healthy packages, including built-ins, remain available when this is non-nil.
+func (s *Service) RulesDiagnostics() error {
+	if s == nil || s.rulesEnvironment == nil {
+		return nil
+	}
+	return s.rulesEnvironment.Diagnostics
+}
+
+// Capabilities returns compatibility features authorized by the open session's
+// exact attested lock. Package ID or display labels alone never enable them.
+func (s *Service) Capabilities(name string) (SessionCapabilities, error) {
+	os, ok := s.Get(name)
+	if !ok {
+		return SessionCapabilities{}, fmt.Errorf("session %q is not open", name)
+	}
+	runtime, exists, err := os.Session.State.RulesRuntimeSnapshotStrict()
+	if err != nil {
+		return SessionCapabilities{}, err
+	}
+	return SessionCapabilities{LegacyDND5E: exists && engine.IsBuiltinDND5ELock(runtime.Lock)}, nil
+}
+
+func (s *Service) requireDNDUtilities(name string) error {
+	capabilities, err := s.Capabilities(name)
+	if err != nil {
+		return err
+	}
+	if !capabilities.LegacyDND5E {
+		return ErrDNDUtilitiesUnavailable
+	}
+	return nil
 }
 
 // persist saves a session and writes roster progression back (#33). The caller
@@ -360,12 +425,25 @@ func (s *Service) registerLocked(state *domain.SessionState, adv *domain.Adventu
 	if os, ok := s.sessions[state.Name]; ok {
 		return os, nil
 	}
+	sess, err := s.rulesEnvironment.OpenSession(context.Background(), state, adv, s.config)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open rules for session %q: %w", state.Name, err)
+	}
+	// This callback is the transactional rules host's durability barrier. Assign
+	// it before constructing the Oracle, whose ToolRouter may immediately expose
+	// mutating mechanics.
+	sess.PersistRules = s.store.SaveSession
+	if sess.IsModified {
+		if err := s.store.SaveSession(state); err != nil {
+			return nil, fmt.Errorf("persist rules binding for %q: %w", state.Name, err)
+		}
+		sess.IsModified = false
+	}
 	journal, err := s.store.OpenSessionJournal(state.Name)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open session journal for %q: %w", state.Name, err)
 	}
 	state.SetLogHook(func(e domain.LogEntry) { journal.Append(e) })
-	sess := domain.NewSession(state, adv, s.config)
 	os := &OpenSession{
 		Session: sess,
 		Oracle:  engine.NewOracle(sess, s.provider),
@@ -576,6 +654,9 @@ func (s *Service) withOpenSession(name string, fn func(os *OpenSession) (mutated
 
 // Party returns a snapshot of an open session's party.
 func (s *Service) Party(name string) ([]domain.Character, error) {
+	if err := s.requireDNDUtilities(name); err != nil {
+		return nil, err
+	}
 	os, ok := s.Get(name)
 	if !ok {
 		return nil, fmt.Errorf("session %q is not open", name)
@@ -585,6 +666,9 @@ func (s *Service) Party(name string) ([]domain.Character, error) {
 
 // SetParty replaces an open session's party.
 func (s *Service) SetParty(name string, party []*domain.Character) error {
+	if err := s.requireDNDUtilities(name); err != nil {
+		return err
+	}
 	return s.withOpenSession(name, func(os *OpenSession) (bool, error) {
 		os.Session.State.SetParty(party)
 		return true, nil
@@ -601,6 +685,9 @@ func (s *Service) DefaultParty(name string) error {
 // the (long) AI call started, so a concurrent edit isn't clobbered. It returns
 // ErrPartyConflict otherwise.
 func (s *Service) PlanParty(ctx context.Context, name, prompt string) ([]domain.Character, error) {
+	if err := s.requireDNDUtilities(name); err != nil {
+		return nil, err
+	}
 	os, ok := s.Get(name)
 	if !ok {
 		return nil, fmt.Errorf("session %q is not open", name)
@@ -633,6 +720,9 @@ func (s *Service) PlanParty(ctx context.Context, name, prompt string) ([]domain.
 // the live record still matches base (optimistic concurrency); it returns
 // ErrCharacterConflict otherwise. The character's ID is preserved.
 func (s *Service) UpdateCharacter(name, charName string, base, edited *domain.Character) error {
+	if err := s.requireDNDUtilities(name); err != nil {
+		return err
+	}
 	conflict := false
 	found := false
 	nameConflict := false
@@ -685,6 +775,9 @@ func (s *Service) UpdateCharacter(name, charName string, base, edited *domain.Ch
 // that succeeded — so no successful roster write is left unrecorded — and returns
 // an error naming the member that failed.
 func (s *Service) SavePartyToRoster(name string) error {
+	if err := s.requireDNDUtilities(name); err != nil {
+		return err
+	}
 	var saveErr error
 	err := s.withOpenSession(name, func(os *OpenSession) (bool, error) {
 		snap := os.Session.State.PartySnapshot()
@@ -730,16 +823,43 @@ func (s *Service) DeleteCharacter(id string) error { return s.store.DeleteCharac
 // Autosave enqueues an open session for a background save (FIFO by name, so saves
 // commit in request order). No-op if the session isn't open.
 func (s *Service) Autosave(name string) {
+	if s == nil {
+		return
+	}
 	if _, ok := s.Get(name); !ok {
+		return
+	}
+	s.autosaveMu.RLock()
+	defer s.autosaveMu.RUnlock()
+	if s.autosaveClosed {
 		return
 	}
 	s.autosaveCh <- name
 }
 
 func (s *Service) autosaveLoop() {
+	defer close(s.autosaveDone)
 	for name := range s.autosaveCh {
 		s.doAutosave(name)
 	}
+}
+
+// Close drains the autosave queue and waits for the background worker to stop.
+// It is safe to call more than once and concurrently with Autosave. Open
+// sessions remain registered; callers that need their lifecycle side effects
+// should close those sessions explicitly before closing the service.
+func (s *Service) Close() {
+	if s == nil {
+		return
+	}
+	s.autosaveMu.Lock()
+	if !s.autosaveClosed {
+		s.autosaveClosed = true
+		close(s.autosaveCh)
+	}
+	done := s.autosaveDone
+	s.autosaveMu.Unlock()
+	<-done
 }
 
 // doAutosave saves a session by name under its opMu, skipping it if it closed

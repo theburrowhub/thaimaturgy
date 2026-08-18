@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ const (
 	ConfigAppName  = "thaimaturgy"
 	SessionsDir    = "sessions"
 	EnvFile        = ".env"
+	DataDirEnv     = "THAIM_DATA_DIR"
 )
 
 type Storage struct {
@@ -54,6 +56,17 @@ func NewWithPath(basePath string) (*Storage, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// NewFromEnvironment opens THAIM_DATA_DIR when it is set and otherwise uses
+// the platform default. Every executable uses this entry point so adventures,
+// sessions, and installed rules packages cannot silently come from different
+// catalogs.
+func NewFromEnvironment() (*Storage, error) {
+	if basePath := strings.TrimSpace(os.Getenv(DataDirEnv)); basePath != "" {
+		return NewWithPath(basePath)
+	}
+	return New()
 }
 
 func (s *Storage) ensureDirectories() error {
@@ -93,10 +106,24 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, path)
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	// Best-effort directory sync makes the rename durable on filesystems that
+	// require it. Some supported platforms reject syncing directories, so the
+	// successfully replaced file remains the operation's portable guarantee.
+	if directory, err := os.Open(dir); err == nil {
+		_ = directory.Sync()
+		_ = directory.Close()
+	}
+	return nil
 }
 
 func (s *Storage) BasePath() string { return s.basePath }
@@ -219,21 +246,105 @@ func (s *Storage) LoadSession(name string) (*domain.SessionState, error) {
 	return &state, nil
 }
 
-// SaveSession persists a play session as JSON.
+// SaveSession persists a play session as JSON. Writers coordinate through a
+// stable sidecar lock (rather than the replaced JSON inode), including writers
+// in other processes. The rules runtime is a monotonic CAS boundary: an older
+// generation/revision, a missing formerly-present binding, a lock change, or an
+// equal-generation fork can never replace the durable checkpoint.
 func (s *Storage) SaveSession(state *domain.SessionState) error {
-	if state.Name == "" {
+	return s.saveSession(state, nil)
+}
+
+// saveSession's afterLock hook is a deterministic test seam. Production callers
+// always use SaveSession; keeping the hook as an argument avoids mutable global
+// or Storage-level test state.
+func (s *Storage) saveSession(state *domain.SessionState, afterLock func()) (result error) {
+	if state == nil {
+		return fmt.Errorf("session is required")
+	}
+	name := state.Name
+	if name == "" {
 		return fmt.Errorf("session name is required")
+	}
+	path := s.sessionPath(name)
+	lock, err := acquireSessionWriteLock(path)
+	if err != nil {
+		return fmt.Errorf("failed to lock session file: %w", err)
+	}
+	defer func() {
+		if err := lock.Close(); err != nil {
+			result = errors.Join(result, fmt.Errorf("failed to unlock session file: %w", err))
+		}
+	}()
+	if afterLock != nil {
+		afterLock()
 	}
 
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal session: %w", err)
 	}
+	var candidate domain.SessionState
+	if err := json.Unmarshal(data, &candidate); err != nil {
+		return fmt.Errorf("failed to validate session snapshot: %w", err)
+	}
+	if candidate.Name != name {
+		return fmt.Errorf("session name changed during save: expected %q, found %q", name, candidate.Name)
+	}
 
-	if err := os.WriteFile(s.sessionPath(state.Name), data, 0644); err != nil {
+	if currentData, err := os.ReadFile(path); err == nil {
+		var current domain.SessionState
+		if err := json.Unmarshal(currentData, &current); err != nil {
+			return fmt.Errorf("failed to validate existing session file: %w", err)
+		}
+		if current.Name != name {
+			return fmt.Errorf("existing session file contains name %q, expected %q", current.Name, name)
+		}
+		if err := validateRulesWrite(&current, &candidate); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read existing session file: %w", err)
+	}
+
+	if err := atomicWriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("failed to write session file: %w", err)
 	}
 
+	return nil
+}
+
+func validateRulesWrite(current, candidate *domain.SessionState) error {
+	persisted, persistedExists, err := current.RulesRuntimeSnapshotStrict()
+	if err != nil {
+		return fmt.Errorf("existing rules runtime: %w", err)
+	}
+	incoming, incomingExists, err := candidate.RulesRuntimeSnapshotStrict()
+	if err != nil {
+		return fmt.Errorf("candidate rules runtime: %w", err)
+	}
+	if !persistedExists {
+		// Legacy sessions and the first exact binding remain writable.
+		return nil
+	}
+	if !incomingExists {
+		return fmt.Errorf("%w: persisted rules generation %d cannot be removed by a legacy snapshot", domain.ErrRulesGenerationConflict, persisted.Generation)
+	}
+	if incoming.Lock != persisted.Lock {
+		return fmt.Errorf("%w: persisted %s@%s (%s), candidate %s@%s (%s)",
+			domain.ErrRulesLockConflict,
+			persisted.Lock.ID, persisted.Lock.Version, persisted.Lock.Digest,
+			incoming.Lock.ID, incoming.Lock.Version, incoming.Lock.Digest)
+	}
+	if incoming.Generation < persisted.Generation || incoming.Revision < persisted.Revision {
+		return fmt.Errorf("%w: persisted generation/revision %d/%d, candidate %d/%d",
+			domain.ErrRulesGenerationConflict,
+			persisted.Generation, persisted.Revision,
+			incoming.Generation, incoming.Revision)
+	}
+	if err := incoming.ValidateDescendantOf(persisted); err != nil {
+		return fmt.Errorf("candidate rules ancestry: %w", err)
+	}
 	return nil
 }
 

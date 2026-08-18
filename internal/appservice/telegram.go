@@ -50,6 +50,9 @@ func (s *Service) StartTelegramHost(name string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("session %q is not open", name)
 	}
+	if err := s.requireDNDUtilities(name); err != nil {
+		return "", err
+	}
 	cfg := s.Config()
 	if cfg.TelegramToken == "" {
 		return "", ErrNoTelegramToken

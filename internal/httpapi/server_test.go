@@ -17,6 +17,7 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
@@ -39,14 +40,56 @@ func newTestServer(t *testing.T, token string) *httptest.Server {
 	if err := os.WriteFile(filepath.Join(dir, storage.AdventureFile), data, 0o644); err != nil {
 		t.Fatalf("write adventure: %v", err)
 	}
+	foreign := &domain.Adventure{
+		SchemaVersion: domain.SchemaVersion, ID: "pbta-game", Title: "PbtA Game", System: "PbtA",
+		Ruleset: &rules.Requirement{ID: "pbta", Version: "0.1.0"},
+		Zones:   []domain.Zone{{ID: "z1", Name: "Start", Rooms: []domain.Room{{ID: "r1", Name: "Scene"}}}},
+	}
+	foreignDir := store.AdventureDir(foreign.ID)
+	if err := os.MkdirAll(foreignDir, 0o755); err != nil {
+		t.Fatalf("mkdir foreign adventure: %v", err)
+	}
+	foreignData, _ := json.MarshalIndent(foreign, "", "  ")
+	if err := os.WriteFile(filepath.Join(foreignDir, storage.AdventureFile), foreignData, 0o644); err != nil {
+		t.Fatalf("write foreign adventure: %v", err)
+	}
 	// A tiny image asset so the asset route has something to serve.
 	if err := os.WriteFile(filepath.Join(dir, "assets", "map.png"), []byte("\x89PNG\r\n\x1a\nfake"), 0o644); err != nil {
 		t.Fatalf("write asset: %v", err)
 	}
-	svc := appservice.New(store, domain.DefaultConfig(), nil)
+	svc, err := appservice.New(store, domain.DefaultConfig(), nil)
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+	t.Cleanup(svc.Close)
 	ts := httptest.NewServer(New(svc, token).Handler())
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+func TestForeignRulesHTTPRejectsLegacyDNDUtilities(t *testing.T) {
+	ts := newTestServer(t, "")
+	resp, created := doJSON(t, "POST", ts.URL+"/api/sessions", `{"adventure_id":"pbta-game"}`)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("new foreign session = %d (%v)", resp.StatusCode, created)
+	}
+	name := created["name"].(string)
+	base := ts.URL + "/api/sessions/" + name
+
+	resp, state := doJSON(t, "GET", base, "")
+	capabilities, _ := state["rules_capabilities"].(map[string]any)
+	if resp.StatusCode != http.StatusOK || capabilities["legacy_dnd5e"] != false {
+		t.Fatalf("foreign capabilities = %d %#v", resp.StatusCode, capabilities)
+	}
+	if resp, _ := doJSON(t, "GET", base+"/party", ""); resp.StatusCode != http.StatusConflict {
+		t.Fatalf("foreign party read = %d, want 409", resp.StatusCode)
+	}
+	if resp, _ := doJSON(t, "PUT", base+"/party", `[{"name":"legacy"}]`); resp.StatusCode != http.StatusConflict {
+		t.Fatalf("foreign party write = %d, want 409", resp.StatusCode)
+	}
+	if resp, _ := doJSON(t, "POST", base+"/telegram/start", ""); resp.StatusCode != http.StatusConflict {
+		t.Fatalf("foreign Telegram start = %d, want 409", resp.StatusCode)
+	}
 }
 
 func doJSON(t *testing.T, method, url, body string) (*http.Response, map[string]any) {
@@ -90,6 +133,10 @@ func TestRESTFlow(t *testing.T) {
 	resp, state := doJSON(t, "GET", ts.URL+"/api/sessions/"+name, "")
 	if resp.StatusCode != 200 || state["adventure_id"] != "crypt" {
 		t.Fatalf("get session = %d (%v)", resp.StatusCode, state)
+	}
+	capabilities, ok := state["rules_capabilities"].(map[string]any)
+	if !ok || capabilities["legacy_dnd5e"] != true {
+		t.Fatalf("session capabilities = %#v; want exact D&D compatibility", state["rules_capabilities"])
 	}
 
 	// Run a command.
@@ -342,7 +389,11 @@ func TestConfigSecretsWriteOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
-	svc := appservice.New(store, domain.DefaultConfig(), nil)
+	svc, err := appservice.New(store, domain.DefaultConfig(), nil)
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+	t.Cleanup(svc.Close)
 	var rebuilt int
 	ts := httptest.NewServer(New(svc, "").OnConfigSaved(func(*domain.Config) { rebuilt++ }).Handler())
 	t.Cleanup(ts.Close)

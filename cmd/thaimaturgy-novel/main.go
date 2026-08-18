@@ -48,15 +48,8 @@ func run() error {
 	)
 	flag.Parse()
 
-	// Same data-dir resolution as the server: a pinned THAIM_DATA_DIR (for a
-	// mounted volume) or the default ~/.thaimaturgy.
-	var store *storage.Storage
-	var err error
-	if dataDir := strings.TrimSpace(os.Getenv("THAIM_DATA_DIR")); dataDir != "" {
-		store, err = storage.NewWithPath(dataDir)
-	} else {
-		store, err = storage.New()
-	}
+	// Same data-dir resolution as every other frontend.
+	store, err := storage.NewFromEnvironment()
 	if err != nil {
 		return fmt.Errorf("storage: %w", err)
 	}

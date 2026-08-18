@@ -51,15 +51,9 @@ func main() {
 	token := flag.String("token", os.Getenv("THAIM_SERVER_TOKEN"), "require this bearer token on /api/ (recommended when not on loopback)")
 	flag.Parse()
 
-	// A data dir can be pinned (THAIM_DATA_DIR) so a container can mount a volume
-	// for adventures/sessions/config; otherwise the default ~/.thaimaturgy is used.
-	var store *storage.Storage
-	var err error
-	if dataDir := strings.TrimSpace(os.Getenv("THAIM_DATA_DIR")); dataDir != "" {
-		store, err = storage.NewWithPath(dataDir)
-	} else {
-		store, err = storage.New()
-	}
+	// A data dir can be pinned so a container can mount one catalog volume;
+	// otherwise the platform default is used.
+	store, err := storage.NewFromEnvironment()
 	if err != nil {
 		log.Fatalf("storage: %v", err)
 	}
@@ -75,7 +69,14 @@ func main() {
 	if !store.ConfigExists() {
 		_ = store.SaveConfig(config)
 	}
-	svc := appservice.New(store, config, providers.New(config))
+	svc, err := appservice.New(store, config, providers.New(config))
+	if err != nil {
+		log.Fatalf("service: %v", err)
+	}
+	defer svc.Close()
+	if diagnostics := svc.RulesDiagnostics(); diagnostics != nil {
+		log.Printf("rules catalog diagnostics: %v", diagnostics)
+	}
 
 	tok := strings.TrimSpace(*token)
 	loopback, err := isLoopbackAddr(*addr)

@@ -229,7 +229,7 @@ func (h *CommandHandler) Execute(cmd *Command) *CommandResult {
 	case CmdQuests:
 		r.Response = h.questsText()
 	case CmdParty:
-		r.Response = h.partyText()
+		h.handleParty(r)
 	case CmdRoll:
 		h.handleRoll(cmd, r)
 	case CmdSearch:
@@ -448,6 +448,10 @@ func (h *CommandHandler) handleFlag(cmd *Command, r *CommandResult) {
 }
 
 func (h *CommandHandler) handleRoll(cmd *Command, r *CommandResult) {
+	if !SupportsDNDUtilities(h.session) {
+		r.Success, r.Message = false, "/roll is available only with the exact built-in D&D 5e rules package"
+		return
+	}
 	notation := "1d20"
 	if len(cmd.Args) > 0 {
 		notation = cmd.Args[0]
@@ -466,6 +470,14 @@ func (h *CommandHandler) handleRoll(cmd *Command, r *CommandResult) {
 	h.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: msg})
 	h.session.MarkModified()
 	r.Message = msg
+}
+
+func (h *CommandHandler) handleParty(r *CommandResult) {
+	if !SupportsDNDUtilities(h.session) {
+		r.Success, r.Message = false, "/party is available only with the exact built-in D&D 5e rules package"
+		return
+	}
+	r.Response = h.partyText()
 }
 
 func (h *CommandHandler) handleSearch(cmd *Command, r *CommandResult) {
@@ -515,6 +527,10 @@ func (h *CommandHandler) handleMeta(cmd *Command, r *CommandResult) {
 //
 // It is shared by the desktop app and the Telegram bot so both rest identically.
 func (h *CommandHandler) handleRest(cmd *Command, r *CommandResult) {
+	if !SupportsDNDUtilities(h.session) {
+		r.Success, r.Message = false, "/rest is available only with the exact built-in D&D 5e rules package"
+		return
+	}
 	if len(cmd.Args) == 0 {
 		r.Success, r.Message = false, "Usage: /rest short|long [character]"
 		return
@@ -675,7 +691,7 @@ func (h *CommandHandler) questsText() string {
 
 func (h *CommandHandler) partyText() string {
 	if len(h.state().Party) == 0 {
-		return "No party members tracked. The oracle adds them via update_party_member."
+		return "No party members tracked. Add them with a compatible character tool when the loaded rules package provides one."
 	}
 	var sb strings.Builder
 	sb.WriteString("PARTY:\n")
@@ -895,8 +911,9 @@ SESSION STATE:
   /scene [id]          Show or switch the active narrative scene/phase
   /quests              Show tracked quests
   /recap               Quick "previously on…" recap of the session so far
-  /party               Show tracked player characters
-  /roll <dice>         Roll dice (e.g. /roll 2d6+3)
+  /party               Show tracked player characters (D&D 5e only)
+  /roll <dice>         Roll dice (e.g. /roll 2d6+3; D&D 5e only)
+  /rest short|long     Rest the party (D&D 5e only)
   /status              Session status
   /mode [oracle|dm]    Toggle Oracle ↔ Virtual DM (AI runs the game; you play)
   /begin               (Virtual DM) Start the game — the DM narrates the opening

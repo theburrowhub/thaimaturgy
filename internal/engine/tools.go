@@ -1,11 +1,15 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/srd"
 	"github.com/theburrowhub/thaimaturgy/internal/types"
 )
@@ -375,26 +379,98 @@ var playerCharacterTools = []types.Tool{
 	},
 }
 
+var dndUtilityToolNames = map[string]struct{}{
+	"lookup_creature":     {},
+	"roll_dice":           {},
+	"ability_check":       {},
+	"update_party_member": {},
+	"update_hp":           {},
+	"add_item":            {},
+	"remove_item":         {},
+	"set_condition":       {},
+	"remove_condition":    {},
+	"update_gold":         {},
+	"award_xp":            {},
+}
+
+// MCP retries use the same call ID across child restarts. These tools mutate
+// ordinary session/D&D state outside a ruleset transition, so ToolRouter wraps
+// them in the session's durable receipt log before the MCP server persists and
+// acknowledges the result.
+var durableMCPMutationTools = map[string]struct{}{
+	"roll_table":            {},
+	"go_direction":          {},
+	"set_location":          {},
+	"mark_npc_met":          {},
+	"set_npc_disposition":   {},
+	"set_npc_alive":         {},
+	"trigger_event":         {},
+	"set_scene":             {},
+	"set_flag":              {},
+	"set_variable":          {},
+	"log_note":              {},
+	"record_world_change":   {},
+	"set_world_description": {},
+	"advance_quest":         {},
+	"update_party_member":   {},
+	"update_hp":             {},
+	"add_item":              {},
+	"remove_item":           {},
+	"set_condition":         {},
+	"remove_condition":      {},
+	"update_gold":           {},
+	"award_xp":              {},
+}
+
+func isDNDUtilityTool(name string) bool {
+	_, exists := dndUtilityToolNames[name]
+	return exists
+}
+
 // ToolRouter executes oracle tool calls against a running session.
 type ToolRouter struct {
-	session *domain.Session
+	session  *domain.Session
+	rules    *rulesGateway
+	rulesErr error
 }
 
 // NewToolRouter binds a router to a session.
 func NewToolRouter(session *domain.Session) *ToolRouter {
-	return &ToolRouter{session: session}
+	gateway, err := newRulesGateway(session)
+	return &ToolRouter{session: session, rules: gateway, rulesErr: err}
+}
+
+// InitializationError reports that a pinned rules session could not restore
+// its exact mechanical gateway. Hosts must fail closed instead of continuing a
+// narrated turn without the package that the prompt declares authoritative.
+func (tr *ToolRouter) InitializationError() error {
+	if tr == nil {
+		return errors.New("nil tool router")
+	}
+	return tr.rulesErr
 }
 
 // GetToolDefinitions returns the tool schema sent to the LLM. In virtual-DM mode
 // it also exposes the player-character mutation tools.
 func (tr *ToolRouter) GetToolDefinitions() []types.Tool {
-	if tr.session.State.EffectiveMode() == domain.ModeVirtualDM {
-		tools := make([]types.Tool, 0, len(AvailableTools)+len(playerCharacterTools))
-		tools = append(tools, AvailableTools...)
-		tools = append(tools, playerCharacterTools...)
-		return tools
+	tools := cloneToolDefinitions(AvailableTools)
+	supportsDND := tr.rules != nil && tr.rules.legacyDND5E
+	if !supportsDND {
+		filtered := tools[:0]
+		for _, definition := range tools {
+			if !isDNDUtilityTool(definition.Name) {
+				filtered = append(filtered, definition)
+			}
+		}
+		tools = filtered
 	}
-	return AvailableTools
+	if supportsDND && tr.session.State.EffectiveMode() == domain.ModeVirtualDM {
+		tools = append(tools, cloneToolDefinitions(playerCharacterTools)...)
+	}
+	if tr.rules != nil {
+		tools = append(tools, tr.rules.toolDefinitions()...)
+	}
+	return tools
 }
 
 func (tr *ToolRouter) adv() *domain.Adventure      { return tr.session.Adventure }
@@ -402,6 +478,72 @@ func (tr *ToolRouter) state() *domain.SessionState { return tr.session.State }
 
 // Execute dispatches a tool call and returns its result.
 func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
+	if strings.HasPrefix(call.Name, "game_") {
+		if tr.rules == nil {
+			return tr.rulesUnavailable(call.ID)
+		}
+		return tr.rules.execute(call)
+	}
+	if isDNDUtilityTool(call.Name) && (tr.rules == nil || !tr.rules.legacyDND5E) {
+		if tr.rules == nil {
+			return tr.rulesUnavailable(call.ID)
+		}
+		return errResult(call.ID, "D&D utility is unavailable for the loaded rules package: "+call.Name)
+	}
+	if strings.HasPrefix(call.ID, "mcp:") {
+		if _, mutates := durableMCPMutationTools[call.Name]; mutates {
+			return tr.executeDurableMCPMutation(call)
+		}
+	}
+	return tr.executeOnce(call)
+}
+
+func (tr *ToolRouter) executeDurableMCPMutation(call types.ToolCall) types.ToolResult {
+	if len(call.Arguments) > rules.MaxPayloadBytes {
+		return errResult(call.ID, fmt.Sprintf("tool arguments exceed %d bytes", rules.MaxPayloadBytes))
+	}
+	// Match the rules gateway lock order. This prevents a concurrent mechanical
+	// checkpoint from invalidating the receipt generation between Begin/Commit.
+	releaseRules := tr.state().LockRulesHost()
+	defer releaseRules()
+	releaseMutation := tr.state().LockToolMutation()
+	defer releaseMutation()
+
+	handle, receipt, err := tr.state().BeginRulesRequest(
+		context.Background(), call.ID, call.Name, rulesRequestFingerprint(call),
+	)
+	if err != nil {
+		return errResult(call.ID, "begin durable tool mutation: "+err.Error())
+	}
+	if receipt != nil {
+		return toolResultFromReceipt(call.ID, receipt)
+	}
+	defer tr.state().AbortRulesRequest(handle)
+	result := storableMCPMutationResult(tr.executeOnce(call))
+	if _, err := tr.state().CommitRulesRequest(handle, domain.RulesCommit{
+		State: handle.Snapshot.State, ResolutionID: call.ID, Result: storedToolResult(result),
+	}); err != nil {
+		return errResult(call.ID, "commit durable tool mutation: "+err.Error())
+	}
+	return result
+}
+
+func storableMCPMutationResult(result types.ToolResult) types.ToolResult {
+	switch {
+	case result.Content == "" && result.Error == "":
+		result.Content = "Tool completed without a response."
+	case len(result.Error) > rules.MaxPayloadBytes || !utf8.ValidString(result.Error):
+		result.Content = ""
+		result.Error = "Tool failed, but its error exceeded the durable response limit."
+	case len(result.Content) > rules.MaxPayloadBytes || !utf8.ValidString(result.Content):
+		result.Content = "Tool completed successfully, but its response exceeded the durable response limit."
+		result.Error = ""
+	}
+	return result
+}
+
+func (tr *ToolRouter) executeOnce(call types.ToolCall) types.ToolResult {
+
 	var args map[string]any
 	if len(call.Arguments) > 0 {
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
@@ -465,9 +607,9 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 	case "update_party_member":
 		return tr.updatePartyMember(call.ID, args)
 	case "roll_dice":
-		return tr.rollDice(call.ID, args)
+		return tr.rollDice(call, args)
 	case "ability_check":
-		return tr.abilityCheck(call.ID, args)
+		return tr.abilityCheck(call, args)
 	case "update_hp":
 		return tr.updateHP(call.ID, args)
 	case "add_item":
@@ -1227,57 +1369,31 @@ func (tr *ToolRouter) awardXP(id string, args map[string]any) types.ToolResult {
 
 // --- Dice ----------------------------------------------------------------
 
-func (tr *ToolRouter) rollDice(id string, args map[string]any) types.ToolResult {
-	notation, ok := args["notation"].(string)
-	if !ok {
-		return errResult(id, "missing 'notation'")
+func (tr *ToolRouter) rollDice(call types.ToolCall, args map[string]any) types.ToolResult {
+	if tr.rules == nil {
+		return tr.rulesUnavailable(call.ID)
 	}
-	reason, _ := args["reason"].(string)
-	roll, err := RollDice(notation)
-	if err != nil {
-		return errResult(id, err.Error())
+	if !tr.rules.legacyDND5E {
+		return errResult(call.ID, "legacy D&D tool is unavailable for the loaded rules package")
 	}
-	msg := fmt.Sprintf("Rolled %s: %s", roll.String(), roll.ResultString())
-	if roll.IsCriticalHit() {
-		msg += " [CRIT!]"
-	} else if roll.IsCriticalFail() {
-		msg += " [FUMBLE!]"
-	}
-	logMsg := msg
-	if reason != "" {
-		logMsg = reason + " — " + msg
-	}
-	tr.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: logMsg})
-	tr.session.MarkModified()
-	return okResult(id, msg)
+	return tr.rules.legacyRollDice(call, args)
 }
 
-func (tr *ToolRouter) abilityCheck(id string, args map[string]any) types.ToolResult {
-	mod, _ := intArg(args, "modifier")
-	dc, ok := intArg(args, "dc")
-	if !ok {
-		return errResult(id, "missing 'dc'")
+func (tr *ToolRouter) abilityCheck(call types.ToolCall, args map[string]any) types.ToolResult {
+	if tr.rules == nil {
+		return tr.rulesUnavailable(call.ID)
 	}
-	label, _ := args["label"].(string)
-	roll := RollD20WithMod(mod)
-	success := roll.Total >= dc
-	res := "FAILURE"
-	if success {
-		res = "SUCCESS"
+	if !tr.rules.legacyDND5E {
+		return errResult(call.ID, "legacy D&D tool is unavailable for the loaded rules package")
 	}
-	crit := ""
-	if roll.IsCriticalHit() {
-		crit = " [NAT 20]"
-	} else if roll.IsCriticalFail() {
-		crit = " [NAT 1]"
+	return tr.rules.legacyAbilityCheck(call, args)
+}
+
+func (tr *ToolRouter) rulesUnavailable(id string) types.ToolResult {
+	if tr.rulesErr != nil {
+		return errResult(id, "rules gateway unavailable: "+tr.rulesErr.Error())
 	}
-	msg := fmt.Sprintf("Check (DC %d): d20(%d)%+d = %d [%s]%s", dc, roll.Rolls[0], mod, roll.Total, res, crit)
-	if label != "" {
-		msg = label + " — " + msg
-	}
-	tr.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: msg})
-	tr.session.MarkModified()
-	return okResult(id, msg)
+	return errResult(id, "no rules package is loaded for this session")
 }
 
 // --- helpers -------------------------------------------------------------

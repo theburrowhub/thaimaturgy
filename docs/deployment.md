@@ -69,8 +69,9 @@ endpoint.
 - **Desktop app (remote mode)** — launch the desktop GUI as a client of a server:
 
   ```bash
-  bin/thaimaturgy --server http://127.0.0.1:8765 --token <token>
-  # or THAIM_SERVER=… THAIM_SERVER_TOKEN=… bin/thaimaturgy
+  THAIM_SERVER_TOKEN=<token> bin/thaimaturgy --server http://127.0.0.1:8765
+  # or: bin/thaimaturgy --server http://127.0.0.1:8765 --token-file /secure/path/token
+  # THAIM_SERVER=… may replace the --server flag.
   ```
 
   In remote mode the library, sessions, oracle/commands, party, and the live log

@@ -558,6 +558,10 @@ function maybeAutoZoneArt() {
 
 function renderParty() {
   const p = $("#party"); p.innerHTML = "";
+  if (!hasLegacyDND5E()) {
+    p.append(el("div", "muted", "Character mechanics are managed by the loaded rules package; the legacy D&D 5e sheet is unavailable."));
+    return;
+  }
   const party = (sess && sess.characters) || [];
   if (!party.length) { p.append(el("div", "muted", "No party. Use “Party…” to add characters.")); return; }
   for (const c of party) {
@@ -593,9 +597,11 @@ function renderLog() {
 // --- Mode / Begin / Rest -------------------------------------------------
 
 function effectiveMode() { return (sess && sess.mode) || "assistant"; }
+function hasLegacyDND5E() { return !!(sess && sess.rules_capabilities && sess.rules_capabilities.legacy_dnd5e); }
 
 function applyModeUI() {
   const dm = effectiveMode() === "dm";
+  const legacyDND5E = hasLegacyDND5E();
   $("#browser-wrap").classList.toggle("hidden", dm);
   $("#party-wrap").classList.toggle("hidden", !dm);
   $("#detail-wrap").classList.toggle("hidden", dm);
@@ -603,7 +609,9 @@ function applyModeUI() {
   $("#transcript-title").textContent = dm ? "Virtual DM" : "Oracle";
   const started = !!(sess && sess.started);
   $("#begin").classList.toggle("hidden", !(dm && !started));
-  $("#rest").classList.toggle("hidden", !(dm && started));
+  $("#rest").classList.toggle("hidden", !(dm && legacyDND5E && started));
+  $("#dice").classList.toggle("hidden", !legacyDND5E);
+  $("#party-edit").classList.toggle("hidden", !legacyDND5E);
   $("#ask-input").placeholder = dm
     ? "Describe what your character does…  (Enter sends · Shift/Ctrl+Enter = newline)"
     : "Ask the oracle, or type a /command.  (Enter sends · Shift/Ctrl+Enter = newline)";
@@ -625,12 +633,13 @@ function applyTelegramUI() {
   const btn = $("#telegram");
   if (!btn) return;
   const dm = effectiveMode() === "dm";
-  btn.classList.toggle("hidden", !(dm || hosting));
+  const legacyDND5E = hasLegacyDND5E();
+  btn.classList.toggle("hidden", !((dm && legacyDND5E) || hosting));
   btn.textContent = hosting ? "Hosting — stop" : "Host: Telegram";
   btn.classList.toggle("active", hosting);
   // Not usable until the initial status is known (so a toggle can't race the
   // initial refresh and get overwritten by its late reply), nor mid-request.
-  btn.disabled = !tgReady || tgBusy;
+  btn.disabled = (!legacyDND5E && !hosting) || !tgReady || tgBusy;
   $("#ask-input").disabled = hosting;
   $("#mode-toggle").disabled = hosting;
   $("#begin").disabled = hosting;
@@ -642,6 +651,7 @@ function applyTelegramUI() {
 
 async function refreshTelegram() {
   if (!current) { hosting = false; tgReady = true; applyTelegramUI(); return; }
+  if (!hasLegacyDND5E()) { hosting = false; tgReady = true; applyTelegramUI(); return; }
   // Capture the session generation: if the user switches sessions while this
   // request is in flight, the response is for the OLD session and must not touch
   // the (now different) current session's hosting state.
@@ -681,6 +691,7 @@ $("#telegram").onclick = async () => {
 };
 
 $("#rest").onclick = () => {
+  if (!hasLegacyDND5E()) { status("Rest requires the exact built-in D&D 5e rules package.", true); return; }
   const kind = prompt("Rest type: short or long?", "short");
   if (!kind) return;
   const k = kind.trim().toLowerCase();
@@ -939,6 +950,7 @@ function buildDice() {
 }
 async function rollDice(notation) {
   if (!current) { status("Open a session first.", true); return; }
+  if (!hasLegacyDND5E()) { status("The legacy dice roller requires the exact built-in D&D 5e rules package.", true); return; }
   try {
     const r = await api("POST", "/sessions/" + encodeURIComponent(current) + "/command", { input: "/roll " + notation });
     const msg = r.message || r.response || "(no result)";
@@ -947,7 +959,10 @@ async function rollDice(notation) {
     renderLog();
   } catch (e) { $("#dice-result").textContent = e.message; }
 }
-$("#dice").onclick = () => { buildDice(); $("#dice-result").textContent = ""; $("#dice-modal").classList.remove("hidden"); };
+$("#dice").onclick = () => {
+  if (!hasLegacyDND5E()) { status("The legacy dice roller requires the exact built-in D&D 5e rules package.", true); return; }
+  buildDice(); $("#dice-result").textContent = ""; $("#dice-modal").classList.remove("hidden");
+};
 $("#dice-close").onclick = () => $("#dice-modal").classList.add("hidden");
 $("#dice-modal").addEventListener("click", (e) => { if (e.target === $("#dice-modal")) $("#dice-modal").classList.add("hidden"); });
 $("#dice-form").addEventListener("submit", (e) => {
@@ -1137,6 +1152,7 @@ function textarea(value, rows) {
 
 async function openPartyEditor() {
   if (!current) return;
+  if (!hasLegacyDND5E()) { status("Party editing requires the exact built-in D&D 5e rules package.", true); return; }
   const opts = await getChargenOpts();
   const body = el("div", "form");
 
@@ -1296,6 +1312,7 @@ function roll4d6() {
 // --- Sheet editor (full 5e sheet, optimistic concurrency) ----------------
 
 function openSheetEditor(character) {
+  if (!hasLegacyDND5E()) { status("Character-sheet editing requires the exact built-in D&D 5e rules package.", true); return; }
   const baseChar = character;                       // the loaded version (baseline)
   const c = JSON.parse(JSON.stringify(character));  // working copy
   const body = el("div", "form");
@@ -1467,6 +1484,7 @@ let edSel = null;     // current selection descriptor
 // "Advanced (JSON)" box, so nothing is uneditable. kinds: text | area | csv | lines.
 const NODE_FIELDS = {
   meta: [["title", "text"], ["author", "text"], ["system", "text"], ["language", "text"],
+    ["ruleset.id", "text"], ["ruleset.version", "text"],
     ["start_room", "text"], ["summary", "area"], ["background", "area"], ["introduction", "area"],
     ["conclusion", "area"], ["hooks", "lines"]],
   zone: [["id", "text"], ["name", "text"], ["overview", "area"], ["description", "area"], ["map_image", "text"]],
@@ -1549,6 +1567,20 @@ function edNode() {
   return null;
 }
 
+function edFieldValue(node, key) {
+  return key.split(".").reduce((value, segment) => value && value[segment], node);
+}
+
+function setEdFieldValue(node, key, value) {
+  const path = key.split(".");
+  let target = node;
+  for (const segment of path.slice(0, -1)) {
+    if (!target[segment] || typeof target[segment] !== "object" || Array.isArray(target[segment])) target[segment] = {};
+    target = target[segment];
+  }
+  target[path[path.length - 1]] = value;
+}
+
 function renderEdForm() {
   const node = edNode();
   const box = $("#ed-form"); box.innerHTML = "";
@@ -1557,24 +1589,25 @@ function renderEdForm() {
   $("#ed-nodetitle").textContent = type === "meta" ? "Adventure metadata" : (type[0].toUpperCase() + type.slice(1));
 
   const fields = NODE_FIELDS[type] || [];
-  const friendlyKeys = new Set(fields.map((f) => f[0]));
+  const friendlyKeys = new Set(fields.map((f) => f[0].split(".")[0]));
   for (const [key, kind] of fields) {
+    const value = edFieldValue(node, key);
     let inp;
-    if (kind === "area") { inp = textarea(node[key] || "", 3); }
-    else if (kind === "lines") { inp = textarea((node[key] || []).join("\n"), 3); }
-    else if (kind === "csv") { inp = input((node[key] || []).join(", ")); }
-    else { inp = input(node[key] != null ? node[key] : ""); }
+    if (kind === "area") { inp = textarea(value || "", 3); }
+    else if (kind === "lines") { inp = textarea((value || []).join("\n"), 3); }
+    else if (kind === "csv") { inp = input((value || []).join(", ")); }
+    else { inp = input(value != null ? value : ""); }
     // Update the model live on each keystroke, but DON'T re-render the form (that
     // would drop focus mid-typing). Refresh the tree/header only on blur (change).
     inp.addEventListener("input", () => {
-      if (kind === "lines") node[key] = inp.value.split("\n").map((s) => s.trim()).filter(Boolean);
-      else if (kind === "csv") node[key] = inp.value.split(",").map((s) => s.trim()).filter(Boolean);
-      else node[key] = inp.value;
+      if (kind === "lines") setEdFieldValue(node, key, inp.value.split("\n").map((s) => s.trim()).filter(Boolean));
+      else if (kind === "csv") setEdFieldValue(node, key, inp.value.split(",").map((s) => s.trim()).filter(Boolean));
+      else setEdFieldValue(node, key, inp.value);
     });
     if (key === "name" || key === "id" || key === "title") {
       inp.addEventListener("change", () => { $("#ed-title").textContent = editAdv.title || editId; renderEdTree(); });
     }
-    box.append(field(key.replace(/_/g, " "), inp));
+    box.append(field(key.replace(/[_.]/g, " "), inp));
   }
 
   // Advanced JSON for the remaining fields.

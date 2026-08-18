@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/types"
 )
 
@@ -102,6 +103,69 @@ func TestUpdateHPTool(t *testing.T) {
 	call(map[string]any{"set": -10}) // clamped at 0, never negative
 	if pc.CurrentHP != 0 {
 		t.Errorf("HP after set -10 = %d, want 0 (clamped)", pc.CurrentHP)
+	}
+}
+
+func TestMCPMutationReceiptSurvivesRetryConflictAndRestart(t *testing.T) {
+	session := createTestSession()
+	session.State.SetMode(domain.ModeVirtualDM)
+	pc := domain.NewCharacter("Kael", "Elf", "Wizard")
+	pc.MaxHP, pc.CurrentHP = 20, 20
+	soloParty(session, pc)
+	router := NewToolRouter(session)
+	call := types.ToolCall{
+		ID: "mcp:retry-test:0123456789abcdef", Name: "update_hp",
+		Arguments: json.RawMessage(`{"delta":-8}`),
+	}
+
+	first := router.Execute(call)
+	second := router.Execute(call)
+	if first.Error != "" || second != first || pc.CurrentHP != 12 {
+		t.Fatalf("retry first=%+v second=%+v hp=%d", first, second, pc.CurrentHP)
+	}
+	conflict := call
+	conflict.Arguments = json.RawMessage(`{"delta":-1}`)
+	if result := router.Execute(conflict); !strings.Contains(result.Error, "different tool arguments") || pc.CurrentHP != 12 {
+		t.Fatalf("conflicting retry result=%+v hp=%d", result, pc.CurrentHP)
+	}
+
+	encoded, err := json.Marshal(session.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredState := new(domain.SessionState)
+	if err := json.Unmarshal(encoded, restoredState); err != nil {
+		t.Fatal(err)
+	}
+	restoredSession := domain.NewSession(restoredState, session.Adventure, session.Config)
+	restoredSession.RulesResolver = session.RulesResolver
+	restarted := NewToolRouter(restoredSession)
+	if result := restarted.Execute(call); result != first || restoredState.Characters[0].CurrentHP != 12 {
+		t.Fatalf("restart retry result=%+v want=%+v hp=%d", result, first, restoredState.Characters[0].CurrentHP)
+	}
+	runtime, ok := restoredState.RulesRuntimeSnapshot()
+	if !ok || len(runtime.Receipts) != 1 || runtime.Receipts[0].RequestID != call.ID {
+		t.Fatalf("durable mutation receipt ok=%v runtime=%+v", ok, runtime)
+	}
+}
+
+func TestMCPMutationRejectsOversizedArgumentsBeforeApplyingEffect(t *testing.T) {
+	session := createTestSession()
+	router := NewToolRouter(session)
+	call := types.ToolCall{
+		ID: "mcp:oversized-test:0123456789abcdef", Name: "set_variable",
+		Arguments: json.RawMessage(`{"key":"oversized","value":"` + strings.Repeat("x", rules.MaxPayloadBytes) + `"}`),
+	}
+	result := router.Execute(call)
+	if !strings.Contains(result.Error, "arguments exceed") {
+		t.Fatalf("oversized result = %+v", result)
+	}
+	if value := session.State.Variables["oversized"]; value != "" {
+		t.Fatalf("oversized mutation was applied: %d bytes", len(value))
+	}
+	runtime, ok := session.State.RulesRuntimeSnapshot()
+	if !ok || len(runtime.Receipts) != 0 {
+		t.Fatalf("rejected input created a receipt: ok=%v runtime=%+v", ok, runtime)
 	}
 }
 

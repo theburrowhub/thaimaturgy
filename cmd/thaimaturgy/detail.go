@@ -72,6 +72,9 @@ func adventureMarkdown(adv *domain.Adventure) string {
 	if adv.System != "" {
 		sb.WriteString(mdField("System", adv.System))
 	}
+	if requirement, ok := adv.RulesRequirement(); ok {
+		sb.WriteString(mdField("Rules package", fmt.Sprintf("%s @ %s", requirement.ID, requirement.Version)))
+	}
 	sb.WriteString(mdField("Summary", adv.Summary))
 	sb.WriteString(mdField("Context", adv.Context))
 	sb.WriteString(mdField("Background", adv.Background))

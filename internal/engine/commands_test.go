@@ -1,9 +1,12 @@
 package engine
 
 import (
+	"context"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/catalog"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/dnd5e"
 )
 
 func TestParseCommand(t *testing.T) {
@@ -164,6 +167,27 @@ func TestCommandHandlerQuit(t *testing.T) {
 }
 
 func createTestSession() *domain.Session {
+	session := createUnboundTestSession()
+	return bindTestDND5E(session)
+}
+
+func bindTestDND5E(session *domain.Session) *domain.Session {
+	rulesCatalog := catalog.New()
+	artifact, err := dnd5e.NewArtifact()
+	if err != nil {
+		panic(err)
+	}
+	if err := rulesCatalog.Register(context.Background(), artifact, dnd5e.New(), dnd5e.InitialState()); err != nil {
+		panic(err)
+	}
+	if _, err := session.State.BindRules(artifact.Lock(), dnd5e.InitialState()); err != nil {
+		panic(err)
+	}
+	session.RulesResolver = rulesCatalog
+	return session
+}
+
+func createUnboundTestSession() *domain.Session {
 	adv := &domain.Adventure{
 		SchemaVersion: domain.SchemaVersion,
 		ID:            "test",

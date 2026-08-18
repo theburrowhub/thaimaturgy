@@ -11,6 +11,8 @@ SERVER_BINARY_NAME := thaimaturgy-server
 SERVER_CMD_DIR := ./cmd/thaimaturgy-server
 NOVEL_BINARY_NAME := thaimaturgy-novel
 NOVEL_CMD_DIR := ./cmd/thaimaturgy-novel
+RULES_BINARY_NAME := thaimaturgy-rules
+RULES_CMD_DIR := ./cmd/thaimaturgy-rules
 PKG := github.com/theburrowhub/thaimaturgy
 
 # Go parameters
@@ -40,11 +42,13 @@ YELLOW := \033[33m
 RED := \033[31m
 RESET := \033[0m
 
-.PHONY: all build build-bot build-server run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall example-module modules
+.PHONY: all build build-bot build-server build-rules run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall example-module modules example-rules
 
 # Adventure modules
 EXAMPLES_DIR := examples/adventures
 DIST_DIR := dist/modules
+RULES_EXAMPLES_DIR := examples/rules
+RULES_DIST_DIR := dist/rules
 
 ##@ General
 
@@ -84,6 +88,12 @@ build-novel: ## Build the session-novelization console binary
 	@mkdir -p $(BINARY_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_DIR)/$(NOVEL_BINARY_NAME) $(NOVEL_CMD_DIR)
 	@echo "$(GREEN)Built: $(BINARY_DIR)/$(NOVEL_BINARY_NAME)$(RESET)"
+
+build-rules: ## Build the external rules-package manager
+	@echo "$(CYAN)Building $(RULES_BINARY_NAME)...$(RESET)"
+	@mkdir -p $(BINARY_DIR)
+	$(GOBUILD) $(LDFLAGS) -o $(BINARY_DIR)/$(RULES_BINARY_NAME) $(RULES_CMD_DIR)
+	@echo "$(GREEN)Built: $(BINARY_DIR)/$(RULES_BINARY_NAME)$(RESET)"
 
 dev: ## Run with go run (faster iteration)
 	@echo "$(CYAN)Running in dev mode...$(RESET)"
@@ -217,6 +227,13 @@ modules: ## Package every example adventure into dist/modules
 		tar -czf $(DIST_DIR)/$$name.tar.gz -C $$d .; \
 		echo "$(GREEN)Built: $(DIST_DIR)/$$name.tar.gz$(RESET)"; \
 	done
+
+##@ Rules Packages
+
+example-rules: build-rules ## Pack the simple-d6 Starlark example into dist/rules
+	@mkdir -p $(RULES_DIST_DIR)
+	./$(BINARY_DIR)/$(RULES_BINARY_NAME) pack $(RULES_EXAMPLES_DIR)/simple-d6 $(RULES_DIST_DIR)/simple-d6.rules.zip
+	@echo "$(GREEN)Built: $(RULES_DIST_DIR)/simple-d6.rules.zip$(RESET)"
 
 ##@ Info
 

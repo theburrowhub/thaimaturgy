@@ -3,13 +3,16 @@ package engine
 import (
 	"fmt"
 	"math/rand"
-	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/theburrowhub/thaimaturgy/internal/diceexpr"
 )
 
 var diceRng = rand.New(rand.NewSource(time.Now().UnixNano()))
+var diceMu sync.Mutex
 
 type DiceRoll struct {
 	Notation  string `json:"notation"`
@@ -20,54 +23,22 @@ type DiceRoll struct {
 	Total     int    `json:"total"`
 }
 
-var diceRegex = regexp.MustCompile(`^(\d+)?d(\d+)([+-]\d+)?$`)
-
 func ParseDice(notation string) (*DiceRoll, error) {
-	notation = strings.ToLower(strings.TrimSpace(notation))
-
-	matches := diceRegex.FindStringSubmatch(notation)
-	if matches == nil {
-		return nil, fmt.Errorf("invalid dice notation: %s (expected format: NdM or NdM+K)", notation)
-	}
-
-	numDice := 1
-	if matches[1] != "" {
-		var err error
-		numDice, err = strconv.Atoi(matches[1])
-		if err != nil {
-			return nil, fmt.Errorf("invalid number of dice: %s", matches[1])
-		}
-	}
-
-	diceSides, err := strconv.Atoi(matches[2])
+	expression, err := diceexpr.Parse(notation)
 	if err != nil {
-		return nil, fmt.Errorf("invalid dice sides: %s", matches[2])
+		return nil, err
 	}
-
-	modifier := 0
-	if matches[3] != "" {
-		modifier, err = strconv.Atoi(matches[3])
-		if err != nil {
-			return nil, fmt.Errorf("invalid modifier: %s", matches[3])
-		}
-	}
-
-	if numDice < 1 || numDice > 100 {
-		return nil, fmt.Errorf("number of dice must be between 1 and 100")
-	}
-	if diceSides < 1 || diceSides > 1000 {
-		return nil, fmt.Errorf("dice sides must be between 1 and 1000")
-	}
-
 	return &DiceRoll{
-		Notation:  notation,
-		NumDice:   numDice,
-		DiceSides: diceSides,
-		Modifier:  modifier,
+		Notation:  expression.Notation,
+		NumDice:   expression.NumDice,
+		DiceSides: expression.DiceSides,
+		Modifier:  expression.Modifier,
 	}, nil
 }
 
 func (dr *DiceRoll) Roll() int {
+	diceMu.Lock()
+	defer diceMu.Unlock()
 	dr.Rolls = make([]int, dr.NumDice)
 	sum := 0
 
@@ -140,6 +111,8 @@ func RollD20WithMod(modifier int) *DiceRoll {
 }
 
 func RollAbilityScore() *DiceRoll {
+	diceMu.Lock()
+	defer diceMu.Unlock()
 	rolls := make([]int, 4)
 	for i := 0; i < 4; i++ {
 		rolls[i] = diceRng.Intn(6) + 1

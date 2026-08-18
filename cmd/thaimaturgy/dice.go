@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 )
@@ -22,6 +23,10 @@ var standardDice = []int{4, 6, 8, 10, 12, 20, 100}
 // timeline (so it persists and appears in the Session Log).
 func (g *gui) showDiceRoller() {
 	if g.session == nil {
+		return
+	}
+	if !g.hasLegacyDND5E() {
+		g.showErr(appservice.ErrDNDUtilitiesUnavailable)
 		return
 	}
 
@@ -105,6 +110,9 @@ func composeNotation(qtyStr string, sides int, modStr string) string {
 // rollDiceNotation rolls the given notation, logs it to the session timeline and
 // the oracle transcript, and returns a Markdown summary for the dice dialog.
 func (g *gui) rollDiceNotation(notation string) string {
+	if !g.hasLegacyDND5E() {
+		return "⚠ " + appservice.ErrDNDUtilitiesUnavailable.Error()
+	}
 	notation = strings.TrimSpace(notation)
 	if notation == "" {
 		return "_Enter a dice notation._"
