@@ -194,8 +194,12 @@ func (l *Loader) readArchive(raw []byte) (map[string][]byte, error) {
 	files := make(map[string][]byte)
 	seen := make(map[string]struct{})
 	var expanded int64
-	fileCount := 0
+	entryCount := 0
 	for _, item := range archive.File {
+		entryCount++
+		if entryCount > l.limits.MaxFiles {
+			return nil, fmt.Errorf("%w: more than %d ZIP entries", ErrBundleTooLarge, l.limits.MaxFiles)
+		}
 		name := item.Name
 		isDirectory := item.FileInfo().IsDir() || strings.HasSuffix(name, "/")
 		cleanName := strings.TrimSuffix(name, "/")
@@ -211,17 +215,13 @@ func (l *Loader) readArchive(raw []byte) (map[string][]byte, error) {
 			return nil, fmt.Errorf("%w: symlink entry %q is forbidden", ErrInvalidBundle, name)
 		}
 		if isDirectory {
-			if !item.FileInfo().IsDir() && item.UncompressedSize64 != 0 {
+			if item.UncompressedSize64 != 0 {
 				return nil, fmt.Errorf("%w: malformed directory entry %q", ErrInvalidBundle, name)
 			}
 			continue
 		}
 		if !mode.IsRegular() {
 			return nil, fmt.Errorf("%w: non-regular entry %q is forbidden", ErrInvalidBundle, name)
-		}
-		fileCount++
-		if fileCount > l.limits.MaxFiles {
-			return nil, fmt.Errorf("%w: more than %d files", ErrBundleTooLarge, l.limits.MaxFiles)
 		}
 		if item.UncompressedSize64 > uint64(l.limits.MaxExpandedBytes-expanded) {
 			return nil, fmt.Errorf("%w: expanded bytes exceed %d", ErrBundleTooLarge, l.limits.MaxExpandedBytes)

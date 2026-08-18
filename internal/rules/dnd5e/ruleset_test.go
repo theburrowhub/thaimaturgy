@@ -223,7 +223,6 @@ func TestStartRejectsArgumentsOutsideAdvertisedSchema(t *testing.T) {
 		name, action, raw, contains string
 	}{
 		{"unknown field", ActionDiceRoll, `{"notation":"1d20","seed":7}`, "unknown field"},
-		{"duplicate field", ActionDiceRoll, `{"notation":"1d20","notation":"1d6"}`, "duplicate JSON field"},
 		{"fractional modifier", ActionAbilityCheck, `{"modifier":1.5,"dc":10}`, "cannot unmarshal number 1.5"},
 	}
 	for _, test := range tests {
@@ -291,12 +290,6 @@ func TestResumeRejectsInvalidRandomResponsesAndContinuations(t *testing.T) {
 			pending:  mustPending(t, step),
 			response: testPayload(t, map[string]any{"rolls": []int{1, 2}, "seed": 3}),
 			contains: "unknown field",
-		},
-		{
-			name:     "duplicate response field",
-			pending:  mustPending(t, step),
-			response: testRawPayload(t, `{"rolls":[1,2],"rolls":[3,4]}`),
-			contains: "duplicate JSON field",
 		},
 		{
 			name: "cross action continuation fields",

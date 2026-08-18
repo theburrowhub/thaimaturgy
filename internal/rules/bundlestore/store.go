@@ -77,14 +77,17 @@ func New(root string, loader *starlarkruntime.Loader) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("rules bundle store: resolve root: %w", err)
 	}
-	if info, err := os.Lstat(absolute); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			return nil, errors.New("rules bundle store: root must be a real directory, not a symlink")
-		}
-	} else if !os.IsNotExist(err) {
+	if _, err := os.Lstat(absolute); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("rules bundle store: inspect root: %w", err)
 	} else if err := os.MkdirAll(absolute, 0o700); err != nil {
 		return nil, fmt.Errorf("rules bundle store: create root: %w", err)
+	}
+	info, err := os.Lstat(absolute)
+	if err != nil {
+		return nil, fmt.Errorf("rules bundle store: inspect root: %w", err)
+	}
+	if err := validatePrivateDirectory(info, "root"); err != nil {
+		return nil, err
 	}
 	if loader == nil {
 		loader, err = starlarkruntime.NewLoader(starlarkruntime.Limits{})
@@ -139,6 +142,9 @@ func (s *Store) Install(ctx context.Context, source io.Reader) (InstalledBundle,
 	if source == nil {
 		return InstalledBundle{}, errors.New("rules bundle store: nil source")
 	}
+	if err := ctx.Err(); err != nil {
+		return InstalledBundle{}, err
+	}
 	maximum := starlarkruntime.DefaultLimits().MaxBundleBytes
 	raw, err := io.ReadAll(io.LimitReader(source, maximum+1))
 	if err != nil {
@@ -146,6 +152,9 @@ func (s *Store) Install(ctx context.Context, source io.Reader) (InstalledBundle,
 	}
 	if int64(len(raw)) > maximum {
 		return InstalledBundle{}, fmt.Errorf("%w: compressed bytes exceed %d", starlarkruntime.ErrBundleTooLarge, maximum)
+	}
+	if err := ctx.Err(); err != nil {
+		return InstalledBundle{}, err
 	}
 	loaded, err := s.loader.Load(ctx, bytes.NewReader(raw))
 	if err != nil {
@@ -184,6 +193,10 @@ func (s *Store) Discover(ctx context.Context) Report {
 		report.Failures = append(report.Failures, Failure{Path: s.root, Err: errors.New("nil context")})
 		return report
 	}
+	if err := ctx.Err(); err != nil {
+		report.Failures = append(report.Failures, Failure{Path: s.root, Err: err})
+		return report
+	}
 	walkErr := filepath.WalkDir(s.root, func(filePath string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			report.Failures = append(report.Failures, Failure{Path: filePath, Err: walkErr})
@@ -192,14 +205,14 @@ func (s *Store) Discover(ctx context.Context) Report {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if filePath == s.root {
-			return nil
-		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			report.Failures = append(report.Failures, Failure{Path: filePath, Err: errors.New("symlinks are forbidden in the rules store")})
 			if entry.IsDir() {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if filePath == s.root {
 			return nil
 		}
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), BundleExtension) {
@@ -283,9 +296,17 @@ func (s *Store) RegisterAll(ctx context.Context, destination *catalog.Catalog) (
 		return nil, errors.New("rules bundle store: nil catalog")
 	}
 	report := s.Discover(ctx)
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
 	locks := make([]rules.Lock, 0, len(report.Bundles))
 	failures := append([]Failure(nil), report.Failures...)
 	for _, bundle := range report.Bundles {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		loaded := bundle.Loaded
 		if err := destination.Register(ctx, loaded.Artifact, loaded.Ruleset, loaded.InitialState); err != nil {
 			failures = append(failures, Failure{Path: bundle.Path, Err: err})
@@ -316,8 +337,21 @@ func ensurePackageDirectory(root, id, version string) (string, error) {
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 			return "", errors.New("rules bundle store: package path must contain only real directories")
 		}
+		if err := validatePrivateDirectory(info, "package path"); err != nil {
+			return "", err
+		}
 	}
 	return current, nil
+}
+
+func validatePrivateDirectory(info os.FileInfo, label string) error {
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("rules bundle store: %s must be a real directory, not a symlink", label)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("rules bundle store: %s must not grant group or other permissions", label)
+	}
+	return nil
 }
 
 func ensureSingleReleaseArtifact(directory, destination string, lock rules.Lock) error {

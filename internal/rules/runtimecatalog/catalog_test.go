@@ -2,6 +2,7 @@ package runtimecatalog
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -83,5 +84,10 @@ func TestLoadRejectsMissingInputs(t *testing.T) {
 	}
 	if _, err := Load(context.Background(), " "); err == nil {
 		t.Fatal("empty data directory was accepted")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := Load(ctx, t.TempDir()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled Load error = %v, want context.Canceled", err)
 	}
 }

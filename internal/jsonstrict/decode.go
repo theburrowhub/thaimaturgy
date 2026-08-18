@@ -9,6 +9,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"unicode/utf8"
 )
 
 const maxNestingDepth = 128
@@ -16,7 +17,7 @@ const maxNestingDepth = 128
 // Decode decodes exactly one JSON value into dst. Object fields must be unique,
 // and fields unknown to a struct destination are rejected at every depth.
 func Decode(raw []byte, dst any) error {
-	if err := rejectDuplicateFields(raw); err != nil {
+	if err := Validate(raw); err != nil {
 		return err
 	}
 	if err := validateExactFieldNames(raw, reflect.TypeOf(dst)); err != nil {
@@ -29,6 +30,26 @@ func Decode(raw []byte, dst any) error {
 		return err
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
+// Validate accepts exactly one unambiguous UTF-8 JSON value. In particular,
+// object member names must remain unique after JSON escape decoding.
+func Validate(raw []byte) error {
+	if !utf8.Valid(raw) {
+		return fmt.Errorf("JSON is not valid UTF-8")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := consumeValue(decoder, 0); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
 		if err == nil {
 			return fmt.Errorf("multiple JSON values")
 		}
@@ -102,12 +123,6 @@ func exactJSONFields(destination reflect.Type) map[string]reflect.Type {
 		fields[name] = field.Type
 	}
 	return fields
-}
-
-func rejectDuplicateFields(raw []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	return consumeValue(decoder, 0)
 }
 
 func consumeValue(decoder *json.Decoder, depth int) error {

@@ -61,10 +61,14 @@ func (c *Catalog) Register(
 	if err := implementation.ValidateState(ctx, rules.ValidateStateRequest{Snapshot: snapshot}); err != nil {
 		return fmt.Errorf("rules catalog: ruleset rejected initial state: %w", err)
 	}
+	// Exact lookup, requirement resolution, and initial state form one catalog
+	// entry. Hold the catalog lock while publishing all three so concurrent
+	// callers can never observe a partially registered package.
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.registry.Register(ctx, artifact, implementation); err != nil {
 		return err
 	}
-	c.mu.Lock()
 	c.byID[lock.ID] = append(c.byID[lock.ID], lock)
 	c.initial[lock] = initialState
 	slices.SortFunc(c.byID[lock.ID], func(a, b rules.Lock) int {
@@ -76,7 +80,6 @@ func (c *Catalog) Register(
 		}
 		return -comparison
 	})
-	c.mu.Unlock()
 	return nil
 }
 
@@ -102,6 +105,8 @@ func (c *Catalog) Lookup(lock rules.Lock) (rules.Ruleset, error) {
 	if c == nil {
 		return nil, fmt.Errorf("rules catalog: nil catalog")
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.registry.Lookup(lock)
 }
 
@@ -120,8 +125,8 @@ func (c *Catalog) Resolve(requirement rules.Requirement) (rules.Lock, rules.Rule
 		return rules.Lock{}, nil, fmt.Errorf("rules catalog: invalid constraint %q: %w", requirement.Version, err)
 	}
 	c.mu.RLock()
-	locks := append([]rules.Lock(nil), c.byID[requirement.ID]...)
-	c.mu.RUnlock()
+	defer c.mu.RUnlock()
+	locks := c.byID[requirement.ID]
 	for _, lock := range locks {
 		if constraint.matches(mustParseVersion(lock.Version)) {
 			implementation, err := c.registry.Lookup(lock)

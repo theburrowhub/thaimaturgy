@@ -57,6 +57,9 @@ func Load(ctx context.Context, dataDirectory string) (*Environment, error) {
 		return nil, fmt.Errorf("rules runtime catalog: open external store: %w", err)
 	}
 	external, diagnostics := store.RegisterAll(ctx, available)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return &Environment{
 		Catalog:       available,
 		Store:         store,

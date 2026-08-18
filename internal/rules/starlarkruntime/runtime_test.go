@@ -358,6 +358,30 @@ func TestBundleRejectsTraversalSymlinksAndEscapingLoads(t *testing.T) {
 	}
 }
 
+func TestBundleCountsDirectoriesAndRejectsDirectoryData(t *testing.T) {
+	manifest := testManifest()
+	source := validSource(t, manifest)
+	t.Run("directories count toward archive limit", func(t *testing.T) {
+		loader := newTestLoader(t, Limits{MaxFiles: 3})
+		bundle := makeBundle(t, manifest, source,
+			archiveEntry{name: "one/", mode: os.ModeDir | 0o700},
+			archiveEntry{name: "two/", mode: os.ModeDir | 0o700},
+		)
+		if _, err := loader.Load(context.Background(), bytes.NewReader(bundle)); !errors.Is(err, ErrBundleTooLarge) {
+			t.Fatalf("Load error = %v, want ErrBundleTooLarge", err)
+		}
+	})
+	t.Run("directory data is malformed", func(t *testing.T) {
+		loader := newTestLoader(t, Limits{})
+		bundle := makeBundle(t, manifest, source,
+			archiveEntry{name: "bad", contents: "hidden", mode: os.ModeDir | 0o700},
+		)
+		if _, err := loader.Load(context.Background(), bytes.NewReader(bundle)); !errors.Is(err, ErrInvalidBundle) {
+			t.Fatalf("Load error = %v, want ErrInvalidBundle", err)
+		}
+	})
+}
+
 func TestSandboxHasNoHostClockRandomFilesystemOrNetworkNames(t *testing.T) {
 	manifest := testManifest()
 	for _, name := range []string{"os", "time", "random", "open", "http"} {

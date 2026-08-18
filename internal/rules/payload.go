@@ -3,6 +3,8 @@ package rules
 import (
 	"bytes"
 	"encoding/json"
+
+	"github.com/theburrowhub/thaimaturgy/internal/jsonstrict"
 )
 
 // Payload is an immutable, bounded JSON value. Its zero value means that a
@@ -23,8 +25,8 @@ func NewPayload(raw []byte) (Payload, error) {
 	if len(raw) > MaxPayloadBytes {
 		return Payload{}, invalid("payload", "exceeds %d bytes", MaxPayloadBytes)
 	}
-	if !json.Valid(raw) {
-		return Payload{}, invalid("payload", "must be valid JSON")
+	if err := jsonstrict.Validate(raw); err != nil {
+		return Payload{}, invalid("payload", "must be unambiguous UTF-8 JSON: %v", err)
 	}
 	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return Payload{}, invalid("payload", "JSON null is reserved for the zero value")
@@ -63,8 +65,8 @@ func (p Payload) Validate() error {
 	if len(p.raw) > MaxPayloadBytes {
 		return invalid("payload", "exceeds %d bytes", MaxPayloadBytes)
 	}
-	if !json.Valid([]byte(p.raw)) {
-		return invalid("payload", "must be valid JSON")
+	if err := jsonstrict.Validate([]byte(p.raw)); err != nil {
+		return invalid("payload", "must be unambiguous UTF-8 JSON: %v", err)
 	}
 	return nil
 }

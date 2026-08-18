@@ -168,6 +168,14 @@ func TestPayloadIsValidatedAndImmutable(t *testing.T) {
 	if _, err := NewPayload([]byte(`{"broken"`)); err == nil {
 		t.Fatal("invalid JSON was accepted")
 	}
+	if _, err := NewPayload([]byte(`{"value":1,"value":2}`)); err == nil {
+		t.Fatal("duplicate JSON object member was accepted")
+	}
+	invalidUTF8 := append([]byte(`{"value":"`), 0xff)
+	invalidUTF8 = append(invalidUTF8, []byte(`"}`)...)
+	if _, err := NewPayload(invalidUTF8); err == nil {
+		t.Fatal("invalid UTF-8 was accepted")
+	}
 	if _, err := NewPayload(make([]byte, MaxPayloadBytes+1)); err == nil {
 		t.Fatal("oversized JSON was accepted")
 	}

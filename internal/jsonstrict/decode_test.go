@@ -1,6 +1,7 @@
 package jsonstrict
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -53,5 +54,23 @@ func TestDecodeBoundsNestingBeforeRecursiveProtocolValidation(t *testing.T) {
 	err := Decode([]byte(raw), &decoded)
 	if err == nil || !strings.Contains(err.Error(), "nesting exceeds") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateRejectsDuplicateEscapedNamesAndInvalidUTF8(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      []byte
+		contains string
+	}{
+		{"escaped duplicate", []byte(`{"name":1,"\u006eame":2}`), "duplicate JSON field"},
+		{"invalid UTF-8", bytes.Join([][]byte{[]byte(`{"name":"`), {0xff}, []byte(`"}`)}, nil), "not valid UTF-8"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := Validate(test.raw); err == nil || !strings.Contains(err.Error(), test.contains) {
+				t.Fatalf("Validate error = %v, want substring %q", err, test.contains)
+			}
+		})
 	}
 }

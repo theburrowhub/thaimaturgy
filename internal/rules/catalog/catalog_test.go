@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
 )
@@ -12,6 +13,16 @@ import (
 type manifestRuleset struct {
 	manifest rules.Manifest
 	stateErr error
+}
+
+type signalingRuleset struct {
+	manifestRuleset
+	validated chan struct{}
+}
+
+func (r signalingRuleset) ValidateState(context.Context, rules.ValidateStateRequest) error {
+	close(r.validated)
+	return r.stateErr
 }
 
 func (r manifestRuleset) Manifest(context.Context) (rules.Manifest, error) { return r.manifest, nil }
@@ -90,6 +101,65 @@ func TestRegisterValidatesAndRetainsInitialStateAtomically(t *testing.T) {
 	got, err := catalog.InitialState(artifact.Lock())
 	if err != nil || got.String() != initial.String() {
 		t.Fatalf("InitialState = %s, %v", got.String(), err)
+	}
+}
+
+func TestRegisterDoesNotPublishExactLookupBeforeCatalogEntry(t *testing.T) {
+	catalog := New()
+	manifest := rules.Manifest{
+		ID: "atomic", Name: "Atomic", Version: "1.0.0", ProtocolVersion: rules.ProtocolVersion,
+		Runtime: rules.Runtime{Kind: rules.RuntimeBuiltin},
+	}
+	artifact, err := rules.NewArtifact(manifest, strings.NewReader("atomic"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := rules.NewPayload([]byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated := make(chan struct{})
+	registered := make(chan error, 1)
+
+	// Freeze the catalog publication point while semantic validation, which is
+	// deliberately outside the lock, completes.
+	catalog.mu.Lock()
+	go func() {
+		registered <- catalog.Register(context.Background(), artifact, signalingRuleset{
+			manifestRuleset: manifestRuleset{manifest: manifest}, validated: validated,
+		}, initial)
+	}()
+	select {
+	case <-validated:
+	case <-time.After(time.Second):
+		catalog.mu.Unlock()
+		t.Fatal("registration did not reach semantic validation")
+	}
+	deadline := time.After(50 * time.Millisecond)
+	check := time.NewTicker(time.Millisecond)
+	defer check.Stop()
+locked:
+	for {
+		select {
+		case <-deadline:
+			break locked
+		case <-check.C:
+			if _, err := catalog.registry.Lookup(artifact.Lock()); err == nil {
+				catalog.mu.Unlock()
+				t.Fatal("exact registry lookup became visible before catalog metadata")
+			}
+		}
+	}
+	catalog.mu.Unlock()
+
+	if err := <-registered; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.Lookup(artifact.Lock()); err != nil {
+		t.Fatalf("exact lookup unavailable after registration: %v", err)
+	}
+	if _, err := catalog.InitialState(artifact.Lock()); err != nil {
+		t.Fatalf("initial state unavailable after registration: %v", err)
 	}
 }
 
