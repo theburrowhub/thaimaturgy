@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -60,6 +61,79 @@ func TestOraclePromptIdentifiesExactMechanicalAuthority(t *testing.T) {
 			t.Fatalf("rules authority prompt omitted %q", required)
 		}
 	}
+}
+
+func TestMCPToolSubcommandArgsInheritEffectiveRulesContext(t *testing.T) {
+	session := createTestSession()
+	session.Config.Language = domain.LangSpanish
+	session.Config.RequestTimeoutSeconds = 37
+	session.DataDirectory = "/tmp/thaim-test-data"
+
+	args, err := mcpToolSubcommandArgs(session, "/tmp/session.json", "oracle-test-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(args) == 0 || args[0] != "__mcp-tools" {
+		t.Fatalf("subcommand args = %v", args)
+	}
+	wantFlags := map[string]string{
+		"--adventure-id":          session.State.AdventureID,
+		"--session":               "/tmp/session.json",
+		"--request-namespace":     "oracle-test-1",
+		"--language":              "es",
+		"--rules-timeout-seconds": "37",
+		"--data-dir":              session.DataDirectory,
+	}
+	for flag, want := range wantFlags {
+		if got, ok := stringFlagValue(args, flag); !ok || got != want {
+			t.Errorf("%s = %q, present=%v, want %q; args=%v", flag, got, ok, want, args)
+		}
+	}
+}
+
+func TestEffectiveRulesRequestTimeoutIsBoundedAndSharedWithMCP(t *testing.T) {
+	tests := []struct {
+		configured int
+		want       int
+	}{
+		{configured: 0, want: DefaultRulesRequestTimeoutSeconds},
+		{configured: -1, want: DefaultRulesRequestTimeoutSeconds},
+		{configured: 17, want: 17},
+		{configured: MaxRulesRequestTimeoutSeconds + 1, want: MaxRulesRequestTimeoutSeconds},
+	}
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("configured_%d", test.configured), func(t *testing.T) {
+			session := createTestSession()
+			session.Config.RequestTimeoutSeconds = test.configured
+			if got := EffectiveRulesRequestTimeoutSeconds(session); got != test.want {
+				t.Fatalf("effective timeout = %d, want %d", got, test.want)
+			}
+			args, err := mcpToolSubcommandArgs(session, "/tmp/session.json", "oracle-timeout-test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, ok := stringFlagValue(args, "--rules-timeout-seconds"); !ok || got != fmt.Sprint(test.want) {
+				t.Fatalf("MCP timeout = %q, present=%v, want %d", got, ok, test.want)
+			}
+		})
+	}
+}
+
+func TestMCPToolSubcommandArgsRejectUnsupportedLanguage(t *testing.T) {
+	session := createTestSession()
+	session.Config.Language = domain.Language("fr")
+	if _, err := mcpToolSubcommandArgs(session, "/tmp/session.json", "oracle-test"); err == nil || !strings.Contains(err.Error(), "unsupported language") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func stringFlagValue(args []string, name string) (string, bool) {
+	for index := 0; index+1 < len(args); index++ {
+		if args[index] == name {
+			return args[index+1], true
+		}
+	}
+	return "", false
 }
 
 func (p *repeatingToolIDProvider) Name() string         { return "repeating-tool-id" }

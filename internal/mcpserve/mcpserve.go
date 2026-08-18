@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -37,14 +38,19 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	sessPath := fs.String("session", "", "session state json path")
 	dataDirectory := fs.String("data-dir", strings.TrimSpace(os.Getenv("THAIM_DATA_DIR")), "thAImaturgy data directory")
 	requestNamespace := fs.String("request-namespace", "", "stable namespace for one parent oracle turn")
+	language := fs.String("language", "", "effective session language (en or es)")
+	rulesTimeoutSeconds := fs.Int("rules-timeout-seconds", 0, "effective bounded rules-call timeout in seconds")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*advID) == "" || strings.TrimSpace(*sessPath) == "" {
 		return fmt.Errorf("mcp-tools: --adventure-id and --session are required")
 	}
+	config, err := mcpSessionConfig(*language, *rulesTimeoutSeconds)
+	if err != nil {
+		return err
+	}
 	var store *storage.Storage
-	var err error
 	if strings.TrimSpace(*dataDirectory) == "" {
 		store, err = storage.NewFromEnvironment()
 	} else {
@@ -65,11 +71,6 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	if err := json.Unmarshal(data, &st); err != nil {
 		return err
 	}
-	// In virtual-DM mode make sure the party exists, so the character tools have
-	// members to target even if this subprocess is the first to touch it.
-	if st.EffectiveMode() == domain.ModeVirtualDM {
-		st.EnsureParty()
-	}
 	// A prior child may have been interrupted after publishing the canonical
 	// checkpoint (the historical write order) or after publishing only the
 	// handoff (the new recoverable order). Reconcile just the monotonic rules
@@ -82,9 +83,17 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("mcp-tools: load rules catalog: %w", err)
 	}
-	session, err := rulesEnvironment.OpenSession(context.Background(), &st, adv, domain.DefaultConfig())
+	session, err := rulesEnvironment.OpenSession(context.Background(), &st, adv, config)
 	if err != nil {
 		return fmt.Errorf("mcp-tools: open session: %w", err)
+	}
+	// Legacy party state belongs only to the exact built-in D&D package. Resolve
+	// the package first so a foreign virtual-DM session cannot be mutated merely
+	// by starting its MCP tool server.
+	if st.EffectiveMode() == domain.ModeVirtualDM {
+		if snapshot, ok := st.RulesSnapshot(); ok && engine.IsBuiltinDND5ELock(snapshot.Ruleset) {
+			st.EnsureParty()
+		}
 	}
 	persister := newCheckpointPersister(*sessPath, store.SaveSession)
 	session.PersistRules = persister.Persist
@@ -106,6 +115,29 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	return mcptools.Serve(input, output, router, save)
 }
 
+func mcpSessionConfig(language string, rulesTimeoutSeconds int) (*domain.Config, error) {
+	language = strings.TrimSpace(language)
+	if language == "" || rulesTimeoutSeconds == 0 {
+		return nil, errors.New("mcp-tools: --language and --rules-timeout-seconds are required")
+	}
+	sessionLanguage := domain.Language(language)
+	switch sessionLanguage {
+	case domain.LangEnglish, domain.LangSpanish:
+	default:
+		return nil, fmt.Errorf("mcp-tools: unsupported --language %q (expected en or es)", language)
+	}
+	if rulesTimeoutSeconds < 1 || rulesTimeoutSeconds > engine.MaxRulesRequestTimeoutSeconds {
+		return nil, fmt.Errorf(
+			"mcp-tools: --rules-timeout-seconds must be between 1 and %d",
+			engine.MaxRulesRequestTimeoutSeconds,
+		)
+	}
+	config := domain.DefaultConfig()
+	config.Language = sessionLanguage
+	config.RequestTimeoutSeconds = rulesTimeoutSeconds
+	return config, nil
+}
+
 func reconcileCanonicalRules(store *storage.Storage, handoff *domain.SessionState) error {
 	canonical, err := store.LoadSession(handoff.Name)
 	if err != nil {
@@ -119,6 +151,21 @@ func reconcileCanonicalRules(store *storage.Storage, handoff *domain.SessionStat
 	}
 	if canonical.AdventureID != handoff.AdventureID {
 		return fmt.Errorf("canonical adventure %q does not match handoff %q", canonical.AdventureID, handoff.AdventureID)
+	}
+	canonicalRuntime, canonicalExists, err := canonical.RulesRuntimeSnapshotStrict()
+	if err != nil {
+		return fmt.Errorf("canonical rules runtime: %w", err)
+	}
+	handoffRuntime, handoffExists, err := handoff.RulesRuntimeSnapshotStrict()
+	if err != nil {
+		return fmt.Errorf("handoff rules runtime: %w", err)
+	}
+	// ImportRulesRuntimeChecked rejects equal-generation forks. Short-circuit an
+	// actual semantic no-op first: its defensive snapshot cloning normalizes
+	// empty slices, while the just-unmarshaled receiver may retain nil slices.
+	// Different equal-generation snapshots still reach the fail-closed import.
+	if canonicalExists == handoffExists && (!canonicalExists || reflect.DeepEqual(canonicalRuntime, handoffRuntime)) {
+		return nil
 	}
 	_, err = handoff.ImportRulesRuntimeChecked(canonical)
 	return err

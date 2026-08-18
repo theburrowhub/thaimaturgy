@@ -5,8 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -231,10 +233,12 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 		resp.Error = err
 		return resp
 	}
-	mcpArgs := []string{mcptools.SubcommandArg, "--adventure-id", st.AdventureID, "--session", sessPath}
-	mcpArgs = append(mcpArgs, "--request-namespace", fmt.Sprintf("oracle-%s-%d", o.executionNamespace, askID))
-	if o.session.DataDirectory != "" {
-		mcpArgs = append(mcpArgs, "--data-dir", o.session.DataDirectory)
+	mcpArgs, err := mcpToolSubcommandArgs(
+		o.session, sessPath, fmt.Sprintf("oracle-%s-%d", o.executionNamespace, askID),
+	)
+	if err != nil {
+		resp.Error = err
+		return resp
 	}
 	cfg := map[string]any{"mcpServers": map[string]any{
 		mcptools.ServerName: map[string]any{
@@ -309,6 +313,35 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	o.session.MarkModified()
 	resp.Answer = answer
 	return resp
+}
+
+// mcpToolSubcommandArgs builds the complete execution context for a rules-tool
+// child. Language and the already-bounded effective rules timeout are explicit
+// required arguments, so the child cannot silently substitute its defaults.
+func mcpToolSubcommandArgs(session *domain.Session, sessionPath, requestNamespace string) ([]string, error) {
+	if session == nil || session.State == nil || session.Config == nil {
+		return nil, errors.New("build MCP tools context: session, state, and config are required")
+	}
+	switch session.Config.Language {
+	case domain.LangEnglish, domain.LangSpanish:
+	default:
+		return nil, fmt.Errorf("build MCP tools context: unsupported language %q", session.Config.Language)
+	}
+	if strings.TrimSpace(sessionPath) == "" || strings.TrimSpace(requestNamespace) == "" {
+		return nil, errors.New("build MCP tools context: session path and request namespace are required")
+	}
+	args := []string{
+		mcptools.SubcommandArg,
+		"--adventure-id", session.State.AdventureID,
+		"--session", sessionPath,
+		"--request-namespace", requestNamespace,
+		"--language", string(session.Config.Language),
+		"--rules-timeout-seconds", strconv.Itoa(EffectiveRulesRequestTimeoutSeconds(session)),
+	}
+	if session.DataDirectory != "" {
+		args = append(args, "--data-dir", session.DataDirectory)
+	}
+	return args, nil
 }
 
 // cliMinTimeout is the floor for a Claude-CLI agentic turn (MCP startup + several

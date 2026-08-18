@@ -5,13 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/pbta"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
@@ -175,6 +179,8 @@ func TestRunSubcommandUsesRequestedDataDirectoryAndPersistsNewBinding(t *testing
 		"--data-dir", dataDirectory,
 		"--adventure-id", adventure.ID,
 		"--session", sessionPath,
+		"--language", "es",
+		"--rules-timeout-seconds", "17",
 	}, strings.NewReader(""), &output); err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +220,10 @@ func TestRunSubcommandMissingExactArtifactFailsWithoutRebinding(t *testing.T) {
 	sessionPath := filepath.Join(t.TempDir(), "session.json")
 	writeStateFile(t, sessionPath, state)
 
-	err = runSubcommand([]string{"--data-dir", dataDirectory, "--adventure-id", adventure.ID, "--session", sessionPath}, strings.NewReader(""), &bytes.Buffer{})
+	err = runSubcommand([]string{
+		"--data-dir", dataDirectory, "--adventure-id", adventure.ID, "--session", sessionPath,
+		"--language", "en", "--rules-timeout-seconds", "90",
+	}, strings.NewReader(""), &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "exact session lock") {
 		t.Fatalf("error = %v", err)
 	}
@@ -244,7 +253,10 @@ func TestRunSubcommandReconcilesCanonicalRulesAheadOfStaleHandoff(t *testing.T) 
 	state := domain.NewSessionState("mcp-reconcile", adventure)
 	handoffPath := filepath.Join(t.TempDir(), "session.json")
 	writeStateFile(t, handoffPath, state)
-	args := []string{"--data-dir", dataDirectory, "--adventure-id", adventure.ID, "--session", handoffPath}
+	args := []string{
+		"--data-dir", dataDirectory, "--adventure-id", adventure.ID, "--session", handoffPath,
+		"--language", "en", "--rules-timeout-seconds", "90",
+	}
 	if err := runSubcommand(args, strings.NewReader(""), &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
@@ -268,6 +280,279 @@ func TestRunSubcommandReconcilesCanonicalRulesAheadOfStaleHandoff(t *testing.T) 
 			t.Fatalf("%s runtime rolled back: ok=%v runtime=%+v", label, ok, runtime)
 		}
 	}
+}
+
+func TestMCPSessionConfigRequiresExplicitBoundedContext(t *testing.T) {
+	config, err := mcpSessionConfig(" es ", 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Language != domain.LangSpanish || config.RequestTimeoutSeconds != 17 {
+		t.Fatalf("session config language=%q timeout=%d", config.Language, config.RequestTimeoutSeconds)
+	}
+
+	tests := []struct {
+		name     string
+		language string
+		timeout  int
+		contains string
+	}{
+		{name: "missing language", timeout: 17, contains: "are required"},
+		{name: "missing timeout", language: "es", contains: "are required"},
+		{name: "unsupported language", language: "fr", timeout: 17, contains: "expected en or es"},
+		{name: "negative timeout", language: "es", timeout: -1, contains: "must be between"},
+		{name: "unbounded timeout", language: "es", timeout: engine.MaxRulesRequestTimeoutSeconds + 1, contains: "must be between"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := mcpSessionConfig(test.language, test.timeout)
+			if err == nil || !strings.Contains(err.Error(), test.contains) {
+				t.Fatalf("error = %v, want substring %q", err, test.contains)
+			}
+		})
+	}
+	if err := runSubcommand(
+		[]string{"--adventure-id", "unused", "--session", "unused.json"},
+		strings.NewReader(""), &bytes.Buffer{},
+	); err == nil || !strings.Contains(err.Error(), "--language and --rules-timeout-seconds are required") {
+		t.Fatalf("subcommand without explicit context error = %v", err)
+	}
+}
+
+func TestMCPPBTAEndToEndPersistsExactCatalogAcrossReload(t *testing.T) {
+	dataDirectory := t.TempDir()
+	store, err := storage.NewWithPath(dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adventure := &domain.Adventure{
+		SchemaVersion: domain.SchemaVersion,
+		ID:            "mcp-pbta-e2e",
+		Title:         "MCP PbtA E2E",
+		Ruleset:       &rules.Requirement{ID: pbta.PackageID, Version: pbta.PackageVersion},
+		Zones: []domain.Zone{{
+			ID: "zone", Name: "Zone", Rooms: []domain.Room{{ID: "room", Name: "Room"}},
+		}},
+	}
+	if err := os.MkdirAll(store.AdventureDir(adventure.ID), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveAdventure(adventure.ID, adventure); err != nil {
+		t.Fatal(err)
+	}
+	state := domain.NewSessionState("mcp-pbta-e2e-session", adventure)
+	state.SetMode(domain.ModeVirtualDM)
+	handoffPath := filepath.Join(t.TempDir(), "session.json")
+	writeStateFile(t, handoffPath, state)
+	args := []string{
+		"--data-dir", dataDirectory,
+		"--adventure-id", adventure.ID,
+		"--session", handoffPath,
+		"--request-namespace", "pbta-e2e-turn",
+		"--language", "es",
+		"--rules-timeout-seconds", "17",
+	}
+	input := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"game_list_actions","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"game_submit_intent","arguments":{"action_id":"move.resolve","arguments":{"modifier":1}}}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"game_observe","arguments":{}}}`,
+	}, "\n")
+
+	firstOutput := runMCPSubcommand(t, args, input)
+	firstResponses := decodeMCPResponses(t, firstOutput)
+	if len(firstResponses) != 5 {
+		t.Fatalf("MCP response count = %d; output=%s", len(firstResponses), firstOutput)
+	}
+	var initialized struct {
+		ServerInfo struct {
+			Name string `json:"name"`
+		} `json:"serverInfo"`
+	}
+	mustUnmarshalMCPResult(t, firstResponses, "1", &initialized)
+	if initialized.ServerInfo.Name != "thaim" {
+		t.Fatalf("initialized server = %q", initialized.ServerInfo.Name)
+	}
+
+	var listedTools struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	mustUnmarshalMCPResult(t, firstResponses, "2", &listedTools)
+	toolNames := make(map[string]bool, len(listedTools.Tools))
+	for _, tool := range listedTools.Tools {
+		toolNames[tool.Name] = true
+	}
+	for _, name := range []string{
+		"game_observe", "game_list_actions", "game_get_action_schema",
+		"game_submit_intent", "game_respond", "game_preview", "game_explain",
+	} {
+		if !toolNames[name] {
+			t.Errorf("foreign MCP catalog omitted %q", name)
+		}
+	}
+	for _, name := range []string{
+		"roll_dice", "ability_check", "update_party_member", "update_hp", "add_item",
+		"remove_item", "set_condition", "remove_condition", "update_gold", "award_xp",
+	} {
+		if toolNames[name] {
+			t.Errorf("foreign MCP catalog exposed D&D-only alias %q", name)
+		}
+	}
+
+	artifact, err := pbta.NewArtifact()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exactLock := artifact.Lock()
+	var catalogEnvelope struct {
+		Status  string     `json:"status"`
+		Ruleset rules.Lock `json:"ruleset"`
+		Data    struct {
+			Actions []struct {
+				ID string `json:"id"`
+			} `json:"actions"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(mcpToolText(t, firstResponses, "3")), &catalogEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if catalogEnvelope.Status != "resolved" || catalogEnvelope.Ruleset != exactLock ||
+		len(catalogEnvelope.Data.Actions) != 1 || catalogEnvelope.Data.Actions[0].ID != pbta.ActionMove {
+		t.Fatalf("exact PbtA catalog = %+v", catalogEnvelope)
+	}
+
+	firstIntent := mcpToolText(t, firstResponses, "4")
+	var intentEnvelope struct {
+		Status  string     `json:"status"`
+		Ruleset rules.Lock `json:"ruleset"`
+		Outcome string     `json:"outcome"`
+	}
+	if err := json.Unmarshal([]byte(firstIntent), &intentEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if intentEnvelope.Status != "resolved" || intentEnvelope.Ruleset != exactLock ||
+		!strings.HasPrefix(intentEnvelope.Outcome, "pbta.move.") {
+		t.Fatalf("PbtA intent result = %s", firstIntent)
+	}
+	var observeEnvelope struct {
+		Status  string     `json:"status"`
+		Ruleset rules.Lock `json:"ruleset"`
+	}
+	if err := json.Unmarshal([]byte(mcpToolText(t, firstResponses, "5")), &observeEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if observeEnvelope.Status != "resolved" || observeEnvelope.Ruleset != exactLock {
+		t.Fatalf("PbtA observation = %+v", observeEnvelope)
+	}
+
+	canonicalBefore := mustLoadState(t, store, state.Name)
+	handoffBefore := mustReadState(t, handoffPath)
+	runtimeBefore := mustRulesRuntime(t, canonicalBefore)
+	if handoffRuntime := mustRulesRuntime(t, handoffBefore); !reflect.DeepEqual(runtimeBefore, handoffRuntime) {
+		t.Fatalf("canonical and parent handoff diverged: canonical=%+v handoff=%+v", runtimeBefore, handoffRuntime)
+	}
+	if runtimeBefore.Lock != exactLock || len(runtimeBefore.Receipts) != 1 || len(runtimeBefore.RandomDraws) != 1 {
+		t.Fatalf("persisted PbtA runtime = %+v", runtimeBefore)
+	}
+	if len(canonicalBefore.PartySnapshot()) != 0 || len(handoffBefore.PartySnapshot()) != 0 {
+		t.Fatalf("foreign virtual-DM MCP launch created legacy party: canonical=%v handoff=%v", canonicalBefore.PartySnapshot(), handoffBefore.PartySnapshot())
+	}
+
+	// Restart the real MCP server with the same parent-turn namespace and JSON-RPC
+	// request ID. The durable receipt must return the identical result without a
+	// second random draw or generation advance.
+	secondOutput := runMCPSubcommand(t, args, input)
+	secondResponses := decodeMCPResponses(t, secondOutput)
+	if secondIntent := mcpToolText(t, secondResponses, "4"); secondIntent != firstIntent {
+		t.Fatalf("reloaded idempotent result changed:\nfirst:  %s\nsecond: %s", firstIntent, secondIntent)
+	}
+	canonicalAfter := mustLoadState(t, store, state.Name)
+	handoffAfter := mustReadState(t, handoffPath)
+	runtimeAfter := mustRulesRuntime(t, canonicalAfter)
+	if !reflect.DeepEqual(runtimeAfter, mustRulesRuntime(t, handoffAfter)) {
+		t.Fatal("reloaded canonical and parent handoff rules runtimes diverged")
+	}
+	if !reflect.DeepEqual(runtimeBefore, runtimeAfter) {
+		t.Fatalf("idempotent reload mutated rules runtime: before=%+v after=%+v", runtimeBefore, runtimeAfter)
+	}
+	if len(canonicalAfter.PartySnapshot()) != 0 || len(handoffAfter.PartySnapshot()) != 0 {
+		t.Fatal("reloaded foreign MCP server created legacy party state")
+	}
+}
+
+type mcpTestResponse struct {
+	ID     json.RawMessage `json:"id"`
+	Result json.RawMessage `json:"result"`
+	Error  json.RawMessage `json:"error"`
+}
+
+func runMCPSubcommand(t *testing.T, args []string, input string) string {
+	t.Helper()
+	var output bytes.Buffer
+	if err := runSubcommand(args, strings.NewReader(input), &output); err != nil {
+		t.Fatal(err)
+	}
+	return output.String()
+}
+
+func decodeMCPResponses(t *testing.T, output string) map[string]mcpTestResponse {
+	t.Helper()
+	responses := make(map[string]mcpTestResponse)
+	decoder := json.NewDecoder(strings.NewReader(output))
+	for {
+		var response mcpTestResponse
+		if err := decoder.Decode(&response); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			t.Fatal(err)
+		}
+		responses[string(response.ID)] = response
+	}
+	return responses
+}
+
+func mustUnmarshalMCPResult(t *testing.T, responses map[string]mcpTestResponse, id string, target any) {
+	t.Helper()
+	response, ok := responses[id]
+	if !ok {
+		t.Fatalf("missing MCP response id %s", id)
+	}
+	if len(response.Error) != 0 && string(response.Error) != "null" {
+		t.Fatalf("MCP response id %s error = %s", id, response.Error)
+	}
+	if err := json.Unmarshal(response.Result, target); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mcpToolText(t *testing.T, responses map[string]mcpTestResponse, id string) string {
+	t.Helper()
+	var result struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		IsError bool `json:"isError"`
+	}
+	mustUnmarshalMCPResult(t, responses, id, &result)
+	if result.IsError || len(result.Content) != 1 || result.Content[0].Type != "text" {
+		t.Fatalf("MCP tool response id %s = %+v", id, result)
+	}
+	return result.Content[0].Text
+}
+
+func mustRulesRuntime(t *testing.T, state *domain.SessionState) domain.RulesSession {
+	t.Helper()
+	runtime, ok := state.RulesRuntimeSnapshot()
+	if !ok {
+		t.Fatal("session has no valid rules runtime")
+	}
+	return runtime
 }
 
 func writeStateFile(t *testing.T, path string, state *domain.SessionState) {

@@ -102,9 +102,16 @@ const (
 	// (for example both exploding dice in Savage Worlds). Keep the host budget
 	// aligned with the protocol's maximum collection size rather than an
 	// arbitrary small number that rejects a valid package result.
-	maxAutomaticRuleSteps      = rules.MaxCollectionItems
-	defaultRulesRequestTimeout = 90 * time.Second
-	maxGenericDiceSides        = 1_000_000
+	maxAutomaticRuleSteps = rules.MaxCollectionItems
+	maxGenericDiceSides   = 1_000_000
+
+	// DefaultRulesRequestTimeoutSeconds preserves the historical rules-call
+	// deadline when a host configuration omits or disables its request timeout.
+	// MaxRulesRequestTimeoutSeconds prevents a malformed configuration from
+	// turning one package call into an effectively unbounded operation. These
+	// values are also the contract used by the MCP child process.
+	DefaultRulesRequestTimeoutSeconds = 90
+	MaxRulesRequestTimeoutSeconds     = 3600
 )
 
 // Read-only query receipts are deliberately bounded in memory. Effectful game
@@ -221,11 +228,22 @@ func SupportsDNDUtilities(session *domain.Session) bool {
 }
 
 func newRulesContext(session *domain.Session) (context.Context, context.CancelFunc) {
-	timeout := defaultRulesRequestTimeout
-	if session != nil && session.Config != nil && session.Config.RequestTimeoutSeconds > 0 {
-		timeout = time.Duration(session.Config.RequestTimeoutSeconds) * time.Second
-	}
+	timeout := time.Duration(EffectiveRulesRequestTimeoutSeconds(session)) * time.Second
 	return context.WithTimeout(context.Background(), timeout)
+}
+
+// EffectiveRulesRequestTimeoutSeconds returns the bounded deadline actually
+// used by the rules host. Keeping this calculation in one place lets an MCP
+// subprocess inherit exactly the same value instead of reapplying defaults.
+func EffectiveRulesRequestTimeoutSeconds(session *domain.Session) int {
+	seconds := DefaultRulesRequestTimeoutSeconds
+	if session != nil && session.Config != nil && session.Config.RequestTimeoutSeconds > 0 {
+		seconds = session.Config.RequestTimeoutSeconds
+	}
+	if seconds > MaxRulesRequestTimeoutSeconds {
+		return MaxRulesRequestTimeoutSeconds
+	}
+	return seconds
 }
 
 func (g *rulesGateway) recoverAutomaticCheckpoints(ctx context.Context) error {
