@@ -6,7 +6,17 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/coc7e"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/dnd5e"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/fatecore"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/gurps4e"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/pbta"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/pf2e"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/runequest"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/savageworlds"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/shadowrun6e"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/vtm5e"
 )
 
 func TestLoadRegistersBuiltinsAndCreatesSeparatedStore(t *testing.T) {
@@ -18,12 +28,19 @@ func TestLoadRegistersBuiltinsAndCreatesSeparatedStore(t *testing.T) {
 	if environment.Diagnostics != nil {
 		t.Fatalf("unexpected diagnostics: %v", environment.Diagnostics)
 	}
-	artifact, err := dnd5e.NewArtifact()
-	if err != nil {
-		t.Fatal(err)
+	artifacts := []func() (rules.Artifact, error){
+		dnd5e.NewArtifact, pf2e.NewArtifact, runequest.NewArtifact, coc7e.NewArtifact,
+		vtm5e.NewArtifact, shadowrun6e.NewArtifact, pbta.NewArtifact,
+		gurps4e.NewArtifact, fatecore.NewArtifact, savageworlds.NewArtifact,
 	}
-	if _, err := environment.Catalog.Lookup(artifact.Lock()); err != nil {
-		t.Fatalf("built-in dnd5e is unavailable: %v", err)
+	for _, build := range artifacts {
+		artifact, err := build()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := environment.Catalog.Lookup(artifact.Lock()); err != nil {
+			t.Fatalf("built-in %s is unavailable: %v", artifact.Lock().ID, err)
+		}
 	}
 	wantRoot := filepath.Join(dataDirectory, "rulesets")
 	if environment.Store.Root() != wantRoot {

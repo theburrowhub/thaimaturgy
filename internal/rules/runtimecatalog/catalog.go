@@ -14,7 +14,16 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/bundlestore"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/catalog"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/coc7e"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/dnd5e"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/fatecore"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/gurps4e"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/pbta"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/pf2e"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/runequest"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/savageworlds"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/shadowrun6e"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/vtm5e"
 )
 
 // Environment is one immutable-at-startup view of the executable rules
@@ -57,10 +66,32 @@ func Load(ctx context.Context, dataDirectory string) (*Environment, error) {
 }
 
 func registerBuiltins(ctx context.Context, destination *catalog.Catalog) error {
-	implementation := dnd5e.New()
-	artifact, err := dnd5e.NewArtifact()
-	if err != nil {
-		return err
+	type definition struct {
+		id       string
+		artifact func() (rules.Artifact, error)
+		ruleset  func() rules.Ruleset
+		initial  func() rules.Payload
 	}
-	return destination.Register(ctx, artifact, implementation, dnd5e.InitialState())
+	definitions := []definition{
+		{dnd5e.PackageID, dnd5e.NewArtifact, func() rules.Ruleset { return dnd5e.New() }, dnd5e.InitialState},
+		{pf2e.PackageID, pf2e.NewArtifact, func() rules.Ruleset { return pf2e.New() }, pf2e.InitialState},
+		{runequest.PackageID, runequest.NewArtifact, func() rules.Ruleset { return runequest.New() }, runequest.InitialState},
+		{coc7e.PackageID, coc7e.NewArtifact, func() rules.Ruleset { return coc7e.New() }, coc7e.InitialState},
+		{vtm5e.PackageID, vtm5e.NewArtifact, func() rules.Ruleset { return vtm5e.New() }, vtm5e.InitialState},
+		{shadowrun6e.PackageID, shadowrun6e.NewArtifact, func() rules.Ruleset { return shadowrun6e.New() }, shadowrun6e.InitialState},
+		{pbta.PackageID, pbta.NewArtifact, func() rules.Ruleset { return pbta.New() }, pbta.InitialState},
+		{gurps4e.PackageID, gurps4e.NewArtifact, func() rules.Ruleset { return gurps4e.New() }, gurps4e.InitialState},
+		{fatecore.PackageID, fatecore.NewArtifact, func() rules.Ruleset { return fatecore.New() }, fatecore.InitialState},
+		{savageworlds.PackageID, savageworlds.NewArtifact, func() rules.Ruleset { return savageworlds.New() }, savageworlds.InitialState},
+	}
+	for _, candidate := range definitions {
+		artifact, err := candidate.artifact()
+		if err != nil {
+			return fmt.Errorf("build %s artifact: %w", candidate.id, err)
+		}
+		if err := destination.Register(ctx, artifact, candidate.ruleset(), candidate.initial()); err != nil {
+			return fmt.Errorf("register %s: %w", candidate.id, err)
+		}
+	}
+	return nil
 }
