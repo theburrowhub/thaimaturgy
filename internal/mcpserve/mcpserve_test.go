@@ -531,6 +531,10 @@ func TestMCPDNDMutationRetryIsIdempotentAcrossReload(t *testing.T) {
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_hp","arguments":{"delta":-8}}}`,
 	}, "\n")
 
+	// Establish the exact binding, then retain a pre-mutation handoff to model a
+	// child that crashed after publishing only the newer canonical checkpoint.
+	runMCPSubcommand(t, args, "")
+	staleHandoff := mustReadState(t, handoffPath)
 	firstOutput := runMCPSubcommand(t, args, input)
 	firstResponses := decodeMCPResponses(t, firstOutput)
 	firstResult := mcpToolText(t, firstResponses, "2")
@@ -543,6 +547,7 @@ func TestMCPDNDMutationRetryIsIdempotentAcrossReload(t *testing.T) {
 		t.Fatalf("durable ordinary-tool receipt = %+v", runtimeBefore.Receipts)
 	}
 
+	writeStateFile(t, handoffPath, staleHandoff)
 	secondOutput := runMCPSubcommand(t, args, input)
 	secondResponses := decodeMCPResponses(t, secondOutput)
 	if secondResult := mcpToolText(t, secondResponses, "2"); secondResult != firstResult {
@@ -557,6 +562,8 @@ func TestMCPDNDMutationRetryIsIdempotentAcrossReload(t *testing.T) {
 	}
 	if handoff := mustReadState(t, handoffPath); !reflect.DeepEqual(mustRulesRuntime(t, handoff), runtimeBefore) {
 		t.Fatal("handoff and canonical receipts diverged after restart")
+	} else if party := handoff.PartySnapshot(); len(party) != 1 || party[0].CurrentHP != 12 {
+		t.Fatalf("reconciled handoff rolled back the receipt-correlated HP effect: %+v", party)
 	}
 }
 

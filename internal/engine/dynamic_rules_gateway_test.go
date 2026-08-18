@@ -225,7 +225,7 @@ func TestForeignRulesPackageNeitherAdvertisesNorExecutesDNDUtilities(t *testing.
 			t.Errorf("%s error = %q", name, result.Error)
 		}
 	}
-	for _, command := range []string{"/roll 1d20", "/rest long"} {
+	for _, command := range []string{"/roll 1d20", "/rest long", "/party"} {
 		result := NewCommandHandler(session).Execute(ParseCommand(command))
 		if result.Success || !strings.Contains(result.Message, "only with the exact built-in D&D 5e") {
 			t.Errorf("%s result = %+v", command, result)

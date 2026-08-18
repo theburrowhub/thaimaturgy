@@ -100,6 +100,11 @@ histórico de memoria más autosave, sin afirmar durabilidad de proceso.
 La aplicación de escritorio, el servicio HTTP, el bot y el subprocesso MCP ya
 conectan esta barrera al archivo canónico de sesión; MCP actualiza además su
 copia temporal antes de contestar a la llamada.
+Si un reinicio encuentra el checkpoint canónico causalmente por delante de la
+copia temporal, adopta el snapshot canónico completo: combinar un recibo nuevo
+con HP, variables u otros campos ordinarios antiguos confirmaría un efecto que
+el propio estado ya no reflejaría. Un fork o una ascendencia no demostrable se
+rechazan en vez de mezclar ambos archivos.
 El namespace global de IDs por instancia/conexión se resuelve en los adapters de
 Oracle y MCP, no en el host. Las resoluciones hijas requieren el catálogo
 multi-ruleset y no se presentan como una decisión humana.

@@ -14,7 +14,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 
@@ -67,23 +66,25 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	var st domain.SessionState
-	if err := json.Unmarshal(data, &st); err != nil {
+	var handoff domain.SessionState
+	if err := json.Unmarshal(data, &handoff); err != nil {
 		return err
 	}
 	// A prior child may have been interrupted after publishing the canonical
 	// checkpoint (the historical write order) or after publishing only the
-	// handoff (the new recoverable order). Reconcile just the monotonic rules
-	// runtime before loading its exact implementation; ordinary handoff fields
-	// remain owned by the parent turn.
-	if err := reconcileCanonicalRules(store, &st); err != nil {
-		return fmt.Errorf("mcp-tools: reconcile canonical rules: %w", err)
+	// handoff (the new recoverable order). When canonical rules are ahead, their
+	// complete session snapshot is the checkpoint correlated with those receipts;
+	// combining it with stale ordinary handoff fields would acknowledge effects
+	// such as HP changes without retaining the effect itself.
+	st, err := reconcileCanonicalSession(store, &handoff)
+	if err != nil {
+		return fmt.Errorf("mcp-tools: reconcile canonical checkpoint: %w", err)
 	}
 	rulesEnvironment, err := runtimecatalog.Load(context.Background(), store.BasePath())
 	if err != nil {
 		return fmt.Errorf("mcp-tools: load rules catalog: %w", err)
 	}
-	session, err := rulesEnvironment.OpenSession(context.Background(), &st, adv, config)
+	session, err := rulesEnvironment.OpenSession(context.Background(), st, adv, config)
 	if err != nil {
 		return fmt.Errorf("mcp-tools: open session: %w", err)
 	}
@@ -100,7 +101,7 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	// Establish one reconciled snapshot in both destinations before accepting a
 	// tool call. Persist writes the handoff first, so any failure before the
 	// canonical CAS leaves the parent a complete checkpoint it can merge/retry.
-	if err := persister.Persist(&st); err != nil {
+	if err := persister.Persist(st); err != nil {
 		return fmt.Errorf("mcp-tools: persist initial handoff: %w", err)
 	}
 	session.IsModified = false
@@ -111,7 +112,7 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	// Rules tools already cross PersistRules at each committed checkpoint. The
 	// persister fingerprints the last successful snapshot, so this generic MCP
 	// after-hook still covers ordinary tools without duplicating rules writes.
-	save := func() error { return persister.Persist(&st) }
+	save := func() error { return persister.Persist(st) }
 	if *requestNamespace != "" {
 		return mcptools.ServeWithNamespace(input, output, router, save, *requestNamespace)
 	}
@@ -141,37 +142,58 @@ func mcpSessionConfig(language string, rulesTimeoutSeconds int) (*domain.Config,
 	return config, nil
 }
 
-func reconcileCanonicalRules(store *storage.Storage, handoff *domain.SessionState) error {
+func reconcileCanonicalSession(store *storage.Storage, handoff *domain.SessionState) (*domain.SessionState, error) {
+	if store == nil || handoff == nil {
+		return nil, errors.New("storage and handoff session are required")
+	}
 	canonical, err := store.LoadSession(handoff.Name)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil
+			return handoff, nil
 		}
-		return err
+		return nil, err
 	}
 	if canonical.Name != handoff.Name {
-		return fmt.Errorf("canonical session name %q does not match handoff %q", canonical.Name, handoff.Name)
+		return nil, fmt.Errorf("canonical session name %q does not match handoff %q", canonical.Name, handoff.Name)
 	}
 	if canonical.AdventureID != handoff.AdventureID {
-		return fmt.Errorf("canonical adventure %q does not match handoff %q", canonical.AdventureID, handoff.AdventureID)
+		return nil, fmt.Errorf("canonical adventure %q does not match handoff %q", canonical.AdventureID, handoff.AdventureID)
 	}
 	canonicalRuntime, canonicalExists, err := canonical.RulesRuntimeSnapshotStrict()
 	if err != nil {
-		return fmt.Errorf("canonical rules runtime: %w", err)
+		return nil, fmt.Errorf("canonical rules runtime: %w", err)
 	}
 	handoffRuntime, handoffExists, err := handoff.RulesRuntimeSnapshotStrict()
 	if err != nil {
-		return fmt.Errorf("handoff rules runtime: %w", err)
+		return nil, fmt.Errorf("handoff rules runtime: %w", err)
 	}
-	// ImportRulesRuntimeChecked rejects equal-generation forks. Short-circuit an
-	// actual semantic no-op first: its defensive snapshot cloning normalizes
-	// empty slices, while the just-unmarshaled receiver may retain nil slices.
-	// Different equal-generation snapshots still reach the fail-closed import.
-	if canonicalExists == handoffExists && (!canonicalExists || reflect.DeepEqual(canonicalRuntime, handoffRuntime)) {
-		return nil
+	switch {
+	case !canonicalExists:
+		// A handoff may contain the first package binding that canonical storage
+		// has not received yet. It remains the authoritative recoverable snapshot.
+		return handoff, nil
+	case !handoffExists:
+		// Canonical has already committed the first exact binding. Adopt the full
+		// correlated snapshot rather than grafting its lock onto stale fields.
+		return canonical, nil
+	case canonicalRuntime.Generation > handoffRuntime.Generation:
+		if err := canonicalRuntime.ValidateDescendantOf(handoffRuntime); err != nil {
+			return nil, fmt.Errorf("canonical rules ancestry: %w", err)
+		}
+		return canonical, nil
+	case handoffRuntime.Generation > canonicalRuntime.Generation:
+		if err := handoffRuntime.ValidateDescendantOf(canonicalRuntime); err != nil {
+			return nil, fmt.Errorf("handoff rules ancestry: %w", err)
+		}
+		return handoff, nil
+	default:
+		// Equal generations must be the same durable runtime; this comparison also
+		// normalizes nil and empty audit slices through the domain representation.
+		if err := canonicalRuntime.ValidateDescendantOf(handoffRuntime); err != nil {
+			return nil, fmt.Errorf("equal-generation rules reconciliation: %w", err)
+		}
+		return handoff, nil
 	}
-	_, err = handoff.ImportRulesRuntimeChecked(canonical)
-	return err
 }
 
 type checkpointPersister struct {
