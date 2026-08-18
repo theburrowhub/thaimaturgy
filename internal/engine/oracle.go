@@ -479,11 +479,13 @@ func (o *Oracle) buildSystemPrompt() string {
 		fmt.Fprintf(&sb, " (%s)", adv.System)
 	}
 	sb.WriteString("\n")
+	legacyDND5E := false
 	if snapshot, ok := st.RulesSnapshot(); ok {
+		legacyDND5E = IsBuiltinDND5ELock(snapshot.Ruleset)
 		sb.WriteString("\n=== LOADED RULES PACKAGE ===\n")
 		fmt.Fprintf(&sb, "Exact identity: %s@%s (%s, protocol %s)\n",
 			snapshot.Ruleset.ID, snapshot.Ruleset.Version, snapshot.Ruleset.Digest, snapshot.Ruleset.ProtocolVersion)
-		sb.WriteString("This package is the mechanical authority. Use game_list_actions and game_get_action_schema to discover its typed actions, game_submit_intent to resolve them, game_respond for pending input, and game_explain for visible rules. Do not calculate or invent a result outside that interface.\n")
+		sb.WriteString("This package is the mechanical authority. Use game_observe for its authorized current projection, game_list_actions and game_get_action_schema to discover typed actions, game_submit_intent to resolve them, game_respond for pending input, and game_explain for visible rules. Do not calculate or invent a result outside that interface.\n")
 	}
 	writeSection(&sb, "Summary", adv.Summary)
 	writeSection(&sb, "Context", adv.Context)
@@ -621,15 +623,17 @@ func (o *Oracle) buildSystemPrompt() string {
 	for _, q := range st.Quests {
 		fmt.Fprintf(&sb, "Quest [%s]: %s\n", q.Status, q.Name)
 	}
-	for _, p := range st.Party {
-		fmt.Fprintf(&sb, "PC %s: HP %d/%d AC %d %s\n", p.Name, p.CurrentHP, p.MaxHP, p.AC, p.Notes)
+	if legacyDND5E {
+		for _, p := range st.Party {
+			fmt.Fprintf(&sb, "PC %s: HP %d/%d AC %d %s\n", p.Name, p.CurrentHP, p.MaxHP, p.AC, p.Notes)
+		}
 	}
 
 	// The party's CURRENT sheets are authoritative and must reach the DM every
 	// turn (in any mode where a party exists), so narration never contradicts a
 	// character's real HP/conditions. Tool results within the turn already reflect
 	// mutations (e.g. update_hp), so this stays consistent mid-turn.
-	if party := st.PartySnapshot(); len(party) > 0 {
+	if party := st.PartySnapshot(); legacyDND5E && len(party) > 0 {
 		header := "\n=== PLAYER PARTY — CURRENT SHEETS (authoritative: never narrate a state that contradicts these — HP, conditions, etc.) ===\n"
 		if st.EffectiveMode() == domain.ModeVirtualDM {
 			// The DM-role instruction only applies when the AI is actually the DM;

@@ -54,7 +54,7 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 	if strings.TrimSpace(*dataDirectory) != "" {
 		applicationStore, err = storage.NewWithPath(*dataDirectory)
 	} else {
-		applicationStore, err = storage.New()
+		applicationStore, err = storage.NewFromEnvironment()
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "storage:", err)

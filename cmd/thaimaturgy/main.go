@@ -147,7 +147,7 @@ func main() {
 		serverToken = strings.TrimSpace(string(b))
 	}
 
-	store, err := storage.New()
+	store, err := storage.NewFromEnvironment()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "storage: %v\n", err)
 		os.Exit(1)

@@ -43,7 +43,7 @@ func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	var store *storage.Storage
 	var err error
 	if strings.TrimSpace(*dataDirectory) == "" {
-		store, err = storage.New()
+		store, err = storage.NewFromEnvironment()
 	} else {
 		store, err = storage.NewWithPath(strings.TrimSpace(*dataDirectory))
 	}

@@ -98,7 +98,11 @@ var gameTools = []types.Tool{
 }
 
 const (
-	maxAutomaticRuleSteps      = 8
+	// A continuation may legitimately need many bounded automatic exchanges
+	// (for example both exploding dice in Savage Worlds). Keep the host budget
+	// aligned with the protocol's maximum collection size rather than an
+	// arbitrary small number that rejects a valid package result.
+	maxAutomaticRuleSteps      = rules.MaxCollectionItems
 	defaultRulesRequestTimeout = 90 * time.Second
 	maxGenericDiceSides        = 1_000_000
 )

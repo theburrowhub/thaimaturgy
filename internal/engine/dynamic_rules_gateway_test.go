@@ -150,6 +150,57 @@ func TestStableGameGatewayExecutesEveryBuiltinThroughGenericDice(t *testing.T) {
 	}
 }
 
+func TestSavageWorldsCompletesLongestValidDoubleExplosion(t *testing.T) {
+	var savage builtinGatewayCase
+	for _, test := range builtinGatewayCases() {
+		if test.name == "savageworlds" {
+			savage = test
+			break
+		}
+	}
+	session, router := newBuiltinGatewaySession(t, savage)
+	// The package permits 99 aces followed by a terminal face for each of the
+	// trait and Wild dice. This is 200 audited random exchanges and 201 Steps.
+	remaining := make([]int, 0, 200)
+	for range 99 {
+		remaining = append(remaining, 4)
+	}
+	remaining = append(remaining, 3)
+	for range 99 {
+		remaining = append(remaining, 6)
+	}
+	remaining = append(remaining, 2)
+	router.rules.resolveDice = func(request dnd5e.DiceRandomRequest) (dnd5e.DiceRandomResponse, error) {
+		if request.Count != 1 || len(remaining) == 0 {
+			return dnd5e.DiceRandomResponse{}, errors.New("unexpected exploding-die request")
+		}
+		face := remaining[0]
+		remaining = remaining[1:]
+		if face > request.Sides {
+			return dnd5e.DiceRandomResponse{}, errors.New("test face exceeds requested die")
+		}
+		return dnd5e.DiceRandomResponse{Rolls: []int{face}}, nil
+	}
+	arguments, err := json.Marshal(map[string]any{
+		"action_id": savage.action,
+		"arguments": map[string]any{"trait_die": 4, "wild_card": true, "target_number": 4},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := router.Execute(types.ToolCall{ID: "savage:max-explosions", Name: "game_submit_intent", Arguments: arguments})
+	if result.Error != "" || !strings.Contains(result.Content, `"outcome":"savageworlds.trait.success_with_raises"`) {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("unused exploding-die responses: %d", len(remaining))
+	}
+	runtime, ok := session.State.RulesRuntimeSnapshot()
+	if !ok || len(runtime.RandomDraws) != 200 {
+		t.Fatalf("runtime: ok=%v draws=%d", ok, len(runtime.RandomDraws))
+	}
+}
+
 func TestForeignRulesPackageNeitherAdvertisesNorExecutesDNDUtilities(t *testing.T) {
 	var pf2eCase builtinGatewayCase
 	for _, test := range builtinGatewayCases() {

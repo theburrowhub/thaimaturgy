@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/dnd5e"
 )
@@ -13,6 +14,31 @@ import (
 // turn reports the same provider-side ID even though it is a distinct call.
 type repeatingToolIDProvider struct {
 	calls int
+}
+
+func TestForeignRulesPromptDoesNotTreatLegacyDNDStateAsAuthoritative(t *testing.T) {
+	var pf2eCase builtinGatewayCase
+	for _, test := range builtinGatewayCases() {
+		if test.name == "pf2e" {
+			pf2eCase = test
+			break
+		}
+	}
+	session, _ := newBuiltinGatewaySession(t, pf2eCase)
+	session.State.Characters = []*domain.Character{{
+		Name: "Legacy Borin", Race: "Dwarf", Class: "Fighter", Level: 3,
+		MaxHP: 30, CurrentHP: 2, AC: 16,
+	}}
+
+	prompt := NewOracle(session, nil).buildSystemPrompt()
+	for _, forbidden := range []string{"Legacy Borin", "CURRENT SHEETS", "HP: 2/30"} {
+		if strings.Contains(prompt, forbidden) {
+			t.Fatalf("foreign rules prompt exposed legacy D&D state %q", forbidden)
+		}
+	}
+	if !strings.Contains(prompt, "game_observe") {
+		t.Fatal("foreign rules prompt omitted the neutral mechanical projection tool")
+	}
 }
 
 func TestOraclePromptIdentifiesExactMechanicalAuthority(t *testing.T) {

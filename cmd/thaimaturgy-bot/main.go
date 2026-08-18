@@ -45,7 +45,7 @@ func main() {
 }
 
 func run(advID, sessionName, token string, chatID int64) error {
-	store, err := storage.New()
+	store, err := storage.NewFromEnvironment()
 	if err != nil {
 		return err
 	}

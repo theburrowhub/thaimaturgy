@@ -190,17 +190,17 @@ func resume(request core.ResumeRequest) (core.Step, error) {
 }
 
 func validateContinuation(state continuation) error {
-	if state.SchemaVersion != 1 || state.Action != ActionTraitTest || !validTraitDie(state.TraitDie) || state.Modifier < -20 || state.Modifier > 20 || state.TargetNumber < 1 || state.TargetNumber > 100 || len(state.TraitRolls) >= maxExplosionRolls || len(state.WildRolls) >= maxExplosionRolls {
+	if state.SchemaVersion != 1 || state.Action != ActionTraitTest || !validTraitDie(state.TraitDie) || state.Modifier < -20 || state.Modifier > 20 || state.TargetNumber < 1 || state.TargetNumber > 100 || len(state.TraitRolls) > maxExplosionRolls || len(state.WildRolls) > maxExplosionRolls {
 		return fmt.Errorf("savageworlds: invalid trait-check continuation")
 	}
 	if state.Phase == phaseTrait {
-		if len(state.WildRolls) != 0 || !allFaces(state.TraitRolls, state.TraitDie) {
+		if len(state.TraitRolls) >= maxExplosionRolls || len(state.WildRolls) != 0 || !allFaces(state.TraitRolls, state.TraitDie) {
 			return fmt.Errorf("savageworlds: invalid trait-die continuation")
 		}
 		return nil
 	}
 	if state.Phase == phaseWild {
-		if !state.WildCard || !finishedExplodingDie(state.TraitRolls, state.TraitDie) || !allFaces(state.WildRolls, 6) {
+		if !state.WildCard || len(state.WildRolls) >= maxExplosionRolls || !finishedExplodingDie(state.TraitRolls, state.TraitDie) || !allFaces(state.WildRolls, 6) {
 			return fmt.Errorf("savageworlds: invalid wild-die continuation")
 		}
 		return nil

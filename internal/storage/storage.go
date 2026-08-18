@@ -18,6 +18,7 @@ const (
 	ConfigAppName  = "thaimaturgy"
 	SessionsDir    = "sessions"
 	EnvFile        = ".env"
+	DataDirEnv     = "THAIM_DATA_DIR"
 )
 
 type Storage struct {
@@ -54,6 +55,17 @@ func NewWithPath(basePath string) (*Storage, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// NewFromEnvironment opens THAIM_DATA_DIR when it is set and otherwise uses
+// the platform default. Every executable uses this entry point so adventures,
+// sessions, and installed rules packages cannot silently come from different
+// catalogs.
+func NewFromEnvironment() (*Storage, error) {
+	if basePath := strings.TrimSpace(os.Getenv(DataDirEnv)); basePath != "" {
+		return NewWithPath(basePath)
+	}
+	return New()
 }
 
 func (s *Storage) ensureDirectories() error {
