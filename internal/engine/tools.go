@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -390,6 +391,35 @@ var dndUtilityToolNames = map[string]struct{}{
 	"award_xp":            {},
 }
 
+// MCP retries use the same call ID across child restarts. These tools mutate
+// ordinary session/D&D state outside a ruleset transition, so ToolRouter wraps
+// them in the session's durable receipt log before the MCP server persists and
+// acknowledges the result.
+var durableMCPMutationTools = map[string]struct{}{
+	"roll_table":            {},
+	"go_direction":          {},
+	"set_location":          {},
+	"mark_npc_met":          {},
+	"set_npc_disposition":   {},
+	"set_npc_alive":         {},
+	"trigger_event":         {},
+	"set_scene":             {},
+	"set_flag":              {},
+	"set_variable":          {},
+	"log_note":              {},
+	"record_world_change":   {},
+	"set_world_description": {},
+	"advance_quest":         {},
+	"update_party_member":   {},
+	"update_hp":             {},
+	"add_item":              {},
+	"remove_item":           {},
+	"set_condition":         {},
+	"remove_condition":      {},
+	"update_gold":           {},
+	"award_xp":              {},
+}
+
 func isDNDUtilityTool(name string) bool {
 	_, exists := dndUtilityToolNames[name]
 	return exists
@@ -458,6 +488,42 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 		}
 		return errResult(call.ID, "D&D utility is unavailable for the loaded rules package: "+call.Name)
 	}
+	if strings.HasPrefix(call.ID, "mcp:") {
+		if _, mutates := durableMCPMutationTools[call.Name]; mutates {
+			return tr.executeDurableMCPMutation(call)
+		}
+	}
+	return tr.executeOnce(call)
+}
+
+func (tr *ToolRouter) executeDurableMCPMutation(call types.ToolCall) types.ToolResult {
+	// Match the rules gateway lock order. This prevents a concurrent mechanical
+	// checkpoint from invalidating the receipt generation between Begin/Commit.
+	releaseRules := tr.state().LockRulesHost()
+	defer releaseRules()
+	releaseMutation := tr.state().LockToolMutation()
+	defer releaseMutation()
+
+	handle, receipt, err := tr.state().BeginRulesRequest(
+		context.Background(), call.ID, call.Name, rulesRequestFingerprint(call),
+	)
+	if err != nil {
+		return errResult(call.ID, "begin durable tool mutation: "+err.Error())
+	}
+	if receipt != nil {
+		return toolResultFromReceipt(call.ID, receipt)
+	}
+	defer tr.state().AbortRulesRequest(handle)
+	result := tr.executeOnce(call)
+	if _, err := tr.state().CommitRulesRequest(handle, domain.RulesCommit{
+		State: handle.Snapshot.State, ResolutionID: call.ID, Result: storedToolResult(result),
+	}); err != nil {
+		return errResult(call.ID, "commit durable tool mutation: "+err.Error())
+	}
+	return result
+}
+
+func (tr *ToolRouter) executeOnce(call types.ToolCall) types.ToolResult {
 
 	var args map[string]any
 	if len(call.Arguments) > 0 {

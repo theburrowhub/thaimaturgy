@@ -347,12 +347,18 @@ type SessionState struct {
 	// while the finer-grained generation CAS remains the correctness boundary
 	// for direct/domain callers and imported subprocess state.
 	rulesHostMu sync.Mutex
+	// toolMutationMu keeps a legacy/world mutation and its durable MCP receipt in
+	// one serialization window. MarshalJSON takes the same lock, so an autosave
+	// cannot publish the effect without the receipt that makes retries idempotent.
+	toolMutationMu sync.Mutex
 }
 
 // MarshalJSON serializes the state under the mutex so an autosave can't race a
 // concurrent mutation from the oracle goroutine (which would otherwise risk a
 // "concurrent map iteration and map write" panic).
 func (s *SessionState) MarshalJSON() ([]byte, error) {
+	s.toolMutationMu.Lock()
+	defer s.toolMutationMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	type alias SessionState
@@ -841,6 +847,14 @@ func (s *SessionState) RulesSnapshot() (rules.Snapshot, bool) {
 func (s *SessionState) LockRulesHost() func() {
 	s.rulesHostMu.Lock()
 	return s.rulesHostMu.Unlock
+}
+
+// LockToolMutation serializes one non-rules ToolRouter mutation with its
+// receipt and with JSON serialization. Rules drivers use LockRulesHost as the
+// outer lock, preserving a single lock order when the two paths share receipts.
+func (s *SessionState) LockToolMutation() func() {
+	s.toolMutationMu.Lock()
+	return s.toolMutationMu.Unlock
 }
 
 // TriggerEvent records that a scripted event has fired.
