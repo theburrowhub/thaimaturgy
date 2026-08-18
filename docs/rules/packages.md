@@ -71,8 +71,10 @@ An adventure declares a dependency, not an executable path:
 When a new session starts, the host chooses the highest installed compatible
 version and persists its complete lock. Resumed sessions use that exact digest;
 installing a newer release never upgrades them silently. If the exact artifact
-is missing or invalid, mechanical tools remain unavailable until it is restored
-or an explicit migration is performed.
+is missing or invalid, mechanical tools remain unavailable until it is restored.
+The protocol includes a package-owned `Migrate` operation, but this first cut
+does not expose a migration command or silently reinterpret old state; a future
+explicit workflow must validate and audit any lock change.
 
 The legacy `system` field remains a display label. A closed compatibility map
 recognizes the ten historical names when `ruleset` is absent. Unknown labels are
@@ -138,6 +140,13 @@ Mutating calls use durable idempotency receipts. Random exchanges, event
 batches, pending continuations, the exact lock, principal and request identity
 are persisted together with the resulting state. A retry returns the stored
 result instead of drawing or reducing again.
+
+The legacy dice dialog, D&D character sheet, rests, party editor, and Telegram
+player controller are enabled only for the exact host-attested `dnd5e` built-in
+lock. Other packages are fully usable by the Oracle/Virtual DM through
+`game_*`; frontends hide and backends reject those D&D-only compatibility
+surfaces rather than projecting HP, AC, classes, or inventory onto unrelated
+systems.
 
 ## Trust boundary and limits
 

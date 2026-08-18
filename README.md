@@ -41,9 +41,10 @@ state of your session.
 - **Adventure browser** — a live tree of zones/rooms, NPCs, events and items; click any
   entry to view its full detail (with inline art) and act on it — move the party to a
   room, mark an NPC met or an event triggered — right beside the oracle chat.
-- **Virtual DM & multiplayer** — toggle to a mode where the AI runs the game for a party
-  of characters, and host it for several players over **Telegram** (`cmd/thaimaturgy-bot`,
-  or the in-app "Telegram" button).
+- **Virtual DM & multiplayer** — toggle to a mode where the AI runs the game. The
+  current character-sheet and **Telegram** player controller are D&D 5e compatibility
+  features; every loaded package remains available to the AI through the neutral
+  `game_*` flow.
 - **One core, thin frontends** — the Fyne desktop app (`cmd/thaimaturgy`) and the Telegram
   bot (`cmd/thaimaturgy-bot`) over the same `internal/` engine. The app and module editor
   use the operating system's **native** file/save/folder pickers and message dialogs.
@@ -221,6 +222,7 @@ internal/
   mcpserve/             Shared `__mcp-tools` subcommand (Claude-CLI MCP backend)
   tts/                  Optional OpenAI text-to-speech (narrate read-aloud)
 examples/adventures/    Example modules
+examples/rules/         Complete external Starlark package example
 docs/                   Schema + authoring guides
 ```
 
