@@ -9,14 +9,17 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/bundlepack"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/dnd5e"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/pbta"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/runtimecatalog"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
@@ -554,6 +557,90 @@ func TestMCPDNDMutationRetryIsIdempotentAcrossReload(t *testing.T) {
 	}
 	if handoff := mustReadState(t, handoffPath); !reflect.DeepEqual(mustRulesRuntime(t, handoff), runtimeBefore) {
 		t.Fatal("handoff and canonical receipts diverged after restart")
+	}
+}
+
+func TestMCPExternalPackageStateReopensAndRetriesExactly(t *testing.T) {
+	ctx := context.Background()
+	dataDirectory := t.TempDir()
+	bundlePath := filepath.Join(t.TempDir(), "simple-d6.rules.zip")
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate MCP test")
+	}
+	source := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "../../examples/rules/simple-d6"))
+	if _, err := bundlepack.Pack(ctx, source, bundlePath, nil); err != nil {
+		t.Fatalf("pack external example: %v", err)
+	}
+	bootstrap, err := runtimecatalog.Load(ctx, dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := bootstrap.Store.InstallFile(ctx, bundlePath)
+	if err != nil {
+		t.Fatalf("install external example: %v", err)
+	}
+
+	store, err := storage.NewWithPath(dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adventure := &domain.Adventure{
+		SchemaVersion: domain.SchemaVersion,
+		ID:            "mcp-simple-d6-e2e",
+		Title:         "MCP external E2E",
+		Ruleset:       &rules.Requirement{ID: "simple-d6", Version: "0.1.0"},
+		Zones: []domain.Zone{{
+			ID: "zone", Name: "Zone", Rooms: []domain.Room{{ID: "room", Name: "Room"}},
+		}},
+	}
+	if err := os.MkdirAll(store.AdventureDir(adventure.ID), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveAdventure(adventure.ID, adventure); err != nil {
+		t.Fatal(err)
+	}
+	state := domain.NewSessionState("mcp-simple-d6-session", adventure)
+	handoffPath := filepath.Join(t.TempDir(), "session.json")
+	writeStateFile(t, handoffPath, state)
+	args := []string{
+		"--data-dir", dataDirectory,
+		"--adventure-id", adventure.ID,
+		"--session", handoffPath,
+		"--request-namespace", "simple-d6-turn",
+		"--language", "en",
+		"--rules-timeout-seconds", "17",
+	}
+	input := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"game_submit_intent","arguments":{"action_id":"simple_d6.check","arguments":{"modifier":2,"target":6}}}}`,
+	}, "\n")
+
+	firstOutput := runMCPSubcommand(t, args, input)
+	firstResponses := decodeMCPResponses(t, firstOutput)
+	firstResult := mcpToolText(t, firstResponses, "2")
+	canonicalBefore := mustLoadState(t, store, state.Name)
+	handoffBefore := mustReadState(t, handoffPath)
+	runtimeBefore := mustRulesRuntime(t, canonicalBefore)
+	if runtimeBefore.Lock != installed.Loaded.Artifact.Lock() || runtimeBefore.Revision != 1 ||
+		len(runtimeBefore.Receipts) != 1 || len(runtimeBefore.RandomDraws) != 1 {
+		t.Fatalf("persisted external runtime = %+v", runtimeBefore)
+	}
+	if !reflect.DeepEqual(runtimeBefore, mustRulesRuntime(t, handoffBefore)) {
+		t.Fatal("external canonical and handoff runtimes diverged")
+	}
+
+	secondOutput := runMCPSubcommand(t, args, input)
+	secondResponses := decodeMCPResponses(t, secondOutput)
+	if secondResult := mcpToolText(t, secondResponses, "2"); secondResult != firstResult {
+		t.Fatalf("external restart retry changed: first=%q second=%q", firstResult, secondResult)
+	}
+	canonicalAfter := mustLoadState(t, store, state.Name)
+	handoffAfter := mustReadState(t, handoffPath)
+	runtimeAfter := mustRulesRuntime(t, canonicalAfter)
+	if !reflect.DeepEqual(runtimeBefore, runtimeAfter) || !reflect.DeepEqual(runtimeAfter, mustRulesRuntime(t, handoffAfter)) {
+		t.Fatalf("external restart advanced or diverged runtime: before=%+v after=%+v", runtimeBefore, runtimeAfter)
 	}
 }
 
