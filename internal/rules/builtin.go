@@ -13,6 +13,7 @@ const (
 	builtinSourceFormat = "thaimaturgy-builtin-source-v1"
 	maxBuiltinSources   = MaxCollectionItems
 	maxBuiltinBytes     = 8 << 20
+	kernelSourceName    = "host/rules-kernel"
 )
 
 // NewBuiltinArtifact derives a host-attested artifact from the production
@@ -23,19 +24,26 @@ func NewBuiltinArtifact(manifest Manifest, sources map[string]string) (Artifact,
 	if manifest.Runtime.Kind != RuntimeBuiltin {
 		return Artifact{}, invalid("builtin.manifest.runtime", "must be %q", RuntimeBuiltin)
 	}
-	if len(sources) == 0 || len(sources) > maxBuiltinSources {
-		return Artifact{}, invalid("builtin.sources", "must contain 1..%d files", maxBuiltinSources)
+	if len(sources) == 0 || len(sources) >= maxBuiltinSources {
+		return Artifact{}, invalid("builtin.sources", "must contain 1..%d package files", maxBuiltinSources-1)
+	}
+	if _, reserved := sources[kernelSourceName]; reserved {
+		return Artifact{}, invalid("builtin.sources", "%q is reserved for the host kernel identity", kernelSourceName)
 	}
 
-	names := make([]string, 0, len(sources))
-	canonical := make(map[string]string, len(sources))
+	names := make([]string, 0, len(sources)+1)
+	canonical := make(map[string]string, len(sources)+1)
 	total := len(builtinSourceFormat)
+	allSources := make(map[string]string, len(sources)+1)
 	for name, source := range sources {
+		allSources[name] = source
+	}
+	allSources[kernelSourceName] = SourceIdentity()
+	for name, source := range allSources {
 		if err := validateBuiltinSourceName(name); err != nil {
 			return Artifact{}, err
 		}
-		source = strings.ReplaceAll(source, "\r\n", "\n")
-		source = strings.ReplaceAll(source, "\r", "")
+		source = canonicalBuiltinSource(source)
 		if source == "" || !utf8.ValidString(source) {
 			return Artifact{}, invalid("builtin.sources", "%q must contain non-empty UTF-8 source", name)
 		}
@@ -55,6 +63,11 @@ func NewBuiltinArtifact(manifest Manifest, sources map[string]string) (Artifact,
 		writeBuiltinFrame(&material, canonical[name])
 	}
 	return NewArtifact(manifest, bytes.NewReader(material.Bytes()))
+}
+
+func canonicalBuiltinSource(source string) string {
+	source = strings.ReplaceAll(source, "\r\n", "\n")
+	return strings.ReplaceAll(source, "\r", "")
 }
 
 func validateBuiltinSourceName(name string) error {

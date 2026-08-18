@@ -85,15 +85,15 @@ func referenceCases() []referenceCase {
 
 func TestBuiltinArtifactDigestsArePinned(t *testing.T) {
 	want := map[string]string{
-		"pf2e":         "sha256:f10c703d082f971c78ba84b7824061db769a48858fcba7794a77ec6a3171bd9f",
-		"runequest":    "sha256:d44ea519ac92dfbe23eddb19201d6d0e98fd7bf778a9de7ca052f96c00268eeb",
-		"coc7e":        "sha256:1fb127d450aeeaedcb1f313d6d0f5561618982ed0caa39f9e9c561a57e42b045",
-		"vtm5e":        "sha256:2d6a7bc1fc3424b3c8138834739e81de2cdc5ea00e77365a0df170427d490c00",
-		"shadowrun6e":  "sha256:52ea8b24deb8e8f75b7f34cda746e0f2af4edbd06919d824ddd156bfd7b664d0",
-		"pbta":         "sha256:f6c946f528d85fb12dd57a7ea7d24fb8c112224a807d978ea44632eecb6cba53",
-		"gurps4e":      "sha256:0925eb88d01f4b87b03a26153a997827cb4d884d26e2985e29b0e60e42e018d2",
-		"fatecore":     "sha256:8ab1f1f2805fbc652b8914b7eec2877a24979874590d3b055343c5f0948cd919",
-		"savageworlds": "sha256:67a732cf870972104959b0a572c0ef6b0ee57ddc5448d29de818d1872cd145d9",
+		"pf2e":         "sha256:9f141b514462cb33a55de73d694bb43af6f199eb057713447e3553881d9ffb18",
+		"runequest":    "sha256:9569014ac940f0e7b15c50f3437c608733844c2792016080a80376daacb6a862",
+		"coc7e":        "sha256:37b7e4695d3cf85920f229cdcf00dd18bb6e449bfdfa37e175cc80c4adea9992",
+		"vtm5e":        "sha256:b10043d916e1ef0d40c0ad5db1afb213c55a5dcf3d7b5e57d5e439bc4aefa60f",
+		"shadowrun6e":  "sha256:39f621915ea3bee7cbcae5ae2454a350dfc9bc82ad3aef40ca6898389ae626d6",
+		"pbta":         "sha256:2e79ddd52d520b78138d6989627ba98d5153734f02945791d296ca33f21a533b",
+		"gurps4e":      "sha256:4fae0f6ad06306e5323f1376cf5ef62fb147d151aab60ac3551a380a44abfab1",
+		"fatecore":     "sha256:c3486265929906f91ce54b08606a3a8f3b166b9c257534304a6c7d3c92da6490",
+		"savageworlds": "sha256:0400b1bba7acd7feb5a49fc78b2b178df4fafc43d38a2e5c55311a5e993c0b75",
 	}
 	for _, test := range referenceCases() {
 		artifact, err := test.artifact()

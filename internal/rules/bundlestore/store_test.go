@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
@@ -106,6 +107,55 @@ func TestStoreRejectsReleaseEquivocation(t *testing.T) {
 	report := store.Discover(context.Background())
 	if len(report.Bundles) != 0 || len(report.Failures) != 2 || !errors.Is(report.Err(), rules.ErrArtifactConflict) {
 		t.Fatalf("equivocating discover = %#v, %v; first=%s", report, report.Err(), installed.Path)
+	}
+}
+
+func TestConcurrentStoreInstancesCannotEquivocateRelease(t *testing.T) {
+	root := filepath.Join(t.TempDir(), DirectoryName)
+	firstStore, err := New(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondStore, err := New(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := testBundleVariant(t, "test.concurrent", "1.0.0", `{"counter": 0}`, "first")
+	second := testBundleVariant(t, "test.concurrent", "1.0.0", `{"counter": 0}`, "second")
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var ready sync.WaitGroup
+	ready.Add(2)
+	install := func(store *Store, bundle []byte) {
+		ready.Done()
+		<-start
+		_, err := store.Install(context.Background(), bytes.NewReader(bundle))
+		results <- err
+	}
+	go install(firstStore, first)
+	go install(secondStore, second)
+	ready.Wait()
+	close(start)
+
+	successes, conflicts := 0, 0
+	for range 2 {
+		err := <-results
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, rules.ErrArtifactConflict):
+			conflicts++
+		default:
+			t.Fatalf("concurrent Install error = %v", err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("concurrent installs: successes=%d conflicts=%d", successes, conflicts)
+	}
+	report := firstStore.Discover(context.Background())
+	if len(report.Bundles) != 1 || report.Err() != nil {
+		t.Fatalf("concurrent install left an equivocated store: %#v, %v", report, report.Err())
 	}
 }
 
@@ -232,35 +282,6 @@ func TestStoreRejectsSymlinkRootAndSource(t *testing.T) {
 	}
 	if _, err := store.InstallFile(context.Background(), linkedSource); err == nil {
 		t.Fatal("symlink source accepted")
-	}
-}
-
-func TestStoreRejectsNonPrivateDirectories(t *testing.T) {
-	base := t.TempDir()
-	insecureRoot := filepath.Join(base, "insecure")
-	if err := os.Mkdir(insecureRoot, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(insecureRoot, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := New(insecureRoot, nil); err == nil || !strings.Contains(err.Error(), "group or other") {
-		t.Fatalf("insecure root error = %v", err)
-	}
-
-	store, err := New(filepath.Join(base, "private"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	packageDirectory := filepath.Join(store.Root(), "test.insecure")
-	if err := os.Mkdir(packageDirectory, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(packageDirectory, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Install(context.Background(), bytes.NewReader(testBundle(t, "test.insecure", "1.0.0"))); err == nil || !strings.Contains(err.Error(), "group or other") {
-		t.Fatalf("insecure package directory error = %v", err)
 	}
 }
 

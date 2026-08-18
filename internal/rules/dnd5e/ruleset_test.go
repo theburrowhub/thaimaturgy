@@ -10,7 +10,7 @@ import (
 	core "github.com/theburrowhub/thaimaturgy/internal/rules"
 )
 
-const artifactDigest = "sha256:52b3c6cb8ce582d17356a867d03e6a2e2c9b1659e189cfe13fdd178cd1940e05"
+const artifactDigest = "sha256:b989ff3eb79a1b31989e50b16dcee44a2d11a7a39815789e424ae848c2163337"
 
 func TestManifestArtifactAndActionCatalogAreStable(t *testing.T) {
 	artifact, err := NewArtifact()

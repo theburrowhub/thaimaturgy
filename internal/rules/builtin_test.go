@@ -1,6 +1,10 @@
 package rules
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
 
 func TestBuiltinArtifactIdentityTracksCanonicalSource(t *testing.T) {
 	manifest := testManifest()
@@ -43,9 +47,36 @@ func TestBuiltinArtifactRejectsInvalidInputs(t *testing.T) {
 		nil,
 		{"../main.go": "package x"},
 		{"main.go": ""},
+		{kernelSourceName: "forged"},
 	} {
 		if _, err := NewBuiltinArtifact(testManifest(), sources); err == nil {
 			t.Fatalf("invalid built-in sources were accepted: %#v", sources)
 		}
+	}
+}
+
+func TestBuiltinArtifactAutomaticallyIncludesKernelIdentity(t *testing.T) {
+	manifest := testManifest()
+	artifact, err := NewBuiltinArtifact(manifest, map[string]string{"package/test.go": "package test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var packageOnly bytes.Buffer
+	writeBuiltinFrame(&packageOnly, builtinSourceFormat)
+	writeBuiltinFrame(&packageOnly, "package/test.go")
+	writeBuiltinFrame(&packageOnly, "package test")
+	withoutKernel, err := NewArtifact(manifest, bytes.NewReader(packageOnly.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifact.Digest() == withoutKernel.Digest() {
+		t.Fatal("built-in digest omitted the rules kernel identity")
+	}
+	if identity := SourceIdentity(); !strings.HasPrefix(identity, kernelSourceFormat+"\nsha256:") {
+		t.Fatalf("invalid kernel source identity %q", identity)
+	}
+	if !bytes.Contains(kernelSourceMaterial(), []byte("step.go")) {
+		t.Fatal("kernel identity does not cover production step validation")
 	}
 }

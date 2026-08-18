@@ -172,6 +172,14 @@ func (s *Store) Install(ctx context.Context, source io.Reader) (InstalledBundle,
 	destination := filepath.Join(directory, strings.TrimPrefix(lock.Digest, "sha256:")+BundleExtension)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	releaseGuard, err := acquireReleaseLock(ctx, directory)
+	if err != nil {
+		return InstalledBundle{}, err
+	}
+	defer releaseGuard.Close()
+	if err := ctx.Err(); err != nil {
+		return InstalledBundle{}, err
+	}
 	if err := ensureSingleReleaseArtifact(directory, destination, lock); err != nil {
 		return InstalledBundle{}, err
 	}
@@ -348,10 +356,7 @@ func validatePrivateDirectory(info os.FileInfo, label string) error {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return fmt.Errorf("rules bundle store: %s must be a real directory, not a symlink", label)
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("rules bundle store: %s must not grant group or other permissions", label)
-	}
-	return nil
+	return validatePrivateDirectoryPermissions(info, label)
 }
 
 func ensureSingleReleaseArtifact(directory, destination string, lock rules.Lock) error {
