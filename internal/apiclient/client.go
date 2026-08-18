@@ -194,6 +194,21 @@ func (c *Client) Config(ctx context.Context) (*domain.Config, error) {
 	}
 	return &cfg, nil
 }
+
+// ConfigWithAuth is like Config but also returns the server's read-only
+// auth_source (the auto-detected credential description, e.g. "Claude Code login
+// (Keychain)" or "Gemini CLI"), which the plain domain.Config drops (json:"-").
+func (c *Client) ConfigWithAuth(ctx context.Context) (*domain.Config, string, error) {
+	var out struct {
+		domain.Config
+		AuthSource string `json:"auth_source"`
+	}
+	if err := c.do(ctx, "GET", "/api/config", nil, &out); err != nil {
+		return nil, "", err
+	}
+	cfg := out.Config
+	return &cfg, out.AuthSource, nil
+}
 func (c *Client) SaveConfig(ctx context.Context, cfg *domain.Config) error {
 	return c.do(ctx, "PUT", "/api/config", cfg, nil)
 }
