@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -213,13 +214,25 @@ type QuestProgress struct {
 // rebinding the session in place.
 var ErrRulesLockConflict = errors.New("domain: rules lock conflict")
 
-// RulesSession is the minimal persisted rules state for a running session. Lock
-// pins one exact artifact; Revision is owned by the future rules host; State is
-// opaque to the domain and interpreted only by that artifact.
+// ErrRulesImportConflict reports an equal-generation persisted fork. The
+// receiver remains authoritative and is never overwritten in this case.
+var ErrRulesImportConflict = errors.New("domain: rules import conflict")
+
+// RulesSession is the persisted transactional rules host for a running session.
+// Lock pins one exact artifact; Revision advances only for reduced event batches;
+// Generation also tracks metadata-only commits. InitialState plus EventBatches
+// can replay State, while receipts, pending steps, and random draws make retries
+// and external responses durable and auditable.
 type RulesSession struct {
-	Lock     rules.Lock    `json:"lock"`
-	Revision uint64        `json:"revision"`
-	State    rules.Payload `json:"state"`
+	Lock         rules.Lock               `json:"lock"`
+	Revision     uint64                   `json:"revision"`
+	Generation   uint64                   `json:"generation,omitempty"`
+	InitialState rules.Payload            `json:"initial_state"`
+	State        rules.Payload            `json:"state"`
+	Receipts     []RulesReceipt           `json:"receipts,omitempty"`
+	Pending      []RulesPendingResolution `json:"pending,omitempty"`
+	EventBatches []RulesEventBatch        `json:"event_batches,omitempty"`
+	RandomDraws  []RulesRandomDraw        `json:"random_draws,omitempty"`
 }
 
 // Validate checks that the persisted rules state is complete and structurally
@@ -231,7 +244,10 @@ func (r RulesSession) Validate() error {
 	if err := r.State.Validate(); err != nil {
 		return fmt.Errorf("rules session state: %w", err)
 	}
-	return nil
+	if err := r.InitialState.Validate(); err != nil {
+		return fmt.Errorf("rules session initial state: %w", err)
+	}
+	return r.validateRuntime()
 }
 
 // SessionState is the persisted, mutable record of a running play session of an
@@ -320,6 +336,17 @@ type SessionState struct {
 	// JSON marshaller take this lock. Unexported (never serialized) and, being a
 	// mutex, must not be copied — callers pass *SessionState.
 	mu sync.Mutex
+
+	// rulesInFlight coordinates the same idempotency key across every router
+	// attached to this in-memory session. It is deliberately runtime-only: a
+	// process crash releases unfinished work, while committed receipts below are
+	// persisted and survive restarts.
+	rulesInFlight map[string]*rulesRequestFlight
+	rulesClaimSeq uint64
+	// rulesHostMu serializes effectful rules drivers (including calls into RNG)
+	// while the finer-grained generation CAS remains the correctness boundary
+	// for direct/domain callers and imported subprocess state.
+	rulesHostMu sync.Mutex
 }
 
 // MarshalJSON serializes the state under the mutex so an autosave can't race a
@@ -344,6 +371,15 @@ func (s *SessionState) UnmarshalJSON(b []byte) error {
 	}
 	s.ensureInitialized()
 	if s.Rules != nil {
+		// Rules blocks written before the transactional host have no audit log,
+		// so their current materialized state is also the only valid replay root.
+		if s.Rules.InitialState.IsZero() && len(s.Rules.EventBatches) == 0 {
+			s.Rules.InitialState = s.Rules.State
+			// Earlier kernels exposed Revision but had no event journal capable of
+			// explaining a non-zero value. Adopt the materialized state as the new
+			// revision-zero root instead of manufacturing an unreplayable gap.
+			s.Rules.Revision = 0
+		}
 		if err := s.Rules.Validate(); err != nil {
 			return err
 		}
@@ -380,6 +416,9 @@ func (s *SessionState) ensureInitialized() {
 	}
 	if s.Conversation == nil {
 		s.Conversation = &Conversation{Messages: []Message{}, MaxSize: 0}
+	}
+	if s.rulesInFlight == nil {
+		s.rulesInFlight = make(map[string]*rulesRequestFlight)
 	}
 	// Upgrade legacy single-character player slots to the multi-character model (#29).
 	s.migratePlayerSlots()
@@ -644,17 +683,39 @@ func (s *SessionState) LogLen() int {
 
 // ImportStructured replaces the structured progress fields from src under the
 // lock. Used by the Claude-CLI merge path, where a subprocess mutated a copy of
-// the state; the timeline is replayed separately via AppendLog.
+// the state; the timeline is replayed separately via AppendLog. Equal-generation
+// divergent rules blocks are preserved locally and reported as a fork.
 func (s *SessionState) ImportStructured(src *SessionState) {
+	_ = s.ImportStructuredChecked(src)
+}
+
+// ImportStructuredChecked is ImportStructured with explicit reporting for a
+// lock mismatch or equal-generation rules fork.
+func (s *SessionState) ImportStructuredChecked(src *SessionState) error {
 	var importedRules *RulesSession
-	if snapshot, ok := src.RulesSnapshot(); ok {
-		importedRules = &RulesSession{
-			Lock: snapshot.Ruleset, Revision: snapshot.Revision, State: snapshot.State,
-		}
+	runtime, exists, err := src.RulesRuntimeSnapshotStrict()
+	if err != nil {
+		return fmt.Errorf("import rules runtime: %w", err)
+	}
+	if exists {
+		importedRules = &runtime
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Reject rules conflicts before copying any other structured field. A failed
+	// merge is all-or-nothing from the caller's perspective.
+	if importedRules != nil && s.Rules != nil {
+		if err := s.Rules.Validate(); err != nil {
+			return fmt.Errorf("current rules runtime: %w", err)
+		}
+		switch {
+		case s.Rules.Lock != importedRules.Lock:
+			return ErrRulesLockConflict
+		case importedRules.Generation == s.Rules.Generation && !reflect.DeepEqual(*s.Rules, *importedRules):
+			return ErrRulesImportConflict
+		}
+	}
 	s.CurrentZone = src.CurrentZone
 	s.CurrentRoom = src.CurrentRoom
 	// Don't let an empty imported scene clobber an already-seeded active scene
@@ -676,20 +737,24 @@ func (s *SessionState) ImportStructured(src *SessionState) {
 	// The CLI/MCP subprocess starts from a copy of this session, so normally these
 	// locks are identical. Preserve an existing different lock rather than turning
 	// this merge helper into an implicit ruleset-upgrade path.
-	if importedRules != nil && (s.Rules == nil || s.Rules.Lock == importedRules.Lock) {
-		if s.Rules == nil || importedRules.Revision > s.Rules.Revision ||
-			(importedRules.Revision == s.Rules.Revision && importedRules.State.String() == s.Rules.State.String()) {
-			cp := *importedRules
+	if importedRules != nil {
+		switch {
+		case s.Rules == nil:
+			cp := cloneRulesSession(*importedRules)
+			s.Rules = &cp
+		case importedRules.Generation > s.Rules.Generation:
+			cp := cloneRulesSession(*importedRules)
 			s.Rules = &cp
 		}
 	}
+	return nil
 }
 
 // BindRules pins the session to lock and seeds its opaque state. It returns true
 // only when a new binding was created. Repeating the exact lock is an idempotent
 // no-op that preserves the current state and revision; another lock is rejected.
 func (s *SessionState) BindRules(lock rules.Lock, state rules.Payload) (bool, error) {
-	candidate := RulesSession{Lock: lock, State: state}
+	candidate := RulesSession{Lock: lock, InitialState: state, State: state}
 	if err := candidate.Validate(); err != nil {
 		return false, err
 	}
@@ -731,6 +796,15 @@ func (s *SessionState) RulesSnapshot() (rules.Snapshot, bool) {
 		return rules.Snapshot{}, false
 	}
 	return snapshot, true
+}
+
+// LockRulesHost serializes one complete effectful gateway resolution. The
+// returned release function must be called exactly once. It intentionally does
+// not hold the state mutex while a ruleset, RNG provider, or persistence hook
+// executes.
+func (s *SessionState) LockRulesHost() func() {
+	s.rulesHostMu.Lock()
+	return s.rulesHostMu.Unlock
 }
 
 // TriggerEvent records that a scripted event has fired.
@@ -1131,6 +1205,14 @@ type Session struct {
 	Config     *Config
 	StartedAt  time.Time
 	IsModified bool
+
+	// PersistRules is an optional runtime-only durability barrier. Transactional
+	// rules gateways invoke it after every applied checkpoint/receipt and before
+	// resuming a ruleset or returning success. Frontends that promise crash
+	// durability wire this to their atomic session-store replacement operation.
+	// A nil callback retains the historical in-memory/autosave behaviour.
+	PersistRules func(*SessionState) error
+	modifiedMu   sync.Mutex
 }
 
 // NewSession binds state, adventure, and config into a runtime session.
@@ -1153,6 +1235,8 @@ func NewSession(state *SessionState, adv *Adventure, config *Config) *Session {
 
 // MarkModified flags the session dirty and touches the timestamp.
 func (s *Session) MarkModified() {
+	s.modifiedMu.Lock()
+	defer s.modifiedMu.Unlock()
 	s.IsModified = true
 	s.State.mu.Lock()
 	s.State.touch()

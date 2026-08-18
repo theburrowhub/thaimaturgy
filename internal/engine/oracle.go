@@ -279,9 +279,17 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	}
 	resp.LatencyMs = time.Since(start).Milliseconds()
 
-	// Merge tool mutations back into the live state (in place) and record the reply.
-	if merged, e := readSessionFile(sessPath); e == nil {
-		mergeSessionState(st, merged, oldLogLen)
+	// Merge tool mutations back into the live state (in place) before accepting
+	// either the subprocess timeline or the model reply. A rules fork is an
+	// all-or-nothing merge failure, never a partially accepted turn.
+	merged, err := readSessionFile(sessPath)
+	if err != nil {
+		resp.Error = fmt.Errorf("read tool-mutated session: %w", err)
+		return resp
+	}
+	if err := mergeSessionState(st, merged, oldLogLen); err != nil {
+		resp.Error = fmt.Errorf("merge tool-mutated session: %w", err)
+		return resp
 	}
 	answer = o.reviewSpoilers(ctx, answer)
 	st.AddAssistantMessage(answer)
@@ -354,8 +362,10 @@ func readSessionFile(path string) (*domain.SessionState, error) {
 // mergeSessionState copies the mutable structured state from src into dst in
 // place (so holders of dst see the changes) and replays timeline entries added
 // beyond oldLogLen through dst.AppendLog, firing dst's log hook (journal).
-func mergeSessionState(dst, src *domain.SessionState, oldLogLen int) {
-	dst.ImportStructured(src)
+func mergeSessionState(dst, src *domain.SessionState, oldLogLen int) error {
+	if err := dst.ImportStructuredChecked(src); err != nil {
+		return err
+	}
 	if src.Log != nil {
 		entries := src.Log.Entries
 		if oldLogLen < 0 || oldLogLen > len(entries) {
@@ -365,6 +375,7 @@ func mergeSessionState(dst, src *domain.SessionState, oldLogLen int) {
 			dst.AppendLog(e)
 		}
 	}
+	return nil
 }
 
 // worldStateContext renders the DM-recorded world changes (issue #21) for the

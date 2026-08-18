@@ -392,7 +392,7 @@ func NewToolRouter(session *domain.Session) *ToolRouter {
 // it also exposes the player-character mutation tools.
 func (tr *ToolRouter) GetToolDefinitions() []types.Tool {
 	tools := cloneToolDefinitions(AvailableTools)
-	if tr.rules == nil {
+	if tr.rules == nil || !tr.rules.legacyDND5E {
 		filtered := tools[:0]
 		for _, definition := range tools {
 			if definition.Name != "roll_dice" && definition.Name != "ability_check" {
@@ -1251,12 +1251,18 @@ func (tr *ToolRouter) rollDice(call types.ToolCall, args map[string]any) types.T
 	if tr.rules == nil {
 		return tr.rulesUnavailable(call.ID)
 	}
+	if !tr.rules.legacyDND5E {
+		return errResult(call.ID, "legacy D&D tool is unavailable for the loaded rules package")
+	}
 	return tr.rules.legacyRollDice(call, args)
 }
 
 func (tr *ToolRouter) abilityCheck(call types.ToolCall, args map[string]any) types.ToolResult {
 	if tr.rules == nil {
 		return tr.rulesUnavailable(call.ID)
+	}
+	if !tr.rules.legacyDND5E {
+		return errResult(call.ID, "legacy D&D tool is unavailable for the loaded rules package")
 	}
 	return tr.rules.legacyAbilityCheck(call, args)
 }

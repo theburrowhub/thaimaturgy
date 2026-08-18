@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/jsonstrict"
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/dnd5e"
+	"github.com/theburrowhub/thaimaturgy/internal/ruleshost"
 	"github.com/theburrowhub/thaimaturgy/internal/types"
 )
 
@@ -107,15 +109,22 @@ type cachedRuleResult struct {
 }
 
 // rulesGateway adapts the context-aware rules protocol to the repository's
-// synchronous ToolProvider interface. The mutex serializes draws and makes
-// request-ID receipts idempotent inside a bounded retry window. Persisted
-// receipts and an event log belong to the later transactional-host phase.
+// synchronous ToolProvider interface. Mutating calls use SessionState's durable
+// transaction API; the small memory cache remains only for read-only queries.
 type rulesGateway struct {
 	session *domain.Session
 	lock    rules.Lock
 	ruleset rules.Ruleset
+	// legacyDND5E is true only for the exact built-in artifact. A foreign package
+	// cannot opt into legacy result parsing merely by returning a `legacy` field.
+	legacyDND5E bool
 
 	resolveDice func(dnd5e.DiceRandomRequest) (dnd5e.DiceRandomResponse, error)
+	random      *ruleshost.RandomDispatcher
+
+	// Test-only crash boundary. Returning an error simulates process loss after
+	// an automatic response has been durably committed and before Resume.
+	afterCheckpoint func() error
 
 	mu            sync.Mutex
 	receipts      map[string]cachedRuleResult
@@ -161,15 +170,39 @@ func newRulesGateway(session *domain.Session) (*rulesGateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load pinned ruleset: %w", err)
 	}
-	if err := loaded.ValidateState(context.Background(), rules.ValidateStateRequest{Snapshot: snapshot}); err != nil {
-		return nil, fmt.Errorf("validate pinned rules state: %w", err)
+	runtime, ok := session.State.RulesRuntimeSnapshot()
+	if !ok {
+		return nil, errors.New("validate pinned rules state: invalid persisted rules runtime")
+	}
+	replayBatches := make([]ruleshost.ReplayBatch, len(runtime.EventBatches))
+	for i, batch := range runtime.EventBatches {
+		replayBatches[i] = ruleshost.ReplayBatch{
+			Sequence: batch.Sequence, BaseRevision: batch.BaseRevision,
+			Revision: batch.Revision, Events: batch.Events,
+		}
+	}
+	replayed, err := ruleshost.Replay(context.Background(), loaded, runtime.Lock, runtime.InitialState, replayBatches)
+	if err != nil {
+		return nil, fmt.Errorf("validate pinned rules replay: %w", err)
+	}
+	if replayed.Revision != runtime.Revision || replayed.State.String() != runtime.State.String() {
+		return nil, errors.New("validate pinned rules replay: materialized state does not match event history")
 	}
 
+	gateway := newRulesGatewayWithRuleset(session, snapshot.Ruleset, loaded)
+	return gateway, nil
+}
+
+// newRulesGatewayWithRuleset is the loader seam used by built-ins and dynamic
+// package catalogs alike. Artifact selection and verification stay outside the
+// transactional host.
+func newRulesGatewayWithRuleset(session *domain.Session, lock rules.Lock, loaded rules.Ruleset) *rulesGateway {
 	gateway := &rulesGateway{
-		session:  session,
-		lock:     snapshot.Ruleset,
-		ruleset:  loaded,
-		receipts: make(map[string]cachedRuleResult),
+		session: session, lock: lock, ruleset: loaded,
+		receipts: make(map[string]cachedRuleResult), random: ruleshost.NewRandomDispatcher(),
+	}
+	if artifact, err := dnd5e.NewArtifact(); err == nil {
+		gateway.legacyDND5E = lock == artifact.Lock()
 	}
 	gateway.resolveDice = func(request dnd5e.DiceRandomRequest) (dnd5e.DiceRandomResponse, error) {
 		if request.Count < 1 || request.Count > 100 || request.Sides < 1 || request.Sides > 1000 {
@@ -178,7 +211,24 @@ func newRulesGateway(session *domain.Session) (*rulesGateway, error) {
 		roll := Roll(request.Count, request.Sides, 0)
 		return dnd5e.DiceRandomResponse{Rolls: append([]int(nil), roll.Rolls...)}, nil
 	}
-	return gateway, nil
+	if gateway.legacyDND5E {
+		_ = gateway.random.Register(dnd5e.RandomMethodDiceRoll, func(_ context.Context, specification rules.Payload) (rules.Payload, error) {
+			var request dnd5e.DiceRandomRequest
+			if err := jsonstrict.Decode(specification.Bytes(), &request); err != nil {
+				return rules.Payload{}, fmt.Errorf("decode random specification: %w", err)
+			}
+			response, err := gateway.resolveDice(request)
+			if err != nil {
+				return rules.Payload{}, err
+			}
+			payload, err := rules.PayloadFrom(response)
+			if err != nil {
+				return rules.Payload{}, fmt.Errorf("encode random response: %w", err)
+			}
+			return payload, nil
+		})
+	}
+	return gateway
 }
 
 func usesLegacyDND5E(adventure *domain.Adventure) bool {
@@ -227,6 +277,16 @@ func (g *rulesGateway) snapshot() (rules.Snapshot, error) {
 }
 
 func (g *rulesGateway) execute(call types.ToolCall) types.ToolResult {
+	switch call.Name {
+	case "game_submit_intent":
+		release := g.session.State.LockRulesHost()
+		defer release()
+		return g.submitIntent(call, true)
+	case "game_respond":
+		release := g.session.State.LockRulesHost()
+		defer release()
+		return g.respond(call)
+	}
 	return g.executeCached(call, func() types.ToolResult {
 		switch call.Name {
 		case "game_observe":
@@ -235,14 +295,10 @@ func (g *rulesGateway) execute(call types.ToolCall) types.ToolResult {
 			return g.listActions(call)
 		case "game_get_action_schema":
 			return g.getActionSchema(call)
-		case "game_submit_intent":
-			return g.submitIntent(call, true)
 		case "game_preview":
 			return g.preview(call)
 		case "game_explain":
 			return g.explain(call)
-		case "game_respond":
-			return g.respond(call)
 		default:
 			return errResult(call.ID, "unknown game tool: "+call.Name)
 		}
@@ -275,6 +331,300 @@ func (g *rulesGateway) executeCached(call types.ToolCall, execute func() types.T
 	return result
 }
 
+func rulesRequestFingerprint(call types.ToolCall) string {
+	digest := sha256.Sum256(append(append([]byte(call.Name), 0), call.Arguments...))
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func toolResultFromReceipt(callID string, receipt *domain.RulesReceipt) types.ToolResult {
+	if receipt == nil || receipt.Result == nil {
+		return errResult(callID, "rules request has no terminal receipt")
+	}
+	return types.ToolResult{
+		ToolCallID: callID,
+		Content:    receipt.Result.Content,
+		Error:      receipt.Result.Error,
+	}
+}
+
+func storedToolResult(result types.ToolResult) *domain.RulesStoredResult {
+	return &domain.RulesStoredResult{Content: result.Content, Error: result.Error}
+}
+
+func (g *rulesGateway) beginRulesCall(call types.ToolCall) (domain.RulesRequestHandle, *types.ToolResult, error) {
+	handle, receipt, err := g.session.State.BeginRulesRequest(
+		context.Background(), call.ID, call.Name, rulesRequestFingerprint(call),
+	)
+	if err != nil {
+		return domain.RulesRequestHandle{}, nil, err
+	}
+	if receipt != nil {
+		if err := g.persistRules(); err != nil {
+			return domain.RulesRequestHandle{}, nil, err
+		}
+		result := toolResultFromReceipt(call.ID, receipt)
+		return domain.RulesRequestHandle{}, &result, nil
+	}
+	return handle, nil, nil
+}
+
+func (g *rulesGateway) persistRules() error {
+	if g.session.PersistRules == nil {
+		return nil
+	}
+	if err := g.session.PersistRules(g.session.State); err != nil {
+		return fmt.Errorf("persist committed rules transaction: %w", err)
+	}
+	return nil
+}
+
+func (g *rulesGateway) executor() ruleshost.Executor {
+	return ruleshost.Executor{Ruleset: g.ruleset, Random: g.random}
+}
+
+func (g *rulesGateway) commitRules(handle domain.RulesRequestHandle, commit domain.RulesCommit) error {
+	if _, err := g.session.State.CommitRulesRequest(handle, commit); err != nil {
+		return err
+	}
+	// SessionState performs the atomic mutation and timestamp update. This flag is
+	// only set after the compare-and-swap succeeds.
+	g.session.MarkModified()
+	if err := g.persistRules(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (g *rulesGateway) finishRulesCall(handle domain.RulesRequestHandle, result types.ToolResult, resolutionID, removePendingID string, logs []domain.LogEntry) types.ToolResult {
+	err := g.commitRules(handle, domain.RulesCommit{
+		State: handle.Snapshot.State, Principal: g.principal(), ResolutionID: resolutionID,
+		RemovePendingID: removePendingID, Result: storedToolResult(result), LogEntries: logs,
+	})
+	if err != nil {
+		return errResult(result.ToolCallID, "commit rules transaction: "+err.Error())
+	}
+	return result
+}
+
+func findPendingResolution(pending []domain.RulesPendingResolution, resolutionID string) *domain.RulesPendingResolution {
+	for i := range pending {
+		if pending[i].ResolutionID == resolutionID {
+			copy := pending[i]
+			return &copy
+		}
+	}
+	return nil
+}
+
+func findRulesCheckpoint(pending []domain.RulesPendingResolution, resolutionID, requestID string) *domain.RulesPendingResolution {
+	value := findPendingResolution(pending, resolutionID)
+	if value == nil || value.RequestID != requestID || value.Response == nil {
+		return nil
+	}
+	return value
+}
+
+// driveIntent resumes only responses that were already committed as durable
+// checkpoints. Randomness and emitted events are checkpointed before the next
+// Ruleset.Resume, so a crash can never cause a redraw or a double reduction.
+func (g *rulesGateway) driveIntent(call types.ToolCall, intent *rules.Intent, resolutionID string, legacy, checkpointDurable bool) types.ToolResult {
+	for {
+		handle, cached, err := g.beginRulesCall(call)
+		if err != nil {
+			return errResult(call.ID, err.Error())
+		}
+		if cached != nil {
+			return *cached
+		}
+
+		checkpoint := findRulesCheckpoint(handle.Pending, resolutionID, call.ID)
+		var step rules.Step
+		var stepCount uint32
+		initiator := g.principal()
+		removePendingID := ""
+		if checkpoint != nil {
+			if !checkpointDurable {
+				if err := g.persistRules(); err != nil {
+					g.session.State.AbortRulesRequest(handle)
+					return errResult(call.ID, err.Error())
+				}
+			}
+			initiator = checkpoint.Principal
+			stepCount = checkpoint.StepCount + 1
+			removePendingID = resolutionID
+			step, err = g.executor().Resume(
+				context.Background(), handle.Snapshot, g.principal(), checkpoint.Pending, checkpoint.Response.Data,
+			)
+		} else if intent != nil {
+			if len(handle.Pending) != 0 {
+				result := errResult(call.ID, "another rules resolution needs input before a new intent can start")
+				return g.finishRulesCall(handle, result, resolutionID, "", nil)
+			}
+			stepCount = 1
+			step, err = g.executor().Start(context.Background(), rules.StartRequest{
+				Snapshot: handle.Snapshot, Principal: g.principal(), Intent: *intent,
+			})
+		} else {
+			g.session.State.AbortRulesRequest(handle)
+			return errResult(call.ID, "rules response checkpoint is no longer available")
+		}
+		if err != nil {
+			result := errResult(call.ID, err.Error())
+			return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil)
+		}
+		if stepCount > maxAutomaticRuleSteps {
+			result := errResult(call.ID, fmt.Sprintf("rules resolution exceeded %d steps", maxAutomaticRuleSteps))
+			return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil)
+		}
+
+		result, checkpointed := g.applyRulesStep(call, handle, resolutionID, step, stepCount, removePendingID, initiator, legacy)
+		if !checkpointed {
+			return result
+		}
+		if g.afterCheckpoint != nil {
+			if err := g.afterCheckpoint(); err != nil {
+				return errResult(call.ID, "rules checkpoint interruption: "+err.Error())
+			}
+		}
+		// CommitRulesRequest closed the prior ownership claim. Reacquire a fresh
+		// generation/revision before acknowledging the persisted response.
+		intent = nil
+		checkpointDurable = true
+	}
+}
+
+func (g *rulesGateway) applyRulesStep(call types.ToolCall, handle domain.RulesRequestHandle, resolutionID string, step rules.Step, stepCount uint32, removePendingID string, initiator rules.Principal, legacy bool) (types.ToolResult, bool) {
+	snapshot := handle.Snapshot
+	switch step.Kind {
+	case rules.StepKindReject:
+		result := gameJSONResult(call.ID, gameEnvelope{
+			Status: "rejected", Ruleset: snapshot.Ruleset, Revision: snapshot.Revision,
+			ResolutionID: resolutionID, Data: step.Reject,
+		})
+		if legacy {
+			result = errResult(call.ID, step.Reject.Message)
+		}
+		return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+
+	case rules.StepKindComplete:
+		var logs []domain.LogEntry
+		if legacy {
+			legacyResult, err := legacyProjection(step.Complete.Result)
+			if err != nil {
+				result := errResult(call.ID, "decode rules result: "+err.Error())
+				return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+			}
+			result := okResult(call.ID, legacyResult.Content)
+			logs = []domain.LogEntry{{Type: domain.LogRoll, Message: legacyResult.LogMessage}}
+			return g.finishRulesCall(handle, result, resolutionID, removePendingID, logs), false
+		}
+		if g.legacyDND5E {
+			legacyResult, present, err := optionalLegacyProjection(step.Complete.Result)
+			if err != nil {
+				result := errResult(call.ID, "project legacy rules result: "+err.Error())
+				return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+			}
+			if present {
+				logs = []domain.LogEntry{{Type: domain.LogRoll, Message: legacyResult.LogMessage}}
+			}
+		}
+		result := gameJSONResult(call.ID, gameEnvelope{
+			Status: "resolved", Ruleset: snapshot.Ruleset, Revision: snapshot.Revision,
+			ResolutionID: resolutionID, Outcome: step.Complete.Outcome,
+			Data: json.RawMessage(step.Complete.Result.Bytes()),
+		})
+		return g.finishRulesCall(handle, result, resolutionID, removePendingID, logs), false
+
+	case rules.StepKindNeedDecision, rules.StepKindNeedAdjudication:
+		pendingStep, err := step.Pending()
+		if err != nil {
+			result := errResult(call.ID, err.Error())
+			return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+		}
+		request, err := ruleshost.PublicRequest(step)
+		if err != nil {
+			result := errResult(call.ID, err.Error())
+			return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+		}
+		pending := &domain.RulesPendingResolution{
+			ResolutionID: resolutionID, RequestID: call.ID, Principal: initiator,
+			Pending: pendingStep, Request: request, StepCount: stepCount,
+		}
+		result := gameJSONResult(call.ID, gameEnvelope{
+			Status: "needs_input", Ruleset: snapshot.Ruleset, Revision: snapshot.Revision,
+			ResolutionID: resolutionID,
+			Data:         map[string]any{"next_step": step.Kind, "request": json.RawMessage(request.Bytes())},
+		})
+		if err := g.commitRules(handle, domain.RulesCommit{
+			State: snapshot.State, Principal: g.principal(), ResolutionID: resolutionID,
+			Pending: pending, Result: storedToolResult(result),
+		}); err != nil {
+			return errResult(call.ID, "commit rules transaction: "+err.Error()), false
+		}
+		return result, false
+
+	case rules.StepKindNeedRandom:
+		pendingStep, _ := step.Pending()
+		request, err := rules.PayloadFrom(step.NeedRandom)
+		if err != nil {
+			result := errResult(call.ID, "encode random request: "+err.Error())
+			return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+		}
+		response, err := g.executor().ResolveRandom(context.Background(), *step.NeedRandom)
+		if err != nil {
+			result := errResult(call.ID, err.Error())
+			return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+		}
+		pending := &domain.RulesPendingResolution{
+			ResolutionID: resolutionID, RequestID: call.ID, Principal: initiator,
+			Pending: pendingStep, Request: request, StepCount: stepCount,
+			Response: &rules.HostResponse{StepID: pendingStep.StepID, Kind: pendingStep.Kind, Data: response},
+		}
+		if err := g.commitRules(handle, domain.RulesCommit{
+			State: snapshot.State, Principal: g.principal(), ResolutionID: resolutionID, Pending: pending,
+			RandomDraws: []domain.RulesRandomDraft{{
+				ResolutionID: resolutionID, StepID: pendingStep.StepID, Method: step.NeedRandom.Method,
+				Source: "host", Specification: step.NeedRandom.Specification, Result: response,
+			}},
+		}); err != nil {
+			return errResult(call.ID, "commit rules checkpoint: "+err.Error()), false
+		}
+		return types.ToolResult{}, true
+
+	case rules.StepKindEmit:
+		pendingStep, _ := step.Pending()
+		request, err := rules.PayloadFrom(step.Emit)
+		if err != nil {
+			result := errResult(call.ID, "encode emission request: "+err.Error())
+			return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+		}
+		candidate, response, err := g.executor().Reduce(context.Background(), snapshot, *step.Emit)
+		if err != nil {
+			result := errResult(call.ID, err.Error())
+			return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+		}
+		pending := &domain.RulesPendingResolution{
+			ResolutionID: resolutionID, RequestID: call.ID, Principal: initiator,
+			Pending: pendingStep, Request: request, StepCount: stepCount,
+			Response: &rules.HostResponse{StepID: pendingStep.StepID, Kind: pendingStep.Kind, Data: response},
+		}
+		if err := g.commitRules(handle, domain.RulesCommit{
+			State: candidate.State, Principal: g.principal(), ResolutionID: resolutionID, Pending: pending,
+			EventBatches: []domain.RulesEventDraft{{ResolutionID: resolutionID, Events: step.Emit.Events}},
+		}); err != nil {
+			return errResult(call.ID, "commit rules checkpoint: "+err.Error()), false
+		}
+		return types.ToolResult{}, true
+
+	case rules.StepKindStartChild:
+		result := errResult(call.ID, "ruleset requested a child resolution, but child execution is not supported by this host")
+		return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+	default:
+		result := errResult(call.ID, "ruleset returned unsupported step "+string(step.Kind))
+		return g.finishRulesCall(handle, result, resolutionID, removePendingID, nil), false
+	}
+}
+
 func (g *rulesGateway) respond(call types.ToolCall) types.ToolResult {
 	if call.ID == "" {
 		return errResult(call.ID, "game_respond requires a host request ID")
@@ -292,31 +642,118 @@ func (g *rulesGateway) respond(call types.ToolCall) types.ToolResult {
 	if len(bytes.TrimSpace(arguments.Response)) == 0 {
 		return errResult(call.ID, "missing 'response'")
 	}
-	return errResult(call.ID, "no externally pending resolution exists in the built-in dnd5e compatibility ruleset")
+	responsePayload, err := rules.NewPayload(arguments.Response)
+	if err != nil {
+		return errResult(call.ID, "invalid 'response': "+err.Error())
+	}
+
+	handle, cached, err := g.beginRulesCall(call)
+	if err != nil {
+		return errResult(call.ID, err.Error())
+	}
+	if cached != nil {
+		return *cached
+	}
+	if checkpoint := findRulesCheckpoint(handle.Pending, arguments.ResolutionID, call.ID); checkpoint != nil {
+		g.session.State.AbortRulesRequest(handle)
+		return g.driveIntent(call, nil, arguments.ResolutionID, false, false)
+	}
+	persisted := findPendingResolution(handle.Pending, arguments.ResolutionID)
+	if persisted == nil {
+		result := errResult(call.ID, "rules response conflict: no externally pending resolution exists for "+arguments.ResolutionID)
+		return g.finishRulesCall(handle, result, arguments.ResolutionID, "", nil)
+	}
+	if persisted.Response != nil {
+		g.session.State.AbortRulesRequest(handle)
+		return errResult(call.ID, "rules response conflict: resolution already has a committed response; retry after it completes")
+	}
+	if persisted.Revision != handle.Snapshot.Revision {
+		result := errResult(call.ID, fmt.Sprintf("pending resolution is stale: expected revision %d, found %d", persisted.Revision, handle.Snapshot.Revision))
+		return g.finishRulesCall(handle, result, arguments.ResolutionID, arguments.ResolutionID, nil)
+	}
+	if !g.principalMayRespond(*persisted) {
+		result := errResult(call.ID, "current principal is not authorized to answer the pending rules request")
+		return g.finishRulesCall(handle, result, arguments.ResolutionID, "", nil)
+	}
+	checkpoint := *persisted
+	checkpoint.RequestID = call.ID
+	checkpoint.Response = &rules.HostResponse{
+		StepID: checkpoint.Pending.StepID, Kind: checkpoint.Pending.Kind, Data: responsePayload,
+	}
+	if err := g.commitRules(handle, domain.RulesCommit{
+		State: handle.Snapshot.State, Principal: g.principal(), ResolutionID: arguments.ResolutionID,
+		Pending: &checkpoint,
+	}); err != nil {
+		return errResult(call.ID, "commit rules response checkpoint: "+err.Error())
+	}
+	if g.afterCheckpoint != nil {
+		if err := g.afterCheckpoint(); err != nil {
+			return errResult(call.ID, "rules checkpoint interruption: "+err.Error())
+		}
+	}
+	return g.driveIntent(call, nil, arguments.ResolutionID, false, true)
+}
+
+func (g *rulesGateway) principalMayRespond(pending domain.RulesPendingResolution) bool {
+	var authority string
+	switch pending.Pending.Kind {
+	case rules.StepKindNeedDecision:
+		var request rules.DecisionRequest
+		if json.Unmarshal(pending.Request.Bytes(), &request) != nil {
+			return false
+		}
+		authority = request.Authority
+	case rules.StepKindNeedAdjudication:
+		var request rules.AdjudicationRequest
+		if json.Unmarshal(pending.Request.Bytes(), &request) != nil {
+			return false
+		}
+		authority = request.Authority
+	default:
+		return false
+	}
+	principal := g.principal()
+	if authority == principal.ID {
+		return true
+	}
+	for _, role := range principal.Roles {
+		if authority == role {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *rulesGateway) observe(call types.ToolCall) types.ToolResult {
 	if err := decodeToolArguments(call.Arguments, &struct{}{}); err != nil {
 		return errResult(call.ID, err.Error())
 	}
-	snapshot, err := g.snapshot()
-	if err != nil {
-		return errResult(call.ID, err.Error())
+	runtime, ok := g.session.State.RulesRuntimeSnapshot()
+	if !ok || runtime.Lock != g.lock {
+		return errResult(call.ID, "session has no valid rules runtime for the loaded package")
 	}
-	projection, err := g.ruleset.Project(context.Background(), rules.ProjectRequest{
+	snapshot := rules.Snapshot{Ruleset: runtime.Lock, Revision: runtime.Revision, State: runtime.State}
+	projection, err := g.executor().Project(context.Background(), rules.ProjectRequest{
 		Snapshot: snapshot, Principal: g.principal(),
 	})
 	if err != nil {
-		return errResult(call.ID, "project rules state: "+err.Error())
+		return errResult(call.ID, err.Error())
 	}
-	if err := projection.Validate(); err != nil {
-		return errResult(call.ID, "invalid rules projection: "+err.Error())
+	var pendingViews []pendingResolutionView
+	for _, pending := range runtime.Pending {
+		if pending.Response == nil && g.principalMayRespond(pending) {
+			pendingViews = append(pendingViews, pendingResolutionView{
+				ResolutionID: pending.ResolutionID, Kind: pending.Pending.Kind,
+				Revision: pending.Revision, Request: json.RawMessage(pending.Request.Bytes()),
+			})
+		}
 	}
 	return gameJSONResult(call.ID, gameEnvelope{
 		Status:   "resolved",
 		Ruleset:  snapshot.Ruleset,
 		Revision: snapshot.Revision,
 		Data:     json.RawMessage(projection.View.Bytes()),
+		Pending:  pendingViews,
 	})
 }
 
@@ -325,14 +762,11 @@ func (g *rulesGateway) actions() (rules.Snapshot, []rules.ActionDescriptor, erro
 	if err != nil {
 		return rules.Snapshot{}, nil, err
 	}
-	actions, err := g.ruleset.ListActions(context.Background(), rules.CatalogRequest{
+	actions, err := g.executor().ListActions(context.Background(), rules.CatalogRequest{
 		Snapshot: snapshot, Principal: g.principal(),
 	})
 	if err != nil {
 		return rules.Snapshot{}, nil, err
-	}
-	if err := rules.ValidateActions(actions); err != nil {
-		return rules.Snapshot{}, nil, fmt.Errorf("invalid rules action catalog: %w", err)
 	}
 	return snapshot, actions, nil
 }
@@ -402,37 +836,14 @@ func (g *rulesGateway) submitIntent(call types.ToolCall, commit bool) types.Tool
 		return errResult(call.ID, "invalid 'arguments': "+err.Error())
 	}
 	resolutionID := intentID(call, arguments.ActionID, payload)
-	resolved, err := g.resolve(rules.Intent{
-		ID:        resolutionID,
-		ActionID:  arguments.ActionID,
-		ActorID:   arguments.ActorID,
-		Arguments: payload,
-	})
-	if err != nil {
-		return errResult(call.ID, err.Error())
+	if !commit {
+		return errResult(call.ID, "internal error: non-committing intent must use game_preview")
 	}
-	if resolved.rejection != nil {
-		return gameJSONResult(call.ID, gameEnvelope{
-			Status:       "rejected",
-			Ruleset:      resolved.snapshot.Ruleset,
-			Revision:     resolved.snapshot.Revision,
-			ResolutionID: resolutionID,
-			Data:         resolved.rejection,
-		})
+	intent := rules.Intent{
+		ID: resolutionID, ActionID: arguments.ActionID,
+		ActorID: arguments.ActorID, Arguments: payload,
 	}
-	if commit {
-		if err := g.commitLegacyResult(resolved.completion.Result); err != nil {
-			return errResult(call.ID, "commit rules result: "+err.Error())
-		}
-	}
-	return gameJSONResult(call.ID, gameEnvelope{
-		Status:       "resolved",
-		Ruleset:      resolved.snapshot.Ruleset,
-		Revision:     resolved.snapshot.Revision,
-		ResolutionID: resolutionID,
-		Outcome:      resolved.completion.Outcome,
-		Data:         json.RawMessage(resolved.completion.Result.Bytes()),
-	})
+	return g.driveIntent(call, &intent, resolutionID, false, false)
 }
 
 func (g *rulesGateway) preview(call types.ToolCall) types.ToolResult {
@@ -452,7 +863,7 @@ func (g *rulesGateway) preview(call types.ToolCall) types.ToolResult {
 		return errResult(call.ID, err.Error())
 	}
 	resolutionID := intentID(call, arguments.ActionID, payload)
-	step, err := g.ruleset.Start(context.Background(), rules.StartRequest{
+	step, err := g.executor().Start(context.Background(), rules.StartRequest{
 		Snapshot:  snapshot,
 		Principal: g.principal(),
 		Intent: rules.Intent{
@@ -462,9 +873,6 @@ func (g *rulesGateway) preview(call types.ToolCall) types.ToolResult {
 	})
 	if err != nil {
 		return errResult(call.ID, "preview rules intent: "+err.Error())
-	}
-	if err := step.Validate(); err != nil {
-		return errResult(call.ID, "ruleset returned an invalid preview step: "+err.Error())
 	}
 	status := "resolved"
 	var data any
@@ -480,7 +888,7 @@ func (g *rulesGateway) preview(call types.ToolCall) types.ToolResult {
 	case rules.StepKindNeedAdjudication:
 		data = map[string]any{"next_step": step.Kind, "request": step.NeedAdjudication}
 	case rules.StepKindStartChild:
-		data = map[string]any{"next_step": step.Kind, "request": step.StartChild}
+		return errResult(call.ID, "preview encountered unsupported child resolution")
 	case rules.StepKindEmit:
 		data = map[string]any{"next_step": step.Kind, "request": step.Emit}
 	}
@@ -516,15 +924,12 @@ func (g *rulesGateway) explain(call types.ToolCall) types.ToolResult {
 	if err != nil {
 		return errResult(call.ID, err.Error())
 	}
-	explanation, err := g.ruleset.Explain(context.Background(), rules.ExplainRequest{
+	explanation, err := g.executor().Explain(context.Background(), rules.ExplainRequest{
 		Snapshot: snapshot, Principal: g.principal(),
 		Reference: arguments.Reference, Locale: arguments.Locale,
 	})
 	if err != nil {
-		return errResult(call.ID, "explain rule: "+err.Error())
-	}
-	if err := explanation.Validate(); err != nil {
-		return errResult(call.ID, "invalid rules explanation: "+err.Error())
+		return errResult(call.ID, err.Error())
 	}
 	return gameJSONResult(call.ID, gameEnvelope{
 		Status:   "resolved",
@@ -534,84 +939,40 @@ func (g *rulesGateway) explain(call types.ToolCall) types.ToolResult {
 	})
 }
 
-type resolvedIntent struct {
-	snapshot   rules.Snapshot
-	completion *rules.Completion
-	rejection  *rules.Rejection
-}
-
-func (g *rulesGateway) resolve(intent rules.Intent) (resolvedIntent, error) {
-	snapshot, err := g.snapshot()
-	if err != nil {
-		return resolvedIntent{}, err
-	}
-	step, err := g.ruleset.Start(context.Background(), rules.StartRequest{
-		Snapshot: snapshot, Principal: g.principal(), Intent: intent,
-	})
-	if err != nil {
-		return resolvedIntent{}, fmt.Errorf("start rules intent: %w", err)
-	}
-	for iteration := 0; iteration < maxAutomaticRuleSteps; iteration++ {
-		if err := step.Validate(); err != nil {
-			return resolvedIntent{}, fmt.Errorf("ruleset returned an invalid step: %w", err)
-		}
-		switch step.Kind {
-		case rules.StepKindReject:
-			return resolvedIntent{snapshot: snapshot, rejection: step.Reject}, nil
-		case rules.StepKindComplete:
-			return resolvedIntent{snapshot: snapshot, completion: step.Complete}, nil
-		case rules.StepKindNeedRandom:
-			if step.NeedRandom.Method != dnd5e.RandomMethodDiceRoll {
-				return resolvedIntent{}, fmt.Errorf("unsupported random method %q", step.NeedRandom.Method)
-			}
-			var specification dnd5e.DiceRandomRequest
-			if err := jsonstrict.Decode(step.NeedRandom.Specification.Bytes(), &specification); err != nil {
-				return resolvedIntent{}, fmt.Errorf("decode random specification: %w", err)
-			}
-			response, err := g.resolveDice(specification)
-			if err != nil {
-				return resolvedIntent{}, fmt.Errorf("perform random draw: %w", err)
-			}
-			responsePayload, err := rules.PayloadFrom(response)
-			if err != nil {
-				return resolvedIntent{}, fmt.Errorf("encode random response: %w", err)
-			}
-			pending, err := step.Pending()
-			if err != nil {
-				return resolvedIntent{}, fmt.Errorf("persist rules continuation: %w", err)
-			}
-			step, err = g.ruleset.Resume(context.Background(), rules.ResumeRequest{
-				Snapshot: snapshot, Principal: g.principal(), Pending: pending,
-				Response: rules.HostResponse{StepID: pending.StepID, Kind: pending.Kind, Data: responsePayload},
-			})
-			if err != nil {
-				return resolvedIntent{}, fmt.Errorf("resume rules intent: %w", err)
-			}
-		default:
-			return resolvedIntent{}, fmt.Errorf("automatic host does not yet support rules step %q", step.Kind)
-		}
-	}
-	return resolvedIntent{}, fmt.Errorf("rules resolution exceeded %d automatic steps", maxAutomaticRuleSteps)
-}
-
 type legacyCompletion struct {
 	Legacy dnd5e.LegacyResult `json:"legacy"`
 }
 
-func (g *rulesGateway) commitLegacyResult(payload rules.Payload) error {
+func legacyProjection(payload rules.Payload) (dnd5e.LegacyResult, error) {
 	var result legacyCompletion
 	if err := json.Unmarshal(payload.Bytes(), &result); err != nil {
-		return err
+		return dnd5e.LegacyResult{}, err
 	}
 	if result.Legacy.LogType != string(domain.LogRoll) {
-		return fmt.Errorf("unsupported legacy log type %q", result.Legacy.LogType)
+		return dnd5e.LegacyResult{}, fmt.Errorf("unsupported legacy log type %q", result.Legacy.LogType)
 	}
 	if result.Legacy.Content == "" || result.Legacy.LogMessage == "" {
-		return fmt.Errorf("rules result omitted its legacy projection")
+		return dnd5e.LegacyResult{}, fmt.Errorf("rules result omitted its legacy projection")
 	}
-	g.session.State.AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: result.Legacy.LogMessage})
-	g.session.MarkModified()
-	return nil
+	return result.Legacy, nil
+}
+
+func optionalLegacyProjection(payload rules.Payload) (dnd5e.LegacyResult, bool, error) {
+	trimmed := bytes.TrimSpace(payload.Bytes())
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return dnd5e.LegacyResult{}, false, nil
+	}
+	var raw struct {
+		Legacy json.RawMessage `json:"legacy"`
+	}
+	if err := json.Unmarshal(payload.Bytes(), &raw); err != nil {
+		return dnd5e.LegacyResult{}, false, err
+	}
+	if len(bytes.TrimSpace(raw.Legacy)) == 0 || bytes.Equal(bytes.TrimSpace(raw.Legacy), []byte("null")) {
+		return dnd5e.LegacyResult{}, false, nil
+	}
+	legacy, err := legacyProjection(payload)
+	return legacy, true, err
 }
 
 func (g *rulesGateway) legacyRollDice(call types.ToolCall, arguments map[string]any) types.ToolResult {
@@ -645,25 +1006,14 @@ func (g *rulesGateway) executeLegacyAction(call types.ToolCall, actionID string,
 	if call.ID == "" {
 		return errResult(call.ID, call.Name+" requires a host request ID")
 	}
-	return g.executeCached(call, func() types.ToolResult {
-		resolved, err := g.resolve(rules.Intent{
-			ID: intentID(call, actionID, payload), ActionID: actionID, Arguments: payload,
-		})
-		if err != nil {
-			return errResult(call.ID, err.Error())
-		}
-		if resolved.rejection != nil {
-			return errResult(call.ID, resolved.rejection.Message)
-		}
-		if err := g.commitLegacyResult(resolved.completion.Result); err != nil {
-			return errResult(call.ID, "commit rules result: "+err.Error())
-		}
-		var result legacyCompletion
-		if err := json.Unmarshal(resolved.completion.Result.Bytes(), &result); err != nil {
-			return errResult(call.ID, "decode rules result: "+err.Error())
-		}
-		return okResult(call.ID, result.Legacy.Content)
-	})
+	if !g.legacyDND5E {
+		return errResult(call.ID, "legacy D&D tool is unavailable for the loaded rules package")
+	}
+	release := g.session.State.LockRulesHost()
+	defer release()
+	resolutionID := intentID(call, actionID, payload)
+	intent := rules.Intent{ID: resolutionID, ActionID: actionID, Arguments: payload}
+	return g.driveIntent(call, &intent, resolutionID, true, false)
 }
 
 func intentID(call types.ToolCall, actionID string, payload rules.Payload) string {
@@ -675,12 +1025,20 @@ func intentID(call types.ToolCall, actionID string, payload rules.Payload) strin
 }
 
 type gameEnvelope struct {
-	Status       string     `json:"status"`
-	Ruleset      rules.Lock `json:"ruleset"`
-	Revision     uint64     `json:"revision"`
-	ResolutionID string     `json:"resolution_id,omitempty"`
-	Outcome      string     `json:"outcome,omitempty"`
-	Data         any        `json:"data,omitempty"`
+	Status       string                  `json:"status"`
+	Ruleset      rules.Lock              `json:"ruleset"`
+	Revision     uint64                  `json:"revision"`
+	ResolutionID string                  `json:"resolution_id,omitempty"`
+	Outcome      string                  `json:"outcome,omitempty"`
+	Data         any                     `json:"data,omitempty"`
+	Pending      []pendingResolutionView `json:"pending,omitempty"`
+}
+
+type pendingResolutionView struct {
+	ResolutionID string          `json:"resolution_id"`
+	Kind         rules.StepKind  `json:"kind"`
+	Revision     uint64          `json:"revision"`
+	Request      json.RawMessage `json:"request"`
 }
 
 func gameJSONResult(id string, envelope gameEnvelope) types.ToolResult {

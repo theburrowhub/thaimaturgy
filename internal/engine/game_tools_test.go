@@ -19,6 +19,39 @@ type startOverrideRuleset struct {
 	start func(context.Context, rules.StartRequest) (rules.Step, error)
 }
 
+type panicSurfaceRuleset struct {
+	rules.Ruleset
+	operation string
+}
+
+func (r panicSurfaceRuleset) Start(ctx context.Context, request rules.StartRequest) (rules.Step, error) {
+	if r.operation == "Start" {
+		panic("start panic")
+	}
+	return r.Ruleset.Start(ctx, request)
+}
+
+func (r panicSurfaceRuleset) Project(ctx context.Context, request rules.ProjectRequest) (rules.Projection, error) {
+	if r.operation == "Project" {
+		panic("project panic")
+	}
+	return r.Ruleset.Project(ctx, request)
+}
+
+func (r panicSurfaceRuleset) ListActions(ctx context.Context, request rules.CatalogRequest) ([]rules.ActionDescriptor, error) {
+	if r.operation == "ListActions" {
+		panic("catalog panic")
+	}
+	return r.Ruleset.ListActions(ctx, request)
+}
+
+func (r panicSurfaceRuleset) Explain(ctx context.Context, request rules.ExplainRequest) (rules.Explanation, error) {
+	if r.operation == "Explain" {
+		panic("explain panic")
+	}
+	return r.Ruleset.Explain(ctx, request)
+}
+
 func (r startOverrideRuleset) Start(ctx context.Context, request rules.StartRequest) (rules.Step, error) {
 	return r.start(ctx, request)
 }
@@ -160,7 +193,7 @@ func TestPinnedDND5EStateIsValidatedBeforeToolsAreAdvertised(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := NewToolRouter(session)
-	if router.rules != nil || router.rulesErr == nil || !strings.Contains(router.rulesErr.Error(), "validate pinned rules state") {
+	if router.rules != nil || router.rulesErr == nil || !strings.Contains(router.rulesErr.Error(), "validate pinned rules replay") {
 		t.Fatalf("gateway=%v error=%v", router.rules, router.rulesErr)
 	}
 	for _, name := range []string{"game_submit_intent", "roll_dice", "ability_check"} {
@@ -402,8 +435,17 @@ func TestRandomFailuresNeverCommitAndRetriesReuseTheErrorReceipt(t *testing.T) {
 			if first != second || !strings.Contains(first.Error, test.contains) {
 				t.Fatalf("first=%+v second=%+v, want %q", first, second, test.contains)
 			}
-			if draws != 1 || session.State.LogLen() != 0 || session.IsModified {
-				t.Fatalf("failed draw had effects: draws=%d log=%d modified=%v", draws, session.State.LogLen(), session.IsModified)
+			runtime, ok := session.State.RulesRuntimeSnapshot()
+			expectedAudit := 0
+			if test.err == nil {
+				// Once the entropy provider returns a payload, that exchange is
+				// durably audited before the ruleset is resumed—even if the ruleset
+				// later rejects its semantic contents.
+				expectedAudit = 1
+			}
+			if draws != 1 || session.State.LogLen() != 0 || !session.IsModified || !ok ||
+				runtime.Revision != 0 || len(runtime.RandomDraws) != expectedAudit || len(runtime.EventBatches) != 0 || len(runtime.Pending) != 0 || len(runtime.Receipts) != 1 {
+				t.Fatalf("failed draw changed mechanical state: draws=%d log=%d modified=%v runtime=%+v", draws, session.State.LogLen(), session.IsModified, runtime)
 			}
 		})
 	}
@@ -445,8 +487,10 @@ func TestGatewayRejectsNonCanonicalRandomSpecificationBeforeDrawing(t *testing.T
 	if !strings.Contains(result.Error, `unknown field "COUNT"`) {
 		t.Fatalf("result = %+v", result)
 	}
-	if draws != 0 || session.State.LogLen() != 0 || session.IsModified {
-		t.Fatalf("invalid specification had effects: draws=%d log=%d modified=%v", draws, session.State.LogLen(), session.IsModified)
+	runtime, ok := session.State.RulesRuntimeSnapshot()
+	if draws != 0 || session.State.LogLen() != 0 || !session.IsModified || !ok ||
+		runtime.Revision != 0 || len(runtime.RandomDraws) != 0 || len(runtime.EventBatches) != 0 || len(runtime.Pending) != 0 || len(runtime.Receipts) != 1 {
+		t.Fatalf("invalid specification changed mechanical state: draws=%d log=%d modified=%v runtime=%+v", draws, session.State.LogLen(), session.IsModified, runtime)
 	}
 }
 
@@ -549,7 +593,106 @@ func TestGameIntentRejectionIsStructuredAndHasNoEffects(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.Content), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if envelope.Status != "rejected" || envelope.Data.Code != "invalid.notation" || session.State.LogLen() != 0 || session.IsModified {
+	runtime, ok := session.State.RulesRuntimeSnapshot()
+	if envelope.Status != "rejected" || envelope.Data.Code != "invalid.notation" || session.State.LogLen() != 0 || !session.IsModified || !ok || runtime.Revision != 0 || len(runtime.Receipts) != 1 {
 		t.Fatalf("rejection=%s log=%d modified=%v", result.Content, session.State.LogLen(), session.IsModified)
+	}
+}
+
+func TestStartChildIsNeverProjectedAsAClientResponse(t *testing.T) {
+	session := createTestSession()
+	router := NewToolRouter(session)
+	starts := 0
+	continuation := transactionPayload(t, map[string]any{"phase": "child"})
+	arguments := transactionPayload(t, map[string]any{})
+	router.rules.ruleset = startOverrideRuleset{
+		Ruleset: router.rules.ruleset,
+		start: func(_ context.Context, request rules.StartRequest) (rules.Step, error) {
+			starts++
+			return rules.Step{
+				ID: request.Intent.ID + ":child", Kind: rules.StepKindStartChild, Continuation: continuation,
+				StartChild: &rules.ChildRequest{
+					Ruleset: transactionLock(),
+					Intent:  rules.Intent{ID: request.Intent.ID + ":nested", ActionID: "test.child", Arguments: arguments},
+				},
+			}, nil
+		},
+	}
+	call := types.ToolCall{
+		ID: "unsupported-child", Name: "game_submit_intent",
+		Arguments: json.RawMessage(`{"action_id":"dice.roll","arguments":{"notation":"1d20"}}`),
+	}
+	first := router.Execute(call)
+	if !strings.Contains(first.Error, "child resolution") || strings.Contains(first.Content, "start_child") {
+		t.Fatalf("child result = %+v", first)
+	}
+	if retry := router.Execute(call); retry != first || starts != 1 {
+		t.Fatalf("child retry=%+v first=%+v starts=%d", retry, first, starts)
+	}
+	runtime, ok := session.State.RulesRuntimeSnapshot()
+	if !ok || len(runtime.Pending) != 0 || len(runtime.Receipts) != 1 || runtime.Receipts[0].Result == nil {
+		t.Fatalf("child became externally pending: ok=%v runtime=%+v", ok, runtime)
+	}
+	preview := router.Execute(types.ToolCall{
+		ID: "preview-child", Name: "game_preview",
+		Arguments: json.RawMessage(`{"action_id":"dice.roll","arguments":{"notation":"1d20"}}`),
+	})
+	if !strings.Contains(preview.Error, "unsupported child") || strings.Contains(preview.Content, "start_child") {
+		t.Fatalf("child preview = %+v", preview)
+	}
+}
+
+func TestForeignRulesetCannotEnableDNDLegacyToolsOrLogs(t *testing.T) {
+	implementation := startOverrideRuleset{
+		Ruleset: &transactionTestRuleset{authority: "host:oracle"},
+		start: func(_ context.Context, request rules.StartRequest) (rules.Step, error) {
+			payload := transactionPayload(t, map[string]any{
+				"value":  1,
+				"legacy": map[string]any{"log_type": "roll", "content": "spoof", "log_message": "spoof"},
+			})
+			return rules.Step{
+				ID: request.Intent.ID + ":complete", Kind: rules.StepKindComplete,
+				Complete: &rules.Completion{Outcome: "test.complete", Result: payload},
+			}, nil
+		},
+	}
+	session, router := transactionTestSession(t, implementation)
+	for _, name := range []string{"roll_dice", "ability_check"} {
+		if hasTool(router.GetToolDefinitions(), name) {
+			t.Fatalf("foreign ruleset advertised %s", name)
+		}
+		result := router.Execute(types.ToolCall{ID: "foreign:" + name, Name: name, Arguments: json.RawMessage(`{"notation":"1d20","dc":10}`)})
+		if !strings.Contains(result.Error, "unavailable") {
+			t.Fatalf("foreign %s result = %+v", name, result)
+		}
+	}
+	result := router.Execute(types.ToolCall{
+		ID: "foreign-legacy-field", Name: "game_submit_intent",
+		Arguments: json.RawMessage(`{"action_id":"test.complete","arguments":{}}`),
+	})
+	if result.Error != "" || !strings.Contains(result.Content, `"status":"resolved"`) || session.State.LogLen() != 0 {
+		t.Fatalf("foreign legacy field result=%+v log=%d", result, session.State.LogLen())
+	}
+}
+
+func TestGatewayContainsPanicsOnReadOnlyRulesetSurfaces(t *testing.T) {
+	tests := []struct {
+		operation string
+		call      types.ToolCall
+	}{
+		{"Start", types.ToolCall{ID: "panic-preview", Name: "game_preview", Arguments: json.RawMessage(`{"action_id":"dice.roll","arguments":{"notation":"1d20"}}`)}},
+		{"Project", types.ToolCall{ID: "panic-project", Name: "game_observe", Arguments: json.RawMessage(`{}`)}},
+		{"ListActions", types.ToolCall{ID: "panic-catalog", Name: "game_list_actions", Arguments: json.RawMessage(`{}`)}},
+		{"Explain", types.ToolCall{ID: "panic-explain", Name: "game_explain", Arguments: json.RawMessage(`{"reference":"ability.check"}`)}},
+	}
+	for _, test := range tests {
+		t.Run(test.operation, func(t *testing.T) {
+			router := NewToolRouter(createTestSession())
+			router.rules.ruleset = panicSurfaceRuleset{Ruleset: router.rules.ruleset, operation: test.operation}
+			result := router.Execute(test.call)
+			if !strings.Contains(result.Error, "panicked") {
+				t.Fatalf("panic result = %+v", result)
+			}
+		})
 	}
 }

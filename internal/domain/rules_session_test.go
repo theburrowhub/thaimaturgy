@@ -51,8 +51,6 @@ func TestRulesSessionLegacyJSONAndRoundTrip(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("BindRules created=%v err=%v", created, err)
 	}
-	legacy.Rules.Revision = 7
-
 	raw, err = json.Marshal(legacy)
 	if err != nil {
 		t.Fatal(err)
@@ -65,8 +63,29 @@ func TestRulesSessionLegacyJSONAndRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("restored session has no valid rules snapshot")
 	}
-	if snapshot.Ruleset != lock || snapshot.Revision != 7 || snapshot.State.String() != state.String() {
+	if snapshot.Ruleset != lock || snapshot.Revision != 0 || snapshot.State.String() != state.String() {
 		t.Fatalf("restored snapshot = %+v state=%s", snapshot, snapshot.State.String())
+	}
+}
+
+func TestRulesSessionLegacyUnjournaledRevisionBecomesReplayRoot(t *testing.T) {
+	lock := rulesTestLock(rulesDigestA)
+	raw, err := json.Marshal(map[string]any{
+		"name": "legacy-rules",
+		"rules": map[string]any{
+			"lock": lock, "revision": 7, "state": map[string]any{"phase": "legacy"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored SessionState
+	if err := json.Unmarshal(raw, &restored); err != nil {
+		t.Fatal(err)
+	}
+	runtime, ok := restored.RulesRuntimeSnapshot()
+	if !ok || runtime.Revision != 0 || runtime.InitialState.String() != `{"phase":"legacy"}` || runtime.State.String() != runtime.InitialState.String() {
+		t.Fatalf("legacy replay root: ok=%v runtime=%+v", ok, runtime)
 	}
 }
 
@@ -77,8 +96,6 @@ func TestBindRulesIsIdempotentAndPreservesState(t *testing.T) {
 	if created, err := session.BindRules(lock, initial); err != nil || !created {
 		t.Fatalf("first bind created=%v err=%v", created, err)
 	}
-	session.Rules.Revision = 3
-
 	replacement := rulesTestPayload(t, `{"value":2}`)
 	if created, err := session.BindRules(lock, replacement); err != nil || created {
 		t.Fatalf("idempotent bind created=%v err=%v", created, err)
@@ -87,7 +104,7 @@ func TestBindRulesIsIdempotentAndPreservesState(t *testing.T) {
 	if !ok {
 		t.Fatal("missing snapshot")
 	}
-	if snapshot.Revision != 3 || snapshot.State.String() != initial.String() {
+	if snapshot.Revision != 0 || snapshot.State.String() != initial.String() {
 		t.Fatalf("idempotent bind replaced state: revision=%d state=%s", snapshot.Revision, snapshot.State.String())
 	}
 }
@@ -131,12 +148,12 @@ func TestImportStructuredCopiesOnlyCompatibleRulesBlock(t *testing.T) {
 	if _, err := src.BindRules(lock, rulesTestPayload(t, `{"source":true}`)); err != nil {
 		t.Fatal(err)
 	}
-	src.Rules.Revision = 4
-
 	dst := NewSessionState("dst", nil)
-	dst.ImportStructured(src)
+	if err := dst.ImportStructuredChecked(src); err != nil {
+		t.Fatal(err)
+	}
 	snapshot, ok := dst.RulesSnapshot()
-	if !ok || snapshot.Ruleset != lock || snapshot.Revision != 4 || snapshot.State.String() != `{"source":true}` {
+	if !ok || snapshot.Ruleset != lock || snapshot.Revision != 0 || snapshot.State.String() != `{"source":true}` {
 		t.Fatalf("imported snapshot: ok=%v snapshot=%+v", ok, snapshot)
 	}
 
@@ -145,51 +162,112 @@ func TestImportStructuredCopiesOnlyCompatibleRulesBlock(t *testing.T) {
 	if _, err := other.BindRules(otherLock, rulesTestPayload(t, `{"other":true}`)); err != nil {
 		t.Fatal(err)
 	}
-	dst.ImportStructured(other)
+	if err := dst.ImportStructuredChecked(other); !errors.Is(err, ErrRulesLockConflict) {
+		t.Fatalf("different-lock import error = %v", err)
+	}
 	snapshot, ok = dst.RulesSnapshot()
 	if !ok || snapshot.Ruleset != lock || snapshot.State.String() != `{"source":true}` {
 		t.Fatalf("import silently changed lock: ok=%v snapshot=%+v", ok, snapshot)
 	}
 }
 
-func TestImportStructuredDoesNotRollBackRulesRevisionOrRewriteEqualRevision(t *testing.T) {
+func TestImportStructuredDoesNotRollBackOrRewriteEqualRulesGeneration(t *testing.T) {
 	lock := rulesTestLock(rulesDigestA)
+	initial := rulesTestPayload(t, `{"value":"initial"}`)
 	dst := NewSessionState("dst", nil)
-	if _, err := dst.BindRules(lock, rulesTestPayload(t, `{"value":"current"}`)); err != nil {
+	if _, err := dst.BindRules(lock, initial); err != nil {
 		t.Fatal(err)
 	}
-	dst.Rules.Revision = 4
+	handle := beginRuntimeRequest(t, dst, "current")
+	if _, err := dst.CommitRulesRequest(handle, RulesCommit{
+		State: handle.Snapshot.State, ResolutionID: "current", Result: runtimeResult("current"),
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, test := range []struct {
-		name     string
-		revision uint64
-		state    string
+		name       string
+		equalEpoch bool
 	}{
-		{"older", 3, `{"value":"old"}`},
-		{"same revision different state", 4, `{"value":"fork"}`},
+		{"older", false},
+		{"same generation different receipt", true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			src := NewSessionState("src", nil)
-			if _, err := src.BindRules(lock, rulesTestPayload(t, test.state)); err != nil {
+			if _, err := src.BindRules(lock, initial); err != nil {
 				t.Fatal(err)
 			}
-			src.Rules.Revision = test.revision
-			dst.ImportStructured(src)
-			snapshot, ok := dst.RulesSnapshot()
-			if !ok || snapshot.Revision != 4 || snapshot.State.String() != `{"value":"current"}` {
-				t.Fatalf("rules snapshot rolled back: ok=%v snapshot=%+v", ok, snapshot)
+			if test.equalEpoch {
+				dst.CurrentZone = "current-zone"
+				src.CurrentZone = "fork-zone"
+				handle := beginRuntimeRequest(t, src, "fork")
+				if _, err := src.CommitRulesRequest(handle, RulesCommit{
+					State: handle.Snapshot.State, ResolutionID: "fork", Result: runtimeResult("fork"),
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := dst.ImportStructuredChecked(src)
+			if test.equalEpoch && !errors.Is(err, ErrRulesImportConflict) {
+				t.Fatalf("equal-generation fork error = %v", err)
+			}
+			if !test.equalEpoch && err != nil {
+				t.Fatalf("stale import error = %v", err)
+			}
+			runtime, ok := dst.RulesRuntimeSnapshot()
+			if !ok || runtime.Generation != 1 || len(runtime.Receipts) != 1 || runtime.Receipts[0].RequestID != "current" {
+				t.Fatalf("rules runtime rolled back/forked: ok=%v runtime=%+v", ok, runtime)
+			}
+			if test.equalEpoch && dst.CurrentZone != "current-zone" {
+				t.Fatalf("fork partially imported ordinary state: zone=%q", dst.CurrentZone)
 			}
 		})
 	}
 
 	newer := NewSessionState("newer", nil)
-	if _, err := newer.BindRules(lock, rulesTestPayload(t, `{"value":"new"}`)); err != nil {
+	if _, err := newer.BindRules(lock, initial); err != nil {
 		t.Fatal(err)
 	}
-	newer.Rules.Revision = 5
-	dst.ImportStructured(newer)
-	snapshot, ok := dst.RulesSnapshot()
-	if !ok || snapshot.Revision != 5 || snapshot.State.String() != `{"value":"new"}` {
-		t.Fatalf("newer rules snapshot was not imported: ok=%v snapshot=%+v", ok, snapshot)
+	for _, id := range []string{"newer-1", "newer-2"} {
+		handle := beginRuntimeRequest(t, newer, id)
+		if _, err := newer.CommitRulesRequest(handle, RulesCommit{
+			State: handle.Snapshot.State, ResolutionID: id, Result: runtimeResult(id),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := dst.ImportStructuredChecked(newer); err != nil {
+		t.Fatal(err)
+	}
+	runtime, ok := dst.RulesRuntimeSnapshot()
+	if !ok || runtime.Generation != 2 || len(runtime.Receipts) != 2 || runtime.Receipts[1].RequestID != "newer-2" {
+		t.Fatalf("newer rules runtime was not imported: ok=%v runtime=%+v", ok, runtime)
+	}
+}
+
+func TestImportStructuredRejectsInvalidRulesWithoutPartialMutation(t *testing.T) {
+	lock := rulesTestLock(rulesDigestA)
+	initial := rulesTestPayload(t, `{"value":"initial"}`)
+	dst := NewSessionState("dst", nil)
+	if _, err := dst.BindRules(lock, initial); err != nil {
+		t.Fatal(err)
+	}
+	dst.CurrentZone = "current-zone"
+
+	src := NewSessionState("src", nil)
+	if _, err := src.BindRules(lock, initial); err != nil {
+		t.Fatal(err)
+	}
+	src.CurrentZone = "source-zone"
+	src.Rules.InitialState = rules.Payload{}
+	if err := dst.ImportStructuredChecked(src); err == nil {
+		t.Fatal("invalid source rules runtime was accepted")
+	}
+	if dst.CurrentZone != "current-zone" {
+		t.Fatalf("invalid import partially changed ordinary state: zone=%q", dst.CurrentZone)
+	}
+	runtime, ok := dst.RulesRuntimeSnapshot()
+	if !ok || runtime.InitialState.String() != initial.String() || runtime.State.String() != initial.String() {
+		t.Fatalf("invalid import changed rules runtime: ok=%v runtime=%+v", ok, runtime)
 	}
 }
