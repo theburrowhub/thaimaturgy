@@ -87,6 +87,24 @@ func TestStartTelegramHostSingleHost(t *testing.T) {
 	osA.opMu.Unlock()
 }
 
+// TestStartTelegramHostRequiresVirtualDM: hosting is refused (before any bot is
+// built) unless the session is in virtual-DM mode.
+func TestStartTelegramHostRequiresVirtualDM(t *testing.T) {
+	svc, _ := newService(t)
+	cfg := svc.Config()
+	cfg.TelegramToken = "dummy:token"
+	if err := svc.SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	name, err := svc.NewSession("crypt") // fresh session defaults to oracle mode
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	if _, err := svc.StartTelegramHost(name); !errors.Is(err, ErrNotVirtualDM) {
+		t.Fatalf("start in non-DM mode = %v; want ErrNotVirtualDM", err)
+	}
+}
+
 // TestHostedSessionRejectsTurns: while a session is hosted, the server's turn
 // drivers (ExecuteCommand, AskOracle) and mutating helpers (SetParty via
 // withOpenSession) reject other clients with ErrSessionHosted, so the bot is the

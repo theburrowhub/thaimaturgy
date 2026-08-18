@@ -467,6 +467,17 @@ func (s *Service) RenameSession(oldName, newName string) error {
 		u2 := s.lockName(second)
 		defer u2()
 	}
+	// A hosted session is always open, so the open-check below already refuses to
+	// rename it; but the Telegram host is keyed by the (mutable) session name, so
+	// make the invariant explicit here — renaming out from under a live host would
+	// orphan its receive loop and leave hostName dangling. Lock order: lockName →
+	// hostMu (consistent with CloseSession).
+	s.hostMu.Lock()
+	hosted := s.hostName == oldName
+	s.hostMu.Unlock()
+	if hosted {
+		return fmt.Errorf("stop hosting %q on Telegram before renaming it", oldName)
+	}
 	if _, ok := s.Get(oldName); ok {
 		return fmt.Errorf("close session %q before renaming it", oldName)
 	}

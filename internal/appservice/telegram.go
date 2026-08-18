@@ -60,14 +60,18 @@ func (s *Service) StartTelegramHost(name string) (string, error) {
 	// fine: it blocks only other host start/stop, never oracle/command turns.
 	s.hostMu.Lock()
 	defer s.hostMu.Unlock()
-	if s.hostName == name && os.hosting() {
-		return os.hostUsername(), nil // idempotent: already hosting this session
+	if s.hostName == name {
+		if h, u := os.hostSnapshot(); h {
+			return u, nil // idempotent: already hosting this session
+		}
 	}
 	if s.hostName != "" {
 		return "", fmt.Errorf("%w: session %q holds the bot", ErrAlreadyHosting, s.hostName)
 	}
 
-	// Validate mode and ensure a party under opMu before we build anything.
+	// Cheap early-out (no mutation) so a wrong-mode/closed session doesn't cost a
+	// Telegram network round-trip. The authoritative check is repeated below,
+	// under the final opMu, right before the bot is installed.
 	os.opMu.Lock()
 	if os.closed {
 		os.opMu.Unlock()
@@ -77,7 +81,6 @@ func (s *Service) StartTelegramHost(name string) (string, error) {
 		os.opMu.Unlock()
 		return "", ErrNotVirtualDM
 	}
-	os.Session.State.EnsureParty()
 	os.opMu.Unlock()
 
 	// Build the bot OUTSIDE opMu: tgbot.New performs a network round-trip (getMe)
@@ -92,12 +95,24 @@ func (s *Service) StartTelegramHost(name string) (string, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	// Re-validate EVERYTHING under the final opMu before installing the bot: a
+	// concurrent turn during the network round-trip above could have closed the
+	// session or switched it out of virtual-DM mode (os.tg was still nil then, so
+	// nothing blocked it). Checking here, in the same critical section as the
+	// assignment, closes that window — no /mode can interleave between the check
+	// and os.tg being set.
 	os.opMu.Lock()
-	if os.closed { // closed while we were building the bot
+	if os.closed {
 		os.opMu.Unlock()
 		cancel()
 		return "", fmt.Errorf("session %q is not open", name)
 	}
+	if os.Session.State.EffectiveMode() != domain.ModeVirtualDM {
+		os.opMu.Unlock()
+		cancel()
+		return "", ErrNotVirtualDM
+	}
+	os.Session.State.EnsureParty()
 	os.tg = bot
 	os.tgCancel = cancel
 	os.opMu.Unlock()
@@ -161,25 +176,18 @@ func (s *Service) TelegramHostStatus(name string) TelegramStatus {
 	if !ok {
 		return TelegramStatus{}
 	}
-	if !os.hosting() {
-		return TelegramStatus{}
-	}
-	return TelegramStatus{Hosting: true, Username: os.hostUsername()}
+	hosting, username := os.hostSnapshot()
+	return TelegramStatus{Hosting: hosting, Username: username}
 }
 
-// hosting reports whether this session currently has a Telegram host bound.
-func (o *OpenSession) hosting() bool {
-	o.opMu.Lock()
-	defer o.opMu.Unlock()
-	return o.tg != nil
-}
-
-// hostUsername returns the hosting bot's @username, or "" if not hosting.
-func (o *OpenSession) hostUsername() string {
+// hostSnapshot returns a consistent (hosting, @username) pair read in a SINGLE
+// opMu critical section, so a concurrent StopTelegramHost clearing os.tg can't
+// yield a torn {hosting:true, username:""} snapshot.
+func (o *OpenSession) hostSnapshot() (bool, string) {
 	o.opMu.Lock()
 	defer o.opMu.Unlock()
 	if o.tg == nil {
-		return ""
+		return false, ""
 	}
-	return o.tg.Username()
+	return true, o.tg.Username()
 }
