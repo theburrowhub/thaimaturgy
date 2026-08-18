@@ -42,11 +42,13 @@ YELLOW := \033[33m
 RED := \033[31m
 RESET := \033[0m
 
-.PHONY: all build build-bot build-server build-rules run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall example-module modules
+.PHONY: all build build-bot build-server build-rules run clean test test-verbose test-coverage lint fmt vet tidy deps help install uninstall example-module modules example-rules
 
 # Adventure modules
 EXAMPLES_DIR := examples/adventures
 DIST_DIR := dist/modules
+RULES_EXAMPLES_DIR := examples/rules
+RULES_DIST_DIR := dist/rules
 
 ##@ General
 
@@ -225,6 +227,13 @@ modules: ## Package every example adventure into dist/modules
 		tar -czf $(DIST_DIR)/$$name.tar.gz -C $$d .; \
 		echo "$(GREEN)Built: $(DIST_DIR)/$$name.tar.gz$(RESET)"; \
 	done
+
+##@ Rules Packages
+
+example-rules: build-rules ## Pack the simple-d6 Starlark example into dist/rules
+	@mkdir -p $(RULES_DIST_DIR)
+	./$(BINARY_DIR)/$(RULES_BINARY_NAME) pack $(RULES_EXAMPLES_DIR)/simple-d6 $(RULES_DIST_DIR)/simple-d6.rules.zip
+	@echo "$(GREEN)Built: $(RULES_DIST_DIR)/simple-d6.rules.zip$(RESET)"
 
 ##@ Info
 

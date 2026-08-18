@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/theburrowhub/thaimaturgy/internal/rules/bundlepack"
 	"github.com/theburrowhub/thaimaturgy/internal/rules/bundlestore"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
@@ -22,7 +23,7 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	dataDirectory := flags.String("data-dir", strings.TrimSpace(os.Getenv("THAIM_DATA_DIR")), "thAImaturgy data directory")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: thaimaturgy-rules [--data-dir PATH] <install FILE|list|path>")
+		fmt.Fprintln(stderr, "Usage: thaimaturgy-rules [--data-dir PATH] <pack SOURCE_DIR OUTPUT.rules.zip|install FILE|list|path>")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(arguments); err != nil {
@@ -32,6 +33,20 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 	if len(commandArguments) == 0 {
 		flags.Usage()
 		return 2
+	}
+	if commandArguments[0] == "pack" {
+		if len(commandArguments) != 3 {
+			fmt.Fprintln(stderr, "pack requires a source directory and one .rules.zip output path")
+			return 2
+		}
+		packed, err := bundlepack.Pack(context.Background(), commandArguments[1], commandArguments[2], nil)
+		if err != nil {
+			fmt.Fprintln(stderr, "pack:", err)
+			return 1
+		}
+		lock := packed.Loaded.Artifact.Lock()
+		fmt.Fprintf(stdout, "packed %s@%s\n  digest: %s\n  path: %s\n", lock.ID, lock.Version, lock.Digest, packed.Path)
+		return 0
 	}
 
 	var applicationStore *storage.Storage

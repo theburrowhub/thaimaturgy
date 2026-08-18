@@ -39,6 +39,27 @@ El loader conserva programas compilados y módulos congelados en una caché
 FIFO, indexada por ese digest exacto. Volver a cargar los mismos bytes reutiliza
 el mismo ruleset inmutable.
 
+## Flujo de autoría
+
+El repositorio incluye un empaquetador reproducible que aplica los mismos
+límites y reglas de rutas que el loader:
+
+```bash
+make build-rules
+./bin/thaimaturgy-rules pack ./mi-paquete ./mi-paquete.rules.zip
+./bin/thaimaturgy-rules install ./mi-paquete.rules.zip
+```
+
+El directorio fuente debe contener `ruleset.json`, el entrypoint y cualquier
+módulo o recurso adicional. No puede contener symlinks, dispositivos ni rutas
+no portables, y la salida debe quedar fuera del árbol fuente. El ZIP se valida
+y ejecuta desde un archivo temporal; una salida inválida nunca se publica.
+Archivos fuente idénticos producen bytes y digest idénticos.
+
+`examples/rules/simple-d6` muestra las diez funciones del contrato y un flujo
+con estado: pide `dice.roll`, emite un evento, lo reduce de forma reproducible y
+termina después de que el host confirma la revisión persistida.
+
 ## Manifiesto
 
 Ejemplo de `ruleset.json`:

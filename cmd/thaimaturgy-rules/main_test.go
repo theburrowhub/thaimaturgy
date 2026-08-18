@@ -4,9 +4,19 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func exampleRulesSource(t *testing.T) string {
+	t.Helper()
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate command test")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(currentFile), "../../examples/rules/simple-d6"))
+}
 
 func TestPathAndUsageCommands(t *testing.T) {
 	data := t.TempDir()
@@ -45,5 +55,44 @@ func TestInstallRejectsInvalidBundleAndListReportsCleanStore(t *testing.T) {
 	diagnostics.Reset()
 	if code := run([]string{"--data-dir", data, "list"}, &output, &diagnostics); code != 0 || output.Len() != 0 || diagnostics.Len() != 0 {
 		t.Fatalf("list exit=%d stdout=%s stderr=%s", code, output.String(), diagnostics.String())
+	}
+}
+
+func TestPackProducesAnInstallableBundle(t *testing.T) {
+	bundle := filepath.Join(t.TempDir(), "simple-d6.rules.zip")
+	var output, diagnostics bytes.Buffer
+	if code := run([]string{"pack", exampleRulesSource(t), bundle}, &output, &diagnostics); code != 0 {
+		t.Fatalf("pack exit=%d stderr=%s", code, diagnostics.String())
+	}
+	if !strings.Contains(output.String(), "packed simple-d6@0.1.0") ||
+		!strings.Contains(output.String(), "digest: sha256:") ||
+		!strings.Contains(output.String(), bundle) || diagnostics.Len() != 0 {
+		t.Fatalf("pack stdout=%s stderr=%s", output.String(), diagnostics.String())
+	}
+	if info, err := os.Stat(bundle); err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("packed bundle: %v", err)
+	}
+
+	// Packing the same source to the same path is an idempotent author workflow.
+	output.Reset()
+	if code := run([]string{"pack", exampleRulesSource(t), bundle}, &output, &diagnostics); code != 0 {
+		t.Fatalf("repeated pack exit=%d stderr=%s", code, diagnostics.String())
+	}
+
+	data := t.TempDir()
+	output.Reset()
+	if code := run([]string{"--data-dir", data, "install", bundle}, &output, &diagnostics); code != 0 {
+		t.Fatalf("install packed bundle exit=%d stderr=%s", code, diagnostics.String())
+	}
+	if !strings.Contains(output.String(), "installed simple-d6@0.1.0") {
+		t.Fatalf("install stdout=%s", output.String())
+	}
+}
+
+func TestPackUsageRequiresExactlyTwoPaths(t *testing.T) {
+	var output, diagnostics bytes.Buffer
+	if code := run([]string{"pack", "source-only"}, &output, &diagnostics); code != 2 ||
+		!strings.Contains(diagnostics.String(), "source directory") {
+		t.Fatalf("pack exit=%d stderr=%s", code, diagnostics.String())
 	}
 }

@@ -294,6 +294,12 @@ func validateBundlePath(name string) error {
 	return nil
 }
 
+// ValidateBundlePath checks the portable, package-relative path syntax used by
+// ZIP entries and Starlark imports. Rules bundle authoring tools should call it
+// before opening source-tree entries so that they cannot create an archive the
+// loader would interpret differently.
+func ValidateBundlePath(name string) error { return validateBundlePath(name) }
+
 func isPortablePathCharacter(character byte) bool {
 	return character >= 'a' && character <= 'z' ||
 		character >= 'A' && character <= 'Z' ||

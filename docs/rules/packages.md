@@ -65,14 +65,24 @@ never guessed and an invalid explicit requirement never falls back to the label.
 
 External packages are immutable `.rules.zip` files executed by the constrained
 Starlark runtime described in [starlark-bundles.md](starlark-bundles.md). Build
-the manager and install a bundle explicitly:
+the manager, pack a source directory, and install the validated bundle
+explicitly:
 
 ```bash
 make build-rules
+./bin/thaimaturgy-rules pack ./my-system ./my-system.rules.zip
 ./bin/thaimaturgy-rules path
 ./bin/thaimaturgy-rules install ./my-system.rules.zip
 ./bin/thaimaturgy-rules list
 ```
+
+`pack` refuses symlinks, non-regular files, non-portable paths, output inside
+the source tree, and inputs beyond the runtime limits. It normalizes ZIP order,
+timestamps, modes, and compression, executes the completed bundle through the
+production loader, validates its initial state, and only then publishes it
+atomically. Repacking unchanged bytes is idempotent; an existing different
+output is preserved and reported as a conflict. Run `make example-rules` for a
+complete source package at `examples/rules/simple-d6`.
 
 Use `--data-dir PATH` to target a non-default thAImaturgy data directory. The
 manager computes SHA-256 over the exact ZIP bytes and stores the verified bundle
