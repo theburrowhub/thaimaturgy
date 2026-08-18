@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -18,9 +19,10 @@ const defaultMaxToolIterations = 6
 // Oracle drives the DM's dialogue with the LLM, grounding every reply in the
 // loaded adventure module and the running session state.
 type Oracle struct {
-	session    *domain.Session
-	provider   providers.Provider
-	toolRouter *ToolRouter
+	session     *domain.Session
+	provider    providers.Provider
+	toolRouter  *ToolRouter
+	askSequence atomic.Uint64
 }
 
 // NewOracle builds an oracle for a session and provider.
@@ -57,6 +59,7 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 	if cli, ok := o.provider.(*providers.ClaudeCLIProvider); ok {
 		return o.askViaCLI(ctx, cli, input)
 	}
+	askID := o.askSequence.Add(1)
 
 	o.session.State.AddUserMessage(input)
 
@@ -100,8 +103,14 @@ func (o *Oracle) Ask(ctx context.Context, input string) *Response {
 			ToolCalls: chat.ToolCalls,
 		})
 
-		for _, tc := range chat.ToolCalls {
-			result := o.toolRouter.Execute(providers.ConvertToolCallToTypesFormat(tc))
+		for callIndex, tc := range chat.ToolCalls {
+			call := providers.ConvertToolCallToTypesFormat(tc)
+			// Provider IDs correlate the tool response inside that provider's
+			// protocol, but they are not guaranteed unique across turns (Gemini's
+			// adapter synthesizes name/index IDs). The host owns the idempotency key,
+			// so namespace it by this Ask and loop position before execution.
+			call.ID = fmt.Sprintf("oracle:%d:%d:%d", askID, iteration, callIndex)
+			result := o.toolRouter.Execute(call)
 			content := result.Content
 			if result.Error != "" {
 				content = "Error: " + result.Error

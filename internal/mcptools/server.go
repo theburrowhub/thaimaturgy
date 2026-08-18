@@ -7,6 +7,8 @@ package mcptools
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 
@@ -86,12 +88,37 @@ func Serve(in io.Reader, out io.Writer, tp ToolProvider, after func()) error {
 			}
 			send(req.ID, map[string]any{"tools": tools})
 		case "tools/call":
+			callID := mcpToolCallID(req.ID)
+			if callID == "" {
+				// JSON-RPC notifications have no response channel and a null ID is
+				// not a usable idempotency key. Never execute a potentially mutating
+				// tool in either case.
+				if len(bytes.TrimSpace(req.ID)) != 0 {
+					send(req.ID, map[string]any{
+						"content": []any{map[string]any{
+							"type": "text", "text": "tools/call requires a non-null request id",
+						}},
+						"isError": true,
+					})
+				}
+				continue
+			}
 			var p struct {
 				Name      string          `json:"name"`
 				Arguments json.RawMessage `json:"arguments"`
 			}
-			_ = json.Unmarshal(req.Params, &p)
-			res := tp.Execute(types.ToolCall{Name: p.Name, Arguments: p.Arguments})
+			if err := json.Unmarshal(req.Params, &p); err != nil || p.Name == "" {
+				message := "tools/call requires a tool name"
+				if err != nil {
+					message = "invalid tools/call params: " + err.Error()
+				}
+				send(req.ID, map[string]any{
+					"content": []any{map[string]any{"type": "text", "text": message}},
+					"isError": true,
+				})
+				continue
+			}
+			res := tp.Execute(types.ToolCall{ID: callID, Name: p.Name, Arguments: p.Arguments})
 			text := res.Content
 			isErr := res.Error != ""
 			if isErr {
@@ -111,4 +138,17 @@ func Serve(in io.Reader, out io.Writer, tp ToolProvider, after func()) error {
 		}
 	}
 	return sc.Err()
+}
+
+// mcpToolCallID maps the JSON-RPC request ID to the bounded opaque ID expected
+// by the rules host. Hashing accepts both string and numeric JSON-RPC IDs without
+// trusting their text as a protocol identifier. A retry with the same request ID
+// produces the same tool-call ID and can therefore reuse an idempotency receipt.
+func mcpToolCallID(requestID json.RawMessage) string {
+	requestID = bytes.TrimSpace(requestID)
+	if len(requestID) == 0 || bytes.Equal(requestID, []byte("null")) {
+		return ""
+	}
+	digest := sha256.Sum256(requestID)
+	return "mcp:" + hex.EncodeToString(digest[:12])
 }

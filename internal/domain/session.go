@@ -2,11 +2,14 @@ package domain
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 )
 
 const (
@@ -205,6 +208,32 @@ type QuestProgress struct {
 	Notes  string `json:"notes,omitempty"`
 }
 
+// ErrRulesLockConflict means a session is already pinned to a different exact
+// rules artifact. Changing that lock requires an explicit migration rather than
+// rebinding the session in place.
+var ErrRulesLockConflict = errors.New("domain: rules lock conflict")
+
+// RulesSession is the minimal persisted rules state for a running session. Lock
+// pins one exact artifact; Revision is owned by the future rules host; State is
+// opaque to the domain and interpreted only by that artifact.
+type RulesSession struct {
+	Lock     rules.Lock    `json:"lock"`
+	Revision uint64        `json:"revision"`
+	State    rules.Payload `json:"state"`
+}
+
+// Validate checks that the persisted rules state is complete and structurally
+// valid without assigning any system-specific meaning to State.
+func (r RulesSession) Validate() error {
+	if err := r.Lock.Validate(); err != nil {
+		return fmt.Errorf("rules session lock: %w", err)
+	}
+	if err := r.State.Validate(); err != nil {
+		return fmt.Errorf("rules session state: %w", err)
+	}
+	return nil
+}
+
 // SessionState is the persisted, mutable record of a running play session of an
 // adventure. It references the adventure module by ID (the immutable content
 // lives in the Adventure struct, reloaded from disk).
@@ -212,6 +241,10 @@ type SessionState struct {
 	Name           string `json:"name"`
 	AdventureID    string `json:"adventure_id"`
 	AdventureTitle string `json:"adventure_title"`
+
+	// Rules is absent on legacy sessions. Once present, its exact lock may only be
+	// changed by an explicit migration; BindRules never upgrades it silently.
+	Rules *RulesSession `json:"rules,omitempty"`
 
 	// Structured progress fed by the DM.
 	CurrentZone     string                `json:"current_zone,omitempty"`
@@ -310,6 +343,11 @@ func (s *SessionState) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	s.ensureInitialized()
+	if s.Rules != nil {
+		if err := s.Rules.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -608,6 +646,13 @@ func (s *SessionState) LogLen() int {
 // lock. Used by the Claude-CLI merge path, where a subprocess mutated a copy of
 // the state; the timeline is replayed separately via AppendLog.
 func (s *SessionState) ImportStructured(src *SessionState) {
+	var importedRules *RulesSession
+	if snapshot, ok := src.RulesSnapshot(); ok {
+		importedRules = &RulesSession{
+			Lock: snapshot.Ruleset, Revision: snapshot.Revision, State: snapshot.State,
+		}
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.CurrentZone = src.CurrentZone
@@ -628,6 +673,64 @@ func (s *SessionState) ImportStructured(src *SessionState) {
 	s.Quests = src.Quests
 	s.Characters = src.Characters
 	s.PC = src.PC
+	// The CLI/MCP subprocess starts from a copy of this session, so normally these
+	// locks are identical. Preserve an existing different lock rather than turning
+	// this merge helper into an implicit ruleset-upgrade path.
+	if importedRules != nil && (s.Rules == nil || s.Rules.Lock == importedRules.Lock) {
+		if s.Rules == nil || importedRules.Revision > s.Rules.Revision ||
+			(importedRules.Revision == s.Rules.Revision && importedRules.State.String() == s.Rules.State.String()) {
+			cp := *importedRules
+			s.Rules = &cp
+		}
+	}
+}
+
+// BindRules pins the session to lock and seeds its opaque state. It returns true
+// only when a new binding was created. Repeating the exact lock is an idempotent
+// no-op that preserves the current state and revision; another lock is rejected.
+func (s *SessionState) BindRules(lock rules.Lock, state rules.Payload) (bool, error) {
+	candidate := RulesSession{Lock: lock, State: state}
+	if err := candidate.Validate(); err != nil {
+		return false, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Rules == nil {
+		s.Rules = &candidate
+		s.touch()
+		return true, nil
+	}
+	if err := s.Rules.Validate(); err != nil {
+		return false, err
+	}
+	if s.Rules.Lock != lock {
+		return false, fmt.Errorf("%w: session has %s@%s (%s), requested %s@%s (%s)",
+			ErrRulesLockConflict,
+			s.Rules.Lock.ID, s.Rules.Lock.Version, s.Rules.Lock.Digest,
+			lock.ID, lock.Version, lock.Digest)
+	}
+	return false, nil
+}
+
+// RulesSnapshot returns an immutable value snapshot of the currently pinned
+// rules state. The boolean is false for legacy sessions and invalid in-memory
+// values; loaded and BindRules-created sessions maintain this invariant.
+func (s *SessionState) RulesSnapshot() (rules.Snapshot, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Rules == nil {
+		return rules.Snapshot{}, false
+	}
+	snapshot := rules.Snapshot{
+		Ruleset:  s.Rules.Lock,
+		Revision: s.Rules.Revision,
+		State:    s.Rules.State,
+	}
+	if err := snapshot.Validate(); err != nil {
+		return rules.Snapshot{}, false
+	}
+	return snapshot, true
 }
 
 // TriggerEvent records that a scripted event has fired.

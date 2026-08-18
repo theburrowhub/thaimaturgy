@@ -377,24 +377,37 @@ var playerCharacterTools = []types.Tool{
 
 // ToolRouter executes oracle tool calls against a running session.
 type ToolRouter struct {
-	session *domain.Session
+	session  *domain.Session
+	rules    *rulesGateway
+	rulesErr error
 }
 
 // NewToolRouter binds a router to a session.
 func NewToolRouter(session *domain.Session) *ToolRouter {
-	return &ToolRouter{session: session}
+	gateway, err := newRulesGateway(session)
+	return &ToolRouter{session: session, rules: gateway, rulesErr: err}
 }
 
 // GetToolDefinitions returns the tool schema sent to the LLM. In virtual-DM mode
 // it also exposes the player-character mutation tools.
 func (tr *ToolRouter) GetToolDefinitions() []types.Tool {
-	if tr.session.State.EffectiveMode() == domain.ModeVirtualDM {
-		tools := make([]types.Tool, 0, len(AvailableTools)+len(playerCharacterTools))
-		tools = append(tools, AvailableTools...)
-		tools = append(tools, playerCharacterTools...)
-		return tools
+	tools := cloneToolDefinitions(AvailableTools)
+	if tr.rules == nil {
+		filtered := tools[:0]
+		for _, definition := range tools {
+			if definition.Name != "roll_dice" && definition.Name != "ability_check" {
+				filtered = append(filtered, definition)
+			}
+		}
+		tools = filtered
 	}
-	return AvailableTools
+	if tr.session.State.EffectiveMode() == domain.ModeVirtualDM {
+		tools = append(tools, cloneToolDefinitions(playerCharacterTools)...)
+	}
+	if tr.rules != nil {
+		tools = append(tools, tr.rules.toolDefinitions()...)
+	}
+	return tools
 }
 
 func (tr *ToolRouter) adv() *domain.Adventure      { return tr.session.Adventure }
@@ -402,6 +415,13 @@ func (tr *ToolRouter) state() *domain.SessionState { return tr.session.State }
 
 // Execute dispatches a tool call and returns its result.
 func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
+	if strings.HasPrefix(call.Name, "game_") {
+		if tr.rules == nil {
+			return tr.rulesUnavailable(call.ID)
+		}
+		return tr.rules.execute(call)
+	}
+
 	var args map[string]any
 	if len(call.Arguments) > 0 {
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
@@ -465,9 +485,9 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 	case "update_party_member":
 		return tr.updatePartyMember(call.ID, args)
 	case "roll_dice":
-		return tr.rollDice(call.ID, args)
+		return tr.rollDice(call, args)
 	case "ability_check":
-		return tr.abilityCheck(call.ID, args)
+		return tr.abilityCheck(call, args)
 	case "update_hp":
 		return tr.updateHP(call.ID, args)
 	case "add_item":
@@ -1227,57 +1247,25 @@ func (tr *ToolRouter) awardXP(id string, args map[string]any) types.ToolResult {
 
 // --- Dice ----------------------------------------------------------------
 
-func (tr *ToolRouter) rollDice(id string, args map[string]any) types.ToolResult {
-	notation, ok := args["notation"].(string)
-	if !ok {
-		return errResult(id, "missing 'notation'")
+func (tr *ToolRouter) rollDice(call types.ToolCall, args map[string]any) types.ToolResult {
+	if tr.rules == nil {
+		return tr.rulesUnavailable(call.ID)
 	}
-	reason, _ := args["reason"].(string)
-	roll, err := RollDice(notation)
-	if err != nil {
-		return errResult(id, err.Error())
-	}
-	msg := fmt.Sprintf("Rolled %s: %s", roll.String(), roll.ResultString())
-	if roll.IsCriticalHit() {
-		msg += " [CRIT!]"
-	} else if roll.IsCriticalFail() {
-		msg += " [FUMBLE!]"
-	}
-	logMsg := msg
-	if reason != "" {
-		logMsg = reason + " — " + msg
-	}
-	tr.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: logMsg})
-	tr.session.MarkModified()
-	return okResult(id, msg)
+	return tr.rules.legacyRollDice(call, args)
 }
 
-func (tr *ToolRouter) abilityCheck(id string, args map[string]any) types.ToolResult {
-	mod, _ := intArg(args, "modifier")
-	dc, ok := intArg(args, "dc")
-	if !ok {
-		return errResult(id, "missing 'dc'")
+func (tr *ToolRouter) abilityCheck(call types.ToolCall, args map[string]any) types.ToolResult {
+	if tr.rules == nil {
+		return tr.rulesUnavailable(call.ID)
 	}
-	label, _ := args["label"].(string)
-	roll := RollD20WithMod(mod)
-	success := roll.Total >= dc
-	res := "FAILURE"
-	if success {
-		res = "SUCCESS"
+	return tr.rules.legacyAbilityCheck(call, args)
+}
+
+func (tr *ToolRouter) rulesUnavailable(id string) types.ToolResult {
+	if tr.rulesErr != nil {
+		return errResult(id, "rules gateway unavailable: "+tr.rulesErr.Error())
 	}
-	crit := ""
-	if roll.IsCriticalHit() {
-		crit = " [NAT 20]"
-	} else if roll.IsCriticalFail() {
-		crit = " [NAT 1]"
-	}
-	msg := fmt.Sprintf("Check (DC %d): d20(%d)%+d = %d [%s]%s", dc, roll.Rolls[0], mod, roll.Total, res, crit)
-	if label != "" {
-		msg = label + " — " + msg
-	}
-	tr.state().AppendLog(domain.LogEntry{Type: domain.LogRoll, Message: msg})
-	tr.session.MarkModified()
-	return okResult(id, msg)
+	return errResult(id, "no rules package is loaded for this session")
 }
 
 // --- helpers -------------------------------------------------------------
