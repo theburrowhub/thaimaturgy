@@ -205,6 +205,7 @@ const conversationContextWindow = 60
 // the live session state.
 func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider, input string) *Response {
 	resp := &Response{}
+	askID := o.askSequence.Add(1)
 	st := o.session.State
 	st.AddUserMessage(input)
 
@@ -230,10 +231,15 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 		resp.Error = err
 		return resp
 	}
+	mcpArgs := []string{mcptools.SubcommandArg, "--adventure-id", st.AdventureID, "--session", sessPath}
+	mcpArgs = append(mcpArgs, "--request-namespace", fmt.Sprintf("oracle-%s-%d", o.executionNamespace, askID))
+	if o.session.DataDirectory != "" {
+		mcpArgs = append(mcpArgs, "--data-dir", o.session.DataDirectory)
+	}
 	cfg := map[string]any{"mcpServers": map[string]any{
 		mcptools.ServerName: map[string]any{
 			"command": exe,
-			"args":    []string{mcptools.SubcommandArg, "--adventure-id", st.AdventureID, "--session", sessPath},
+			"args":    mcpArgs,
 		},
 	}}
 	cfgPath, err := tempFile("thaim-mcp-*.json")
@@ -245,7 +251,7 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	if b, e := json.Marshal(cfg); e != nil {
 		resp.Error = e
 		return resp
-	} else if e := os.WriteFile(cfgPath, b, 0644); e != nil {
+	} else if e := os.WriteFile(cfgPath, b, 0o600); e != nil {
 		resp.Error = e
 		return resp
 	}
@@ -272,16 +278,13 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	}
 
 	start := time.Now()
-	answer, err := cli.RunWithMCP(cctx, o.session.Config.Model, o.buildSystemPrompt(), cliInput, cfgPath, allowed)
-	if err != nil {
-		resp.Error = fmt.Errorf("AI request failed: %w", err)
-		return resp
-	}
+	answer, runErr := cli.RunWithMCP(cctx, o.session.Config.Model, o.buildSystemPrompt(), cliInput, cfgPath, allowed)
 	resp.LatencyMs = time.Since(start).Milliseconds()
 
-	// Merge tool mutations back into the live state (in place) before accepting
-	// either the subprocess timeline or the model reply. A rules fork is an
-	// all-or-nothing merge failure, never a partially accepted turn.
+	// Merge even when the CLI failed: the MCP child may already have durably
+	// checkpointed a random response, event batch, or external decision. Leaving
+	// the live parent stale would let a later autosave roll the canonical file
+	// back over that checkpoint.
 	merged, err := readSessionFile(sessPath)
 	if err != nil {
 		resp.Error = fmt.Errorf("read tool-mutated session: %w", err)
@@ -289,6 +292,16 @@ func (o *Oracle) askViaCLI(ctx context.Context, cli *providers.ClaudeCLIProvider
 	}
 	if err := mergeSessionState(st, merged, oldLogLen); err != nil {
 		resp.Error = fmt.Errorf("merge tool-mutated session: %w", err)
+		return resp
+	}
+	if o.session.PersistRules != nil {
+		if err := o.session.PersistRules(st); err != nil {
+			resp.Error = fmt.Errorf("persist merged tool session: %w", err)
+			return resp
+		}
+	}
+	if runErr != nil {
+		resp.Error = fmt.Errorf("AI request failed: %w", runErr)
 		return resp
 	}
 	answer = o.reviewSpoilers(ctx, answer)
@@ -344,7 +357,7 @@ func writeSessionFile(path string, st *domain.SessionState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0644)
+	return os.WriteFile(path, b, 0o600)
 }
 
 func readSessionFile(path string) (*domain.SessionState, error) {

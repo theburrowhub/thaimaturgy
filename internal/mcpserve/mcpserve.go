@@ -5,14 +5,19 @@
 package mcpserve
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/mcptools"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/runtimecatalog"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
@@ -20,13 +25,28 @@ import (
 // and the session-state temp file, exposes the engine ToolRouter, and writes the
 // (possibly mutated) state back after each tool call.
 func RunSubcommand(args []string) error {
+	return runSubcommand(args, os.Stdin, os.Stdout)
+}
+
+func runSubcommand(args []string, input io.Reader, output io.Writer) error {
 	fs := flag.NewFlagSet("mcp-tools", flag.ContinueOnError)
 	advID := fs.String("adventure-id", "", "adventure id")
 	sessPath := fs.String("session", "", "session state json path")
+	dataDirectory := fs.String("data-dir", strings.TrimSpace(os.Getenv("THAIM_DATA_DIR")), "thAImaturgy data directory")
+	requestNamespace := fs.String("request-namespace", "", "stable namespace for one parent oracle turn")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	store, err := storage.New()
+	if strings.TrimSpace(*advID) == "" || strings.TrimSpace(*sessPath) == "" {
+		return fmt.Errorf("mcp-tools: --adventure-id and --session are required")
+	}
+	var store *storage.Storage
+	var err error
+	if strings.TrimSpace(*dataDirectory) == "" {
+		store, err = storage.New()
+	} else {
+		store, err = storage.NewWithPath(strings.TrimSpace(*dataDirectory))
+	}
 	if err != nil {
 		return err
 	}
@@ -47,14 +67,37 @@ func RunSubcommand(args []string) error {
 	if st.EffectiveMode() == domain.ModeVirtualDM {
 		st.EnsureParty()
 	}
-	session := domain.NewSession(&st, adv, domain.DefaultConfig())
-	router := engine.NewToolRouter(session)
-	save := func() {
-		if b, err := json.MarshalIndent(&st, "", "  "); err == nil {
-			_ = replaceFile(*sessPath, b, 0644)
-		}
+	rulesEnvironment, err := runtimecatalog.Load(context.Background(), store.BasePath())
+	if err != nil {
+		return fmt.Errorf("mcp-tools: load rules catalog: %w", err)
 	}
-	return mcptools.Serve(os.Stdin, os.Stdout, router, save)
+	session, err := rulesEnvironment.OpenSession(context.Background(), &st, adv, domain.DefaultConfig())
+	if err != nil {
+		return fmt.Errorf("mcp-tools: open session: %w", err)
+	}
+	persist := func(state *domain.SessionState) error {
+		if err := store.SaveSession(state); err != nil {
+			return err
+		}
+		encoded, err := json.MarshalIndent(state, "", "  ")
+		if err != nil {
+			return err
+		}
+		return replaceFile(*sessPath, encoded, 0o600)
+	}
+	session.PersistRules = persist
+	if session.IsModified {
+		if err := persist(&st); err != nil {
+			return fmt.Errorf("mcp-tools: persist rules binding: %w", err)
+		}
+		session.IsModified = false
+	}
+	router := engine.NewToolRouter(session)
+	save := func() error { return persist(&st) }
+	if *requestNamespace != "" {
+		return mcptools.ServeWithNamespace(input, output, router, save, *requestNamespace)
+	}
+	return mcptools.Serve(input, output, router, save)
 }
 
 func replaceFile(path string, data []byte, mode os.FileMode) error {

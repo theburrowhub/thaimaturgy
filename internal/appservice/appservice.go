@@ -24,6 +24,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/runtimecatalog"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 	"github.com/theburrowhub/thaimaturgy/internal/tgbot"
 )
@@ -49,8 +50,9 @@ var ErrNovelConflict = errors.New("the novel changed since it was loaded")
 
 // Service is the facade. It is safe for concurrent use.
 type Service struct {
-	store    *storage.Storage
-	provider providers.Provider
+	store            *storage.Storage
+	provider         providers.Provider
+	rulesEnvironment *runtimecatalog.Environment
 
 	mu       sync.Mutex // guards config + the sessions registry
 	config   *domain.Config
@@ -116,19 +118,41 @@ func (o *OpenSession) SaveError() error {
 	return o.lastSaveErr
 }
 
-// New builds a service over a storage, config, and (optional) LLM provider, and
-// starts the FIFO autosave worker. provider may be nil for non-oracle use.
-func New(store *storage.Storage, config *domain.Config, provider providers.Provider) *Service {
+// New builds a service over a storage, config, and (optional) LLM provider. The
+// executable rules catalog is loaded before the service becomes usable, so a
+// broken store or unavailable exact package fails startup instead of degrading
+// later to another system. provider may be nil for non-oracle use.
+func New(store *storage.Storage, config *domain.Config, provider providers.Provider) (*Service, error) {
+	if store == nil {
+		return nil, errors.New("appservice: storage is required")
+	}
+	if config == nil {
+		return nil, errors.New("appservice: config is required")
+	}
+	rulesEnvironment, err := runtimecatalog.Load(context.Background(), store.BasePath())
+	if err != nil {
+		return nil, fmt.Errorf("appservice: load rules catalog: %w", err)
+	}
 	s := &Service{
-		store:      store,
-		provider:   provider,
-		config:     config,
-		sessions:   make(map[string]*OpenSession),
-		autosaveCh: make(chan string, 128),
-		nameLocks:  make(map[string]*sync.Mutex),
+		store:            store,
+		provider:         provider,
+		config:           config,
+		rulesEnvironment: rulesEnvironment,
+		sessions:         make(map[string]*OpenSession),
+		autosaveCh:       make(chan string, 128),
+		nameLocks:        make(map[string]*sync.Mutex),
 	}
 	go s.autosaveLoop()
-	return s
+	return s, nil
+}
+
+// RulesDiagnostics reports rejected external bundles discovered at startup.
+// Healthy packages, including built-ins, remain available when this is non-nil.
+func (s *Service) RulesDiagnostics() error {
+	if s == nil || s.rulesEnvironment == nil {
+		return nil
+	}
+	return s.rulesEnvironment.Diagnostics
 }
 
 // persist saves a session and writes roster progression back (#33). The caller
@@ -360,12 +384,25 @@ func (s *Service) registerLocked(state *domain.SessionState, adv *domain.Adventu
 	if os, ok := s.sessions[state.Name]; ok {
 		return os, nil
 	}
+	sess, err := s.rulesEnvironment.OpenSession(context.Background(), state, adv, s.config)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open rules for session %q: %w", state.Name, err)
+	}
+	// This callback is the transactional rules host's durability barrier. Assign
+	// it before constructing the Oracle, whose ToolRouter may immediately expose
+	// mutating mechanics.
+	sess.PersistRules = s.store.SaveSession
+	if sess.IsModified {
+		if err := s.store.SaveSession(state); err != nil {
+			return nil, fmt.Errorf("persist rules binding for %q: %w", state.Name, err)
+		}
+		sess.IsModified = false
+	}
 	journal, err := s.store.OpenSessionJournal(state.Name)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open session journal for %q: %w", state.Name, err)
 	}
 	state.SetLogHook(func(e domain.LogEntry) { journal.Append(e) })
-	sess := domain.NewSession(state, adv, s.config)
 	os := &OpenSession{
 		Session: sess,
 		Oracle:  engine.NewOracle(sess, s.provider),

@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 )
 
 // imagePreview renders inline previews for the given module-relative image
@@ -50,12 +51,21 @@ func (e *editor) withPreview(box *fyne.Container, paths []string) fyne.CanvasObj
 
 func (e *editor) metaForm() fyne.CanvasObject {
 	a := e.adv
+	if a.Ruleset == nil {
+		requirement, ok := domain.LegacyRulesRequirement(a.System)
+		if !ok {
+			requirement = rules.Requirement{}
+		}
+		a.Ruleset = &requirement
+	}
 	return container.NewVBox(
 		heading("Adventure"),
 		field("ID", e.sEntry(&a.ID)),
 		field("Title", e.treeStr(&a.Title, "", false)),
 		field("Author", e.sEntry(&a.Author)),
 		field("System", e.sEntry(&a.System)),
+		field("Rules package ID", e.sEntry(&a.Ruleset.ID)),
+		field("Rules version / constraint", e.sEntry((*string)(&a.Ruleset.Version))),
 		field("Language (en/es)", e.sEntry(&a.Language)),
 		field("Start room ID (party entry point)", e.sEntry(&a.StartRoom)),
 		field("Summary", e.mEntry(&a.Summary)),

@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/theburrowhub/thaimaturgy/internal/types"
@@ -40,17 +41,43 @@ type rpcMessage struct {
 }
 
 // Serve reads JSON-RPC messages from in and writes responses to out, exposing tp's
-// tools over MCP. after, if non-nil, is invoked after every tools/call (used to
-// persist any state the call mutated). It returns when in reaches EOF.
-func Serve(in io.Reader, out io.Writer, tp ToolProvider, after func()) error {
+// tools over MCP. after, if non-nil, is invoked after every tools/call before a
+// success is returned, so persistence failures cannot be acknowledged to the
+// client. It returns when in reaches EOF.
+func Serve(in io.Reader, out io.Writer, tp ToolProvider, after func() error) error {
 	var namespace [12]byte
 	if _, err := rand.Read(namespace[:]); err != nil {
 		return err
 	}
-	return serveWithNamespace(in, out, tp, after, hex.EncodeToString(namespace[:]))
+	return ServeWithNamespace(in, out, tp, after, hex.EncodeToString(namespace[:]))
 }
 
-func serveWithNamespace(in io.Reader, out io.Writer, tp ToolProvider, after func(), namespace string) error {
+// ServeWithNamespace serves MCP using a host-supplied execution namespace. A
+// parent process uses this when an MCP child may be restarted during the same
+// logical turn: the same JSON-RPC request ID then reaches the same durable rules
+// receipt instead of drawing again. Distinct turns must use distinct namespaces.
+func ServeWithNamespace(in io.Reader, out io.Writer, tp ToolProvider, after func() error, namespace string) error {
+	if !validExecutionNamespace(namespace) {
+		return fmt.Errorf("mcptools: invalid execution namespace")
+	}
+	return serveWithNamespace(in, out, tp, after, namespace)
+}
+
+func validExecutionNamespace(namespace string) bool {
+	if namespace == "" || len(namespace) > 96 {
+		return false
+	}
+	for index := 0; index < len(namespace); index++ {
+		character := namespace[index]
+		if (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') && character != '-' && character != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+func serveWithNamespace(in io.Reader, out io.Writer, tp ToolProvider, after func() error, namespace string) error {
 	enc := json.NewEncoder(out)
 	send := func(id json.RawMessage, result any) {
 		_ = enc.Encode(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
@@ -128,6 +155,12 @@ func serveWithNamespace(in io.Reader, out io.Writer, tp ToolProvider, after func
 				continue
 			}
 			res := tp.Execute(types.ToolCall{ID: callID, Name: p.Name, Arguments: p.Arguments})
+			if after != nil {
+				if err := after(); err != nil {
+					res.Content = ""
+					res.Error = fmt.Sprintf("persist tool result: %v", err)
+				}
+			}
 			text := res.Content
 			isErr := res.Error != ""
 			if isErr {
@@ -137,9 +170,6 @@ func serveWithNamespace(in io.Reader, out io.Writer, tp ToolProvider, after func
 				"content": []any{map[string]any{"type": "text", "text": text}},
 				"isError": isErr,
 			})
-			if after != nil {
-				after()
-			}
 		case "ping":
 			send(req.ID, map[string]any{})
 		default:

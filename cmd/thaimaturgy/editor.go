@@ -26,6 +26,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/ingest"
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
@@ -565,6 +566,7 @@ func (e *editor) newAdventure() {
 		ID:            "new-adventure",
 		Title:         "New Adventure",
 		System:        "D&D 5e",
+		Ruleset:       &rules.Requirement{ID: "dnd5e", Version: "0.1.0"},
 		Zones: []domain.Zone{{
 			ID:    "zone1",
 			Name:  "Zone 1",

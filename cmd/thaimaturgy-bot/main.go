@@ -16,6 +16,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/mcpserve"
 	"github.com/theburrowhub/thaimaturgy/internal/mcptools"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/runtimecatalog"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 	"github.com/theburrowhub/thaimaturgy/internal/tgbot"
 )
@@ -97,7 +98,18 @@ func run(advID, sessionName, token string, chatID int64) error {
 	state.SetMode(domain.ModeVirtualDM)
 	state.EnsureParty()
 
-	session := domain.NewSession(state, adv, config)
+	rulesEnvironment, err := runtimecatalog.Load(context.Background(), store.BasePath())
+	if err != nil {
+		return fmt.Errorf("rules catalog: %w", err)
+	}
+	if rulesEnvironment.Diagnostics != nil {
+		fmt.Fprintln(os.Stderr, "rules catalog diagnostics:", rulesEnvironment.Diagnostics)
+	}
+	session, err := rulesEnvironment.OpenSession(context.Background(), state, adv, config)
+	if err != nil {
+		return err
+	}
+	session.PersistRules = store.SaveSession
 	oracle := engine.NewOracle(session, providers.New(config))
 	if err := store.SaveSession(state); err != nil {
 		return err

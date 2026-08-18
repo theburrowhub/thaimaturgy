@@ -30,6 +30,7 @@ import (
 	"github.com/theburrowhub/thaimaturgy/internal/mcptools"
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 	"github.com/theburrowhub/thaimaturgy/internal/providers"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/runtimecatalog"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 	"github.com/theburrowhub/thaimaturgy/internal/tgbot"
 )
@@ -41,6 +42,7 @@ type gui struct {
 	config  *domain.Config
 	prov    providers.Provider
 	authMsg string
+	rules   *runtimecatalog.Environment
 
 	// autosaveCh feeds a single FIFO autosave worker (startAutosave), so saves
 	// commit strictly in the order autosave() was called — a superseded save can
@@ -179,6 +181,14 @@ func main() {
 		g.remote = apiclient.New(url, serverToken)
 		g.showRemoteLibrary()
 	} else {
+		g.rules, err = runtimecatalog.Load(context.Background(), store.BasePath())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "rules catalog: %v\n", err)
+			os.Exit(1)
+		}
+		if diagnostics := g.rules.Diagnostics; diagnostics != nil {
+			log.Printf("rules catalog diagnostics: %v", diagnostics)
+		}
 		g.showLibrary()
 	}
 	g.win.ShowAndRun()
@@ -422,6 +432,23 @@ func (g *gui) resumeSession(name string) {
 func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 	// A fresh session must not inherit stale busy/hosting flags from a previous one.
 	g.busy, g.hosting = false, false
+	if g.rules == nil {
+		g.showErr(fmt.Errorf("rules catalog is unavailable"))
+		return
+	}
+	session, err := g.rules.OpenSession(context.Background(), state, adv, g.config)
+	if err != nil {
+		g.showErr(err)
+		return
+	}
+	session.PersistRules = g.store.SaveSession
+	if session.IsModified {
+		if err := g.store.SaveSession(state); err != nil {
+			g.showErr(fmt.Errorf("persist rules binding: %w", err))
+			return
+		}
+		session.IsModified = false
+	}
 	// Open an append-only journal and stream every timeline entry to it as it
 	// happens, so the game is recorded continuously (not just on autosave).
 	if g.journal != nil {
@@ -432,7 +459,7 @@ func (g *gui) openSession(state *domain.SessionState, adv *domain.Adventure) {
 		state.SetLogHook(func(e domain.LogEntry) { j.Append(e) })
 	}
 
-	g.session = domain.NewSession(state, adv, g.config)
+	g.session = session
 	g.oracle = engine.NewOracle(g.session, g.prov)
 	g.cmd = engine.NewCommandHandler(g.session)
 

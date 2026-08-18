@@ -43,7 +43,10 @@ func newTestServer(t *testing.T, token string) *httptest.Server {
 	if err := os.WriteFile(filepath.Join(dir, "assets", "map.png"), []byte("\x89PNG\r\n\x1a\nfake"), 0o644); err != nil {
 		t.Fatalf("write asset: %v", err)
 	}
-	svc := appservice.New(store, domain.DefaultConfig(), nil)
+	svc, err := appservice.New(store, domain.DefaultConfig(), nil)
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
 	ts := httptest.NewServer(New(svc, token).Handler())
 	t.Cleanup(ts.Close)
 	return ts
@@ -342,7 +345,10 @@ func TestConfigSecretsWriteOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
-	svc := appservice.New(store, domain.DefaultConfig(), nil)
+	svc, err := appservice.New(store, domain.DefaultConfig(), nil)
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
 	var rebuilt int
 	ts := httptest.NewServer(New(svc, "").OnConfigSaved(func(*domain.Config) { rebuilt++ }).Handler())
 	t.Cleanup(ts.Close)

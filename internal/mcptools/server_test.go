@@ -3,6 +3,7 @@ package mcptools
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -34,7 +35,7 @@ func TestServePropagatesStableOpaqueToolCallID(t *testing.T) {
 	provider := &recordingToolProvider{}
 	var output bytes.Buffer
 	afterCalls := 0
-	if err := serveWithNamespace(strings.NewReader(input), &output, provider, func() { afterCalls++ }, "test-process-a"); err != nil {
+	if err := serveWithNamespace(strings.NewReader(input), &output, provider, func() error { afterCalls++; return nil }, "test-process-a"); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.calls) != 3 || afterCalls != 3 {
@@ -61,6 +62,23 @@ func TestServeNamespacesIDsAcrossServerInstances(t *testing.T) {
 	}
 }
 
+func TestServeWithNamespaceKeepsIDsStableAcrossChildRestarts(t *testing.T) {
+	input := `{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"game_observe","arguments":{}}}`
+	var first, second recordingToolProvider
+	if err := ServeWithNamespace(strings.NewReader(input), &bytes.Buffer{}, &first, nil, "oracle-turn-7"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ServeWithNamespace(strings.NewReader(input), &bytes.Buffer{}, &second, nil, "oracle-turn-7"); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.calls) != 1 || len(second.calls) != 1 || first.calls[0].ID != second.calls[0].ID {
+		t.Fatalf("restart IDs: first=%v second=%v", first.calls, second.calls)
+	}
+	if err := ServeWithNamespace(strings.NewReader(""), &bytes.Buffer{}, &first, nil, "bad namespace"); err == nil {
+		t.Fatal("unsafe namespace was accepted")
+	}
+}
+
 func TestMCPToolCallIDOmitsMissingAndNullIDs(t *testing.T) {
 	if got := mcpToolCallID("test", nil); got != "" {
 		t.Fatalf("nil ID = %q", got)
@@ -78,7 +96,7 @@ func TestServeNeverExecutesToolCallsWithoutUsableRequestID(t *testing.T) {
 	provider := &recordingToolProvider{}
 	var output bytes.Buffer
 	afterCalls := 0
-	if err := Serve(strings.NewReader(input), &output, provider, func() { afterCalls++ }); err != nil {
+	if err := Serve(strings.NewReader(input), &output, provider, func() error { afterCalls++; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.calls) != 0 || afterCalls != 0 {
@@ -97,7 +115,7 @@ func TestServeNeverExecutesMalformedToolCallParams(t *testing.T) {
 	provider := &recordingToolProvider{}
 	var output bytes.Buffer
 	afterCalls := 0
-	if err := Serve(strings.NewReader(input), &output, provider, func() { afterCalls++ }); err != nil {
+	if err := Serve(strings.NewReader(input), &output, provider, func() error { afterCalls++; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.calls) != 0 || afterCalls != 0 {
@@ -105,5 +123,19 @@ func TestServeNeverExecutesMalformedToolCallParams(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "requires a tool name") || !strings.Contains(output.String(), "invalid tools/call params") {
 		t.Fatalf("malformed calls did not return errors: %s", output.String())
+	}
+}
+
+func TestServeTurnsPersistenceFailureIntoToolError(t *testing.T) {
+	input := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"game_observe","arguments":{}}}`
+	provider := &recordingToolProvider{}
+	var output bytes.Buffer
+	if err := serveWithNamespace(strings.NewReader(input), &output, provider, func() error {
+		return fmt.Errorf("disk unavailable")
+	}, "persist-failure"); err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.calls) != 1 || !strings.Contains(output.String(), `"isError":true`) || !strings.Contains(output.String(), "disk unavailable") {
+		t.Fatalf("calls=%d output=%s", len(provider.calls), output.String())
 	}
 }

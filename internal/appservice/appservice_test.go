@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/rules"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
@@ -31,7 +33,11 @@ func newService(t *testing.T) (*Service, *storage.Storage) {
 	if err := os.WriteFile(filepath.Join(dir, storage.AdventureFile), data, 0644); err != nil {
 		t.Fatalf("write adventure: %v", err)
 	}
-	return New(store, domain.DefaultConfig(), nil), store
+	service, err := New(store, domain.DefaultConfig(), nil)
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+	return service, store
 }
 
 func TestSessionLifecycle(t *testing.T) {
@@ -49,8 +55,15 @@ func TestSessionLifecycle(t *testing.T) {
 	if name != "crypt" {
 		t.Errorf("first session name = %q; want crypt", name)
 	}
-	if _, ok := svc.Get(name); !ok {
+	opened, ok := svc.Get(name)
+	if !ok {
 		t.Error("new session should be registered/open")
+	}
+	if opened.Session.PersistRules == nil || opened.Session.RulesResolver == nil {
+		t.Fatal("live session is missing its durable rules runtime")
+	}
+	if snapshot, ok := opened.Session.State.RulesSnapshot(); !ok || snapshot.Ruleset.ID != "dnd5e" {
+		t.Fatalf("fresh session rules snapshot = %+v, ok=%v", snapshot, ok)
 	}
 
 	// A second new session for the same adventure gets a distinct name.
@@ -81,6 +94,44 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	if os.Session.Adventure.ID != "crypt" {
 		t.Errorf("resumed adventure = %q; want crypt", os.Session.Adventure.ID)
+	}
+}
+
+func TestResumeSessionMissingExactRulesArtifactFailsWithoutRegistration(t *testing.T) {
+	svc, store := newService(t)
+	adventure, err := store.LoadAdventure("crypt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := domain.NewSessionState("missing-rules", adventure)
+	empty, err := rules.PayloadFrom(map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := rules.Lock{
+		ID: "missing.rules", Version: "1.0.0", ProtocolVersion: rules.ProtocolVersion,
+		Digest: "sha256:" + strings.Repeat("a", 64),
+	}
+	if created, err := state.BindRules(missing, empty); err != nil || !created {
+		t.Fatalf("bind missing lock created=%v err=%v", created, err)
+	}
+	if err := store.SaveSession(state); err != nil {
+		t.Fatal(err)
+	}
+
+	if opened, err := svc.ResumeSession(state.Name); err == nil || opened != nil || !strings.Contains(err.Error(), "exact session lock") {
+		t.Fatalf("ResumeSession opened=%v err=%v", opened, err)
+	}
+	if _, ok := svc.Get(state.Name); ok {
+		t.Fatal("failed resume was registered")
+	}
+	reloaded, err := store.LoadSession(state.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, ok := reloaded.RulesSnapshot()
+	if !ok || snapshot.Ruleset != missing || snapshot.Revision != 0 {
+		t.Fatalf("failed resume mutated persisted rules: %+v ok=%v", snapshot, ok)
 	}
 }
 

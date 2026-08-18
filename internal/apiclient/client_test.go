@@ -37,7 +37,10 @@ func liveServer(t *testing.T, token string) *Client {
 	if err := os.WriteFile(filepath.Join(dir, storage.AdventureFile), data, 0o644); err != nil {
 		t.Fatalf("write adventure: %v", err)
 	}
-	svc := appservice.New(store, domain.DefaultConfig(), nil)
+	svc, err := appservice.New(store, domain.DefaultConfig(), nil)
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
 	ts := httptest.NewServer(httpapi.New(svc, token).Handler())
 	t.Cleanup(ts.Close)
 	return New(ts.URL, token)
