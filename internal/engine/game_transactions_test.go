@@ -340,6 +340,7 @@ func TestDurableReceiptSurvivesRestartWithoutRedrawOrDuplicateLog(t *testing.T) 
 		t.Fatal(err)
 	}
 	restored := domain.NewSession(&restoredState, session.Adventure, session.Config)
+	restored.RulesResolver = session.RulesResolver
 	restartedRouter := NewToolRouter(restored)
 	restartedRouter.rules.resolveDice = func(dnd5e.DiceRandomRequest) (dnd5e.DiceRandomResponse, error) {
 		t.Fatal("retry redrew randomness")
@@ -543,9 +544,17 @@ func TestRestartAfterRandomCheckpointReusesAuditWithoutRedraw(t *testing.T) {
 	}
 
 	restored, restartedRouter := restoreDNDTransactionRouter(t, session)
+	runtime, ok = restored.State.RulesRuntimeSnapshot()
+	if !ok || len(runtime.Pending) != 0 || runtime.Receipts[0].Result == nil || len(runtime.RandomDraws) != 1 {
+		t.Fatalf("constructor did not recover random checkpoint: ok=%v runtime=%+v", ok, runtime)
+	}
 	restartedRouter.rules.resolveDice = func(dnd5e.DiceRandomRequest) (dnd5e.DiceRandomResponse, error) {
 		t.Fatal("restart redrew committed entropy")
 		return dnd5e.DiceRandomResponse{}, nil
+	}
+	observed := restartedRouter.Execute(types.ToolCall{ID: "new-process:observe", Name: "game_observe", Arguments: json.RawMessage(`{}`)})
+	if observed.Error != "" {
+		t.Fatalf("new process call remained blocked: %+v", observed)
 	}
 	resolved := restartedRouter.Execute(call)
 	if resolved.Error != "" || !strings.Contains(resolved.Content, `"status":"resolved"`) {
@@ -593,14 +602,38 @@ func TestRestartAfterEmitCheckpointResumesWithoutReducingTwice(t *testing.T) {
 		t.Fatalf("reduce calls before restart = %d", implementation.reduces.Load())
 	}
 
-	restored, restartedRouter := restoreTransactionRouter(t, session, implementation)
+	raw, err := json.Marshal(session.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restoredState domain.SessionState
+	if err := json.Unmarshal(raw, &restoredState); err != nil {
+		t.Fatal(err)
+	}
+	restored := domain.NewSession(&restoredState, session.Adventure, session.Config)
+	restored.RulesResolver = exactTestResolver{lock: transactionLock(), implementation: implementation}
+	restartedRouter := NewToolRouter(restored)
+	if restartedRouter.rulesErr != nil || restartedRouter.rules == nil {
+		t.Fatalf("restart gateway=%v error=%v", restartedRouter.rules, restartedRouter.rulesErr)
+	}
+	runtime, ok = restored.State.RulesRuntimeSnapshot()
+	if !ok || len(runtime.Pending) != 0 || runtime.Receipts[len(runtime.Receipts)-1].Result == nil {
+		t.Fatalf("constructor did not recover emit checkpoint: ok=%v runtime=%+v", ok, runtime)
+	}
+	observed := restartedRouter.Execute(types.ToolCall{ID: "new-process:emit-observe", Name: "game_observe", Arguments: json.RawMessage(`{}`)})
+	if observed.Error != "" {
+		t.Fatalf("new process call remained blocked: %+v", observed)
+	}
 	resolved := restartedRouter.Execute(respond)
 	if resolved.Error != "" || !strings.Contains(resolved.Content, `"status":"resolved"`) {
 		t.Fatalf("resumed response = %+v", resolved)
 	}
 	runtime, ok = restored.State.RulesRuntimeSnapshot()
-	if !ok || runtime.Revision != 1 || len(runtime.EventBatches) != 1 || len(runtime.Pending) != 0 || implementation.reduces.Load() != 1 {
-		t.Fatalf("emit was repeated: ok=%v reduces=%d runtime=%+v", ok, implementation.reduces.Load(), runtime)
+	// The restart's defensive Replay invokes the pure reducer once to attest the
+	// materialized state. Recovery itself must not reduce or append the already
+	// committed emission again, so the total is exactly original+replay.
+	if !ok || runtime.Revision != 1 || len(runtime.EventBatches) != 1 || len(runtime.Pending) != 0 || implementation.reduces.Load() != 2 {
+		t.Fatalf("emit recovery duplicated an effect: ok=%v reduces=%d runtime=%+v", ok, implementation.reduces.Load(), runtime)
 	}
 }
 
@@ -685,6 +718,7 @@ func TestTerminalReceiptRetryMustRecoverPersistenceBeforeReturningCachedSuccess(
 		t.Fatal(err)
 	}
 	restored := domain.NewSession(&restoredState, session.Adventure, session.Config)
+	restored.RulesResolver = session.RulesResolver
 	restartedRouter := NewToolRouter(restored)
 	if retry := restartedRouter.Execute(call); retry != recovered {
 		t.Fatalf("restart retry=%+v recovered=%+v", retry, recovered)
@@ -749,5 +783,6 @@ func restoreDNDTransactionRouter(t *testing.T, source *domain.Session) (*domain.
 		t.Fatal(err)
 	}
 	restored := domain.NewSession(&restoredState, source.Adventure, source.Config)
+	restored.RulesResolver = source.RulesResolver
 	return restored, NewToolRouter(restored)
 }

@@ -375,6 +375,25 @@ var playerCharacterTools = []types.Tool{
 	},
 }
 
+var dndUtilityToolNames = map[string]struct{}{
+	"lookup_creature":     {},
+	"roll_dice":           {},
+	"ability_check":       {},
+	"update_party_member": {},
+	"update_hp":           {},
+	"add_item":            {},
+	"remove_item":         {},
+	"set_condition":       {},
+	"remove_condition":    {},
+	"update_gold":         {},
+	"award_xp":            {},
+}
+
+func isDNDUtilityTool(name string) bool {
+	_, exists := dndUtilityToolNames[name]
+	return exists
+}
+
 // ToolRouter executes oracle tool calls against a running session.
 type ToolRouter struct {
 	session  *domain.Session
@@ -392,16 +411,17 @@ func NewToolRouter(session *domain.Session) *ToolRouter {
 // it also exposes the player-character mutation tools.
 func (tr *ToolRouter) GetToolDefinitions() []types.Tool {
 	tools := cloneToolDefinitions(AvailableTools)
-	if tr.rules == nil || !tr.rules.legacyDND5E {
+	supportsDND := tr.rules != nil && tr.rules.legacyDND5E
+	if !supportsDND {
 		filtered := tools[:0]
 		for _, definition := range tools {
-			if definition.Name != "roll_dice" && definition.Name != "ability_check" {
+			if !isDNDUtilityTool(definition.Name) {
 				filtered = append(filtered, definition)
 			}
 		}
 		tools = filtered
 	}
-	if tr.session.State.EffectiveMode() == domain.ModeVirtualDM {
+	if supportsDND && tr.session.State.EffectiveMode() == domain.ModeVirtualDM {
 		tools = append(tools, cloneToolDefinitions(playerCharacterTools)...)
 	}
 	if tr.rules != nil {
@@ -420,6 +440,12 @@ func (tr *ToolRouter) Execute(call types.ToolCall) types.ToolResult {
 			return tr.rulesUnavailable(call.ID)
 		}
 		return tr.rules.execute(call)
+	}
+	if isDNDUtilityTool(call.Name) && (tr.rules == nil || !tr.rules.legacyDND5E) {
+		if tr.rules == nil {
+			return tr.rulesUnavailable(call.ID)
+		}
+		return errResult(call.ID, "D&D utility is unavailable for the loaded rules package: "+call.Name)
 	}
 
 	var args map[string]any

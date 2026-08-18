@@ -57,6 +57,46 @@ func TestRulesRuntimeReceiptSurvivesRoundTripAndRejectsFingerprintConflict(t *te
 	}
 }
 
+func TestResumeRulesRequestReclaimsPersistedAutomaticCheckpointIdentity(t *testing.T) {
+	state := NewSessionState("runtime", nil)
+	if _, err := state.BindRules(rulesTestLock(rulesDigestA), rulesTestPayload(t, `{}`)); err != nil {
+		t.Fatal(err)
+	}
+	handle := beginRuntimeRequest(t, state, "automatic-request")
+	specification := rulesTestPayload(t, `{"count":1,"sides":6}`)
+	response := rulesTestPayload(t, `{"rolls":[4]}`)
+	pending := &RulesPendingResolution{
+		ResolutionID: "automatic-resolution", RequestID: "automatic-request",
+		Principal: rules.Principal{ID: "host:oracle", Kind: "llm"},
+		Pending: rules.PendingStep{
+			StepID: "automatic-step", Kind: rules.StepKindNeedRandom,
+			State: rulesTestPayload(t, `{"phase":"roll"}`),
+		},
+		Request:   rulesTestPayload(t, `{"method":"dice.roll","specification":{"count":1,"sides":6}}`),
+		Response:  &rules.HostResponse{StepID: "automatic-step", Kind: rules.StepKindNeedRandom, Data: response},
+		StepCount: 1,
+	}
+	if _, err := state.CommitRulesRequest(handle, RulesCommit{
+		State: handle.Snapshot.State, Principal: rules.Principal{ID: "host:oracle", Kind: "llm"},
+		ResolutionID: "automatic-resolution", Pending: pending,
+		RandomDraws: []RulesRandomDraft{{
+			ResolutionID: "automatic-resolution", StepID: "automatic-step", Method: "dice.roll", Source: "host",
+			Specification: specification, Result: response,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	recovered, receipt, err := state.ResumeRulesRequest(context.Background(), "automatic-request")
+	if err != nil || receipt != nil || recovered.Snapshot.Ruleset != handle.Snapshot.Ruleset || len(recovered.Pending) != 1 {
+		t.Fatalf("recovered=%+v receipt=%+v err=%v", recovered, receipt, err)
+	}
+	state.AbortRulesRequest(recovered)
+	if _, _, err := state.ResumeRulesRequest(context.Background(), "missing-request"); err == nil || !strings.Contains(err.Error(), "was not retained") {
+		t.Fatalf("missing recovery receipt error = %v", err)
+	}
+}
+
 func TestRulesRuntimeReceiptLimitFailsClosedWithoutForgettingOldIDs(t *testing.T) {
 	state := NewSessionState("runtime", nil)
 	if _, err := state.BindRules(rulesTestLock(rulesDigestA), rulesTestPayload(t, `{}`)); err != nil {

@@ -75,21 +75,18 @@ func deterministicDice(t *testing.T, expected dnd5e.DiceRandomRequest, rolls ...
 	}
 }
 
-func TestToolRouterMigratesLegacyDND5EAndPublishesStableGateway(t *testing.T) {
+func TestToolRouterLoadsExactPreboundDND5EAndPublishesStableGateway(t *testing.T) {
 	session := createTestSession()
-	if _, ok := session.State.RulesSnapshot(); ok {
-		t.Fatal("legacy fixture unexpectedly starts with a rules lock")
+	snapshot, ok := session.State.RulesSnapshot()
+	if !ok || !IsBuiltinDND5ELock(snapshot.Ruleset) {
+		t.Fatalf("fixture does not start with exact dnd5e lock: ok=%v snapshot=%+v", ok, snapshot)
 	}
 	router := NewToolRouter(session)
 	if router.rulesErr != nil || router.rules == nil {
 		t.Fatalf("rules gateway = %v, err = %v", router.rules, router.rulesErr)
 	}
-	snapshot, ok := session.State.RulesSnapshot()
-	if !ok || snapshot.Ruleset.ID != dnd5e.PackageID || snapshot.State.String() != `{}` {
-		t.Fatalf("migrated snapshot: ok=%v snapshot=%+v state=%s", ok, snapshot, snapshot.State.String())
-	}
-	if !session.IsModified {
-		t.Fatal("automatic legacy binding was not marked for persistence")
+	if session.IsModified {
+		t.Fatal("loading an already-bound rules package marked the session modified")
 	}
 	definitions := router.GetToolDefinitions()
 	for _, name := range []string{"roll_dice", "ability_check", "game_observe", "game_list_actions", "game_submit_intent", "game_preview"} {
@@ -111,8 +108,9 @@ func TestToolRouterMigratesLegacyDND5EAndPublishesStableGateway(t *testing.T) {
 }
 
 func TestToolRouterDoesNotGuessUnknownRuleset(t *testing.T) {
-	session := createTestSession()
-	session.Adventure.System = "Mystery Engine"
+	session := createUnboundTestSession()
+	// Even a legacy label must not cause a local fallback or implicit binding.
+	session.Adventure.System = "D&D 5e"
 	router := NewToolRouter(session)
 	if router.rules != nil || router.rulesErr != nil {
 		t.Fatalf("unknown system initialized gateway=%v err=%v", router.rules, router.rulesErr)
@@ -123,7 +121,7 @@ func TestToolRouterDoesNotGuessUnknownRuleset(t *testing.T) {
 	if hasTool(router.GetToolDefinitions(), "game_submit_intent") {
 		t.Fatal("game tools were advertised without a loaded ruleset")
 	}
-	for _, name := range []string{"roll_dice", "ability_check"} {
+	for name := range dndUtilityToolNames {
 		if hasTool(router.GetToolDefinitions(), name) {
 			t.Fatalf("legacy rules alias %q was advertised without a loaded ruleset", name)
 		}
@@ -139,7 +137,8 @@ func TestToolRouterDoesNotGuessUnknownRuleset(t *testing.T) {
 }
 
 func TestPinnedMissingArtifactNeverFallsBackToDND5E(t *testing.T) {
-	session := createTestSession()
+	session := createUnboundTestSession()
+	session.RulesResolver = createTestSession().RulesResolver
 	foreignLock := rules.Lock{
 		ID: "other.rules", Version: "1.0.0",
 		Digest: "sha256:" + strings.Repeat("a", 64), ProtocolVersion: rules.ProtocolVersion,
@@ -180,7 +179,8 @@ func TestPinnedMissingArtifactNeverFallsBackToDND5E(t *testing.T) {
 }
 
 func TestPinnedDND5EStateIsValidatedBeforeToolsAreAdvertised(t *testing.T) {
-	session := createTestSession()
+	session := createUnboundTestSession()
+	session.RulesResolver = createTestSession().RulesResolver
 	artifact, err := dnd5e.NewArtifact()
 	if err != nil {
 		t.Fatal(err)
@@ -414,7 +414,7 @@ func TestRandomFailuresNeverCommitAndRetriesReuseTheErrorReceipt(t *testing.T) {
 		err            error
 	}{
 		{name: "host failure", contains: "entropy unavailable", err: errors.New("entropy unavailable")},
-		{name: "invalid host response", contains: "invalid random response", response: dnd5e.DiceRandomResponse{Rolls: []int{21}}},
+		{name: "invalid host response", contains: "invalid dice random response", response: dnd5e.DiceRandomResponse{Rolls: []int{21}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -436,15 +436,8 @@ func TestRandomFailuresNeverCommitAndRetriesReuseTheErrorReceipt(t *testing.T) {
 				t.Fatalf("first=%+v second=%+v, want %q", first, second, test.contains)
 			}
 			runtime, ok := session.State.RulesRuntimeSnapshot()
-			expectedAudit := 0
-			if test.err == nil {
-				// Once the entropy provider returns a payload, that exchange is
-				// durably audited before the ruleset is resumed—even if the ruleset
-				// later rejects its semantic contents.
-				expectedAudit = 1
-			}
 			if draws != 1 || session.State.LogLen() != 0 || !session.IsModified || !ok ||
-				runtime.Revision != 0 || len(runtime.RandomDraws) != expectedAudit || len(runtime.EventBatches) != 0 || len(runtime.Pending) != 0 || len(runtime.Receipts) != 1 {
+				runtime.Revision != 0 || len(runtime.RandomDraws) != 0 || len(runtime.EventBatches) != 0 || len(runtime.Pending) != 0 || len(runtime.Receipts) != 1 {
 				t.Fatalf("failed draw changed mechanical state: draws=%d log=%d modified=%v runtime=%+v", draws, session.State.LogLen(), session.IsModified, runtime)
 			}
 		})

@@ -448,6 +448,10 @@ func (h *CommandHandler) handleFlag(cmd *Command, r *CommandResult) {
 }
 
 func (h *CommandHandler) handleRoll(cmd *Command, r *CommandResult) {
+	if !SupportsDNDUtilities(h.session) {
+		r.Success, r.Message = false, "/roll is available only with the exact built-in D&D 5e rules package"
+		return
+	}
 	notation := "1d20"
 	if len(cmd.Args) > 0 {
 		notation = cmd.Args[0]
@@ -515,6 +519,10 @@ func (h *CommandHandler) handleMeta(cmd *Command, r *CommandResult) {
 //
 // It is shared by the desktop app and the Telegram bot so both rest identically.
 func (h *CommandHandler) handleRest(cmd *Command, r *CommandResult) {
+	if !SupportsDNDUtilities(h.session) {
+		r.Success, r.Message = false, "/rest is available only with the exact built-in D&D 5e rules package"
+		return
+	}
 	if len(cmd.Args) == 0 {
 		r.Success, r.Message = false, "Usage: /rest short|long [character]"
 		return
@@ -675,7 +683,7 @@ func (h *CommandHandler) questsText() string {
 
 func (h *CommandHandler) partyText() string {
 	if len(h.state().Party) == 0 {
-		return "No party members tracked. The oracle adds them via update_party_member."
+		return "No party members tracked. Add them with a compatible character tool when the loaded rules package provides one."
 	}
 	var sb strings.Builder
 	sb.WriteString("PARTY:\n")

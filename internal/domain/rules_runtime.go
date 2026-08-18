@@ -475,6 +475,34 @@ func (s *SessionState) BeginRulesRequest(ctx context.Context, requestID, tool, f
 	}
 }
 
+// ResumeRulesRequest reclaims an incomplete retained request using its exact
+// persisted tool identity. It exists for crash recovery: a new Oracle/MCP
+// process cannot recreate the original provider arguments or execution
+// namespace, but the durable receipt already attests the accepted fingerprint.
+// The normal BeginRulesRequest conflict checks still run after the lookup, so a
+// concurrent completion or mismatched in-flight owner remains fail-closed.
+func (s *SessionState) ResumeRulesRequest(ctx context.Context, requestID string) (RulesRequestHandle, *RulesReceipt, error) {
+	if ctx == nil {
+		return RulesRequestHandle{}, nil, errors.New("nil rules recovery context")
+	}
+	if err := validateRulesRequestID(requestID); err != nil {
+		return RulesRequestHandle{}, nil, err
+	}
+	s.mu.Lock()
+	if s.Rules == nil {
+		s.mu.Unlock()
+		return RulesRequestHandle{}, nil, errors.New("session has no rules binding")
+	}
+	receipt := findRulesReceipt(s.Rules.Receipts, requestID)
+	if receipt == nil {
+		s.mu.Unlock()
+		return RulesRequestHandle{}, nil, fmt.Errorf("rules recovery receipt %q was not retained", requestID)
+	}
+	identity := cloneRulesReceipt(*receipt)
+	s.mu.Unlock()
+	return s.BeginRulesRequest(ctx, identity.RequestID, identity.Tool, identity.Fingerprint)
+}
+
 // AbortRulesRequest releases an unfinished runtime claim without changing any
 // persisted state. It is safe to call after CommitRulesRequest.
 func (s *SessionState) AbortRulesRequest(handle RulesRequestHandle) {
