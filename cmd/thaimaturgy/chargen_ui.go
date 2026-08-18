@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
 
@@ -37,6 +38,10 @@ func clampScore(v int) int {
 // and adds it to the party, optionally saving it to the roster.
 func (g *gui) showCharacterCreator() {
 	if g.session == nil {
+		return
+	}
+	if !g.hasLegacyDND5E() {
+		g.showErr(appservice.ErrDNDUtilitiesUnavailable)
 		return
 	}
 	name := widget.NewEntry()

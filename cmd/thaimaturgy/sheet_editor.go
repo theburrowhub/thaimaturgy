@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
 
@@ -327,6 +328,10 @@ var abilityOrder = []domain.Ability{domain.STR, domain.DEX, domain.CON, domain.I
 // to the timeline for the DM, and persisted.
 func (g *gui) showSheetEditor(name string) {
 	if g.session == nil {
+		return
+	}
+	if !g.hasLegacyDND5E() {
+		g.showErr(appservice.ErrDNDUtilitiesUnavailable)
 		return
 	}
 	// Work from a value copy so cancelling changes nothing.

@@ -744,7 +744,11 @@ func (s *Server) stopTelegramHost(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getParty(w http.ResponseWriter, r *http.Request) {
 	party, err := s.svc.Party(r.PathValue("name"))
 	if err != nil {
-		httpError(w, http.StatusNotFound, err.Error())
+		status := http.StatusNotFound
+		if errors.Is(err, appservice.ErrDNDUtilitiesUnavailable) {
+			status = http.StatusConflict
+		}
+		httpError(w, status, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, party)

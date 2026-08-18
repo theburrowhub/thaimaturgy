@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
 
@@ -17,6 +18,10 @@ import (
 // roster, so characters carry their progression across adventures.
 func (g *gui) showRoster() {
 	if g.session == nil {
+		return
+	}
+	if !g.hasLegacyDND5E() {
+		g.showErr(appservice.ErrDNDUtilitiesUnavailable)
 		return
 	}
 
