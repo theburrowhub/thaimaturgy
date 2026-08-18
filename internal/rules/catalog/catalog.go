@@ -26,6 +26,8 @@ type Catalog struct {
 	initial  map[rules.Lock]rules.Payload
 }
 
+var _ rules.Resolver = (*Catalog)(nil)
+
 func New() *Catalog {
 	return &Catalog{
 		registry: rules.NewRegistry(),
