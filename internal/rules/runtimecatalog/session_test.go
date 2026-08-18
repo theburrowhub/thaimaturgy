@@ -4,11 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/rules"
+	"github.com/theburrowhub/thaimaturgy/internal/rules/bundlepack"
+	"github.com/theburrowhub/thaimaturgy/internal/ruleshost"
+	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
 func TestResolveSessionRulesBindsEveryBuiltinRequirement(t *testing.T) {
@@ -101,6 +106,93 @@ func TestOpenSessionInjectsExactResolverAndMarksOnlyNewBinding(t *testing.T) {
 	}
 	if reopened.IsModified {
 		t.Fatal("validated pinned session was marked modified")
+	}
+}
+
+func TestExternalStateSurvivesIndentedStorageAndExactReopen(t *testing.T) {
+	ctx := context.Background()
+	dataDirectory := t.TempDir()
+	bundlePath := filepath.Join(t.TempDir(), "simple-d6.rules.zip")
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate runtime catalog test")
+	}
+	source := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "../../../examples/rules/simple-d6"))
+	if _, err := bundlepack.Pack(ctx, source, bundlePath, nil); err != nil {
+		t.Fatalf("pack example: %v", err)
+	}
+	bootstrap, err := Load(ctx, dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bootstrap.Store.InstallFile(ctx, bundlePath); err != nil {
+		t.Fatalf("install example: %v", err)
+	}
+
+	environment, err := Load(ctx, dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adventure := rulesAdventure("simple-d6")
+	state := domain.NewSessionState("external-round-trip", adventure)
+	if _, err := environment.OpenSession(ctx, state, adventure, domain.DefaultConfig()); err != nil {
+		t.Fatalf("open new external session: %v", err)
+	}
+	runtimeState, exists, err := state.RulesRuntimeSnapshotStrict()
+	if err != nil || !exists {
+		t.Fatalf("initial runtime exists=%v err=%v", exists, err)
+	}
+	implementation, err := environment.Catalog.Lookup(runtimeState.Lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventData := mustRulesPayload(t, map[string]any{
+		"intent_id": "persisted-intent", "roll": 4, "modifier": 2,
+		"target": 6, "total": 6, "success": true,
+	})
+	event := rules.Event{Type: "simple_d6.check_resolved", SchemaVersion: 1, Data: eventData}
+	reduced, _, err := (ruleshost.Executor{Ruleset: implementation}).Reduce(ctx, rules.Snapshot{
+		Ruleset: runtimeState.Lock, Revision: runtimeState.Revision, State: runtimeState.State,
+	}, rules.Emission{Events: []rules.Event{event}})
+	if err != nil {
+		t.Fatalf("reduce external event: %v", err)
+	}
+	handle, receipt, err := state.BeginRulesRequest(ctx, "persisted-request", "game_submit_intent", "sha256:"+strings.Repeat("b", 64))
+	if err != nil || receipt != nil {
+		t.Fatalf("begin persisted request receipt=%v err=%v", receipt, err)
+	}
+	if _, err := state.CommitRulesRequest(handle, domain.RulesCommit{
+		State: reduced.State, ResolutionID: "persisted-resolution",
+		Principal: rules.Principal{ID: "test:host", Kind: "host"},
+		EventBatches: []domain.RulesEventDraft{{
+			ResolutionID: "persisted-resolution", Events: []rules.Event{event},
+		}},
+		Result: &domain.RulesStoredResult{Content: `{"status":"complete"}`},
+	}); err != nil {
+		t.Fatalf("commit external event: %v", err)
+	}
+
+	store, err := storage.NewWithPath(dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveSession(state); err != nil {
+		t.Fatalf("save indented session: %v", err)
+	}
+	restored, err := store.LoadSession(state.Name)
+	if err != nil {
+		t.Fatalf("load indented session: %v", err)
+	}
+	restarted, err := Load(ctx, dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.OpenSession(ctx, restored, adventure, domain.DefaultConfig()); err != nil {
+		t.Fatalf("reopen exact external session: %v", err)
+	}
+	after, exists, err := restored.RulesRuntimeSnapshotStrict()
+	if err != nil || !exists || after.Revision != 1 || after.State.String() != reduced.State.String() {
+		t.Fatalf("restored runtime exists=%v err=%v state=%+v", exists, err, after)
 	}
 }
 

@@ -199,6 +199,39 @@ func TestPayloadIsValidatedAndImmutable(t *testing.T) {
 	}
 }
 
+func TestPayloadCanonicalizesFormattingMemberOrderAndEscapes(t *testing.T) {
+	formatted, err := NewPayload([]byte("{\n  \"z\": \"<tag>\",\n  \"a\": [1, 2]\n}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromValue, err := PayloadFrom(map[string]any{
+		"a": []int{1, 2},
+		"z": "<tag>",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if formatted.String() != fromValue.String() {
+		t.Fatalf("canonical payloads differ: formatted=%q value=%q", formatted.String(), fromValue.String())
+	}
+
+	pretty, err := json.MarshalIndent(struct {
+		Value Payload `json:"value"`
+	}{Value: formatted}, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored struct {
+		Value Payload `json:"value"`
+	}
+	if err := json.Unmarshal(pretty, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if restored.Value.String() != formatted.String() {
+		t.Fatalf("pretty round trip changed payload: got=%q want=%q", restored.Value.String(), formatted.String())
+	}
+}
+
 func TestOptionalPayloadNullRoundTripRestoresZero(t *testing.T) {
 	descriptor := ActionDescriptor{
 		ID:          "attempt",

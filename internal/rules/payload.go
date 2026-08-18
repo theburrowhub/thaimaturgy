@@ -17,7 +17,10 @@ type Payload struct {
 	raw string
 }
 
-// NewPayload validates and copies raw JSON.
+// NewPayload validates and canonicalizes raw JSON. A stable representation is
+// part of the protocol contract: session files are pretty-printed by storage,
+// and replay/pinning must not mistake insignificant whitespace, object member
+// order, or equivalent string escaping for a mechanical state change.
 func NewPayload(raw []byte) (Payload, error) {
 	if len(raw) == 0 {
 		return Payload{}, invalid("payload", "must not be empty")
@@ -31,7 +34,20 @@ func NewPayload(raw []byte) (Payload, error) {
 	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return Payload{}, invalid("payload", "JSON null is reserved for the zero value")
 	}
-	return Payload{raw: string(bytes.Clone(raw))}, nil
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return Payload{}, invalid("payload", "cannot canonicalize JSON: %v", err)
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return Payload{}, invalid("payload", "cannot canonicalize JSON: %v", err)
+	}
+	if len(canonical) > MaxPayloadBytes {
+		return Payload{}, invalid("payload", "canonical form exceeds %d bytes", MaxPayloadBytes)
+	}
+	return Payload{raw: string(canonical)}, nil
 }
 
 // PayloadFrom marshals v into a Payload.
