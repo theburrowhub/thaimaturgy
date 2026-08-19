@@ -77,9 +77,9 @@ docker compose -f docker-compose.yml -f docker-compose.claude.yml up -d --build
 `THAIM_PROVIDER=claude-cli`, and mounts your `~/.claude` login (read-write, so the
 CLI can refresh its token) plus your data dir. Requirements:
 
-- A **Claude Code login on the host** (`~/.claude`) — or set `ANTHROPIC_API_KEY` in
-  the environment (the compose file forwards it; the CLI reads `ANTHROPIC_API_KEY`,
-  **not** the `THAIM_` prefix).
+- A **Claude Code login on the host** (`~/.claude`) — or an API key in the
+  environment: set either `ANTHROPIC_API_KEY` or `THAIM_ANTHROPIC_API_KEY` and the
+  compose file forwards it to `ANTHROPIC_API_KEY`, which the CLI reads.
 - Outbound HTTPS to the Anthropic API.
 
 > **Native Linux — file ownership.** Bind mounts preserve host ownership, but the
