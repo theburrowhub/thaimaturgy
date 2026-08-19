@@ -29,9 +29,11 @@ on:
 permissions:
   contents: read # least privilege by default; jobs elevate as needed
 
-concurrency:
-  group: release # serialize ALL releases so none overlap
-  cancel-in-progress: false
+# No workflow-wide concurrency group: a single group keeps only one pending run,
+# so a burst of tags could cancel a middle release before it publishes its
+# immutable artifacts. Instead, moving-tag safety is order-independent — `prepare`
+# decides latest/X.Y by comparing THIS tag against all tags in the repo, so a
+# stale run never promotes itself regardless of finish order.
 
 env:
   GO_VERSION: '1.25'
@@ -45,33 +47,40 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       is_stable: ${{ steps.v.outputs.is_stable }}
       is_latest: ${{ steps.v.outputs.is_latest }}
+      is_latest_minor: ${{ steps.v.outputs.is_latest_minor }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # need all tags to find the highest stable semver
+          fetch-depth: 0 # need all tags to compare against the whole release history
       - id: v
+        shell: bash
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME}"
-          # Strict semver: vMAJOR.MINOR.PATCH with optional -prerelease / +build.
-          if ! echo "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
-            echo "::error::tag '$VERSION' is not a semver vX.Y.Z tag; refusing to publish"
+          # Strict SemVer (semver.org grammar, capturing-group ERE for bash =~):
+          # rejects e.g. v1.2 / v1.2.3-01, accepts v1.2.3 / v1.2.3-rc.1 / v1.2.3+build.
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
+          if [[ ! "$VERSION" =~ $re ]]; then
+            echo "::error::tag '$VERSION' is not valid SemVer (vMAJOR.MINOR.PATCH[-prerelease][+build]); refusing to publish"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if echo "$VERSION" | grep -q '-'; then
-            # Prerelease: immutable tag only, never X.Y or latest.
-            echo "is_stable=false" >> "$GITHUB_OUTPUT"
-            echo "is_latest=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_stable=true" >> "$GITHUB_OUTPUT"
-            highest="$(git tag -l 'v*.*.*' | grep -Ev '[-]' | sort -V | tail -1)"
-            if [ "$highest" = "$VERSION" ]; then
-              echo "is_latest=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "is_latest=false" >> "$GITHUB_OUTPUT"
-            fi
+          core="${VERSION%%+*}" # drop +build metadata before judging prerelease
+          case "$core" in *-*) is_stable=false ;; *) is_stable=true ;; esac
+          is_latest=false
+          is_latest_minor=false
+          if [ "$is_stable" = "true" ]; then
+            # Stable release tags only (prereleases dropped), compared build-agnostically.
+            # Order-independent: an older tag pushed later sees the newer tag here and
+            # correctly declines to promote latest / X.Y.
+            stable="$(git tag -l 'v*.*.*' | while read -r t; do c="${t%%+*}"; case "$c" in *-*) : ;; *) echo "$c" ;; esac; done | sort -V -u)"
+            [ "$(printf '%s\n' "$stable" | tail -1)" = "$core" ] && is_latest=true
+            mm="${core%.*}"; mm_esc="${mm//./\\.}"
+            [ "$(printf '%s\n' "$stable" | grep -E "^${mm_esc}\." | sort -V | tail -1)" = "$core" ] && is_latest_minor=true
           fi
+          echo "is_stable=$is_stable" >> "$GITHUB_OUTPUT"
+          echo "is_latest=$is_latest" >> "$GITHUB_OUTPUT"
+          echo "is_latest_minor=$is_latest_minor" >> "$GITHUB_OUTPUT"
 
   # --- static CLI/server binaries (cross-compiled, CGO-free) ---------------
   binaries:
@@ -199,9 +208,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          # latest=false: don't let metadata-action auto-tag `latest` for every
+          # semver — only the explicitly guarded raw entry below may set it.
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.prepare.outputs.is_stable == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.prepare.outputs.is_latest_minor == 'true' }}
             type=raw,value=latest,enable=${{ needs.prepare.outputs.is_latest == 'true' }}
       - uses: docker/build-push-action@v6
         with:

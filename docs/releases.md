@@ -20,15 +20,20 @@ Everyday testing (build + `go test -race` on every push/PR) lives in
 
 ### Tag policy
 
-A `prepare` job validates the tag is strict semver and decides which moving tags
-to update, so an out-of-order run can't clobber a newer release:
+A `prepare` job validates the tag is strict SemVer (semver.org grammar) and
+decides which moving tags to update by comparing this tag against the whole
+release history. The decision is **order-independent**, so an older tag pushed
+later never clobbers a newer release's moving tags:
 
-| Tag pushed        | `X.Y.Z` | `X.Y` | `latest` | GitHub Release |
-|-------------------|:-------:|:-----:|:--------:|:--------------:|
-| `v1.2.3` (stable) |   ✅    |  ✅   | ✅ *(if highest stable)* | normal |
-| `v1.2.3-rc1` (prerelease) | ✅ |  —   |    —     | prerelease |
+| Moving tag | Updated when… |
+|------------|---------------|
+| `X.Y.Z` (immutable) | always (incl. prereleases like `v1.2.3-rc1`) |
+| `X.Y`      | this is the highest **stable** patch in its `X.Y` series |
+| `latest`   | this is the highest **stable** version in the whole repo |
 
-Releases are serialized (one run at a time) as an extra guard.
+Prereleases publish only their immutable `X.Y.Z` image and a prerelease GitHub
+Release; they never move `X.Y` or `latest`. (No workflow-wide concurrency group —
+that could cancel a queued release; the order-independent comparison is the guard.)
 
 ## Cut a release
 
