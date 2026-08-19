@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1
+
+# thAImaturgy server image WITH the Claude Code CLI, for the `claude-cli` provider
+# (drives your Claude Code login/subscription instead of a raw API key). It is
+# intentionally larger than the default distroless image because it ships Node.js
+# and the `claude` CLI — use the default Dockerfile unless you need claude-cli.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.claude.yml up -d --build
+#
+# See docs/server-credentials.md for the credential options (env keys, OAuth login
+# reuse, and this claude-cli image).
+
+# --- build the static server binary --------------------------------------
+FROM golang:1.25 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# The server has no CGO dependencies (no Fyne), so build a static binary. It also
+# answers the `__mcp-tools` subcommand, which the claude-cli backend re-execs to
+# serve the session tools to `claude` over MCP.
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/thaimaturgy-server ./cmd/thaimaturgy-server
+
+# --- runtime: Node.js + the Claude Code CLI ------------------------------
+FROM node:22-slim AS runtime
+# The claude CLI is an npm package (requires Node). Pin a version for a
+# reproducible image: --build-arg CLAUDE_VERSION=x.y.z (defaults to latest).
+ARG CLAUDE_VERSION=latest
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_VERSION} \
+    && npm cache clean --force
+COPY --from=build /out/thaimaturgy-server /usr/local/bin/thaimaturgy-server
+# Data dir owned by the unprivileged `node` user that ships with the base image.
+RUN mkdir -p /data && chown node:node /data
+# HOME lets os.UserHomeDir() resolve so a mounted ~/.claude / ~/.gemini login is
+# found; claude also reads its own config/login under $HOME/.claude.
+ENV THAIM_DATA_DIR=/data \
+    THAIM_ADDR=:8765 \
+    HOME=/home/node
+EXPOSE 8765
+USER node
+VOLUME ["/data"]
+ENTRYPOINT ["/usr/local/bin/thaimaturgy-server"]
