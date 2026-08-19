@@ -47,7 +47,7 @@ func (g *gui) showRemoteLibrary() {
 	})
 	content := container.NewBorder(hero, nil, nil, nil,
 		container.NewVScroll(container.NewVBox(container.NewHBox(reloadBtn, status), list)))
-	g.win.SetContent(content)
+	g.win.SetContent(appShell(content))
 	g.reloadRemoteLibrary(list, status, reloadBtn)
 }
 
@@ -374,7 +374,7 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 	body := container.NewHSplit(left, container.NewHSplit(center, right))
 	body.SetOffset(0.28)
 	bottom := container.NewBorder(nil, nil, nil, sendBtn, input)
-	g.win.SetContent(container.NewBorder(head, bottom, nil, nil, body))
+	g.win.SetContent(appShell(container.NewBorder(head, bottom, nil, nil, body)))
 
 	g.startRemoteLogStream(name, logBox, logScroll)
 

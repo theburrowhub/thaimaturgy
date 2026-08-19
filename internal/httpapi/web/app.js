@@ -15,7 +15,7 @@ const el = (tag, cls, text) => {
 
 const tokenInput = $("#token");
 tokenInput.value = sessionStorage.getItem("thaim_token") || "";
-tokenInput.addEventListener("change", () => sessionStorage.setItem("thaim_token", tokenInput.value.trim()));
+tokenInput.addEventListener("change", () => { sessionStorage.setItem("thaim_token", tokenInput.value.trim()); loadVersion(); });
 const token = () => tokenInput.value.trim();
 
 function status(msg, isErr) {
@@ -1675,5 +1675,15 @@ async function downloadAuthed(path, filename) {
   } catch (e) { status(e.message, true); }
 }
 
+// loadVersion fills the corner badge with the server's version (best-effort:
+// stays blank until the request is authorized).
+async function loadVersion() {
+  try {
+    const r = await api("GET", "/version");
+    if (r && r.version) $("#version").textContent = r.version;
+  } catch { /* not authorized yet; retry on token change */ }
+}
+
 // --- boot ----------------------------------------------------------------
 show("library");
+loadVersion();
