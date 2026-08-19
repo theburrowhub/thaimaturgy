@@ -542,8 +542,9 @@ func (g *gui) showRemoteSettings() {
 		string(domain.TTSVoiceOnyx), string(domain.TTSVoiceNova), string(domain.TTSVoiceShimmer),
 	}, nil)
 	spoilerGuard := widget.NewCheck("", nil)
+	spoilerProvider := widget.NewSelect(spoilerProviderOptions(), nil)
 	spoilerModel := widget.NewEntry()
-	spoilerModel.SetPlaceHolder("(optional: blank = oracle model)")
+	spoilerModel.SetPlaceHolder("(optional: blank = provider default)")
 	openaiKey := widget.NewPasswordEntry()
 	anthropicKey := widget.NewPasswordEntry()
 	geminiKey := widget.NewPasswordEntry()
@@ -576,6 +577,7 @@ func (g *gui) showRemoteSettings() {
 		widget.NewFormItem("TTS enabled", ttsEnabled),
 		widget.NewFormItem("TTS voice", ttsVoice),
 		widget.NewFormItem("Spoiler guard (Virtual DM)", spoilerGuard),
+		widget.NewFormItem("Spoiler-guard provider", spoilerProvider),
 		widget.NewFormItem("Spoiler-guard model", spoilerModel),
 		widget.NewFormItem("OpenAI API key", openaiKey),
 		widget.NewFormItem("Anthropic API key", anthropicKey),
@@ -608,6 +610,7 @@ func (g *gui) showRemoteSettings() {
 		loaded.TTS.Enabled = ttsEnabled.Checked
 		loaded.TTS.Voice = domain.TTSVoice(ttsVoice.Selected)
 		loaded.SpoilerGuard.Enabled = spoilerGuard.Checked
+		loaded.SpoilerGuard.Provider = spoilerProviderValue(spoilerProvider.Selected)
 		loaded.SpoilerGuard.Model = strings.TrimSpace(spoilerModel.Text)
 		// Secrets are write-only: send only what was typed. getConfig blanked them,
 		// so an untouched field stays "" and putConfig keeps the server's value.
@@ -696,6 +699,7 @@ func (g *gui) showRemoteSettings() {
 				ttsVoice.SetSelected(string(cfg.TTS.Voice))
 			}
 			spoilerGuard.SetChecked(cfg.SpoilerGuard.Enabled)
+			spoilerProvider.SetSelected(spoilerProviderLabel(cfg.SpoilerGuard.Provider))
 			spoilerModel.SetText(cfg.SpoilerGuard.Model)
 			if cfg.TelegramChatID != 0 {
 				telegramChat.SetText(strconv.FormatInt(cfg.TelegramChatID, 10))

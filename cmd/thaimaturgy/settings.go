@@ -63,9 +63,11 @@ func (g *gui) showSettings() {
 
 	spoilerGuard := widget.NewCheck("", nil)
 	spoilerGuard.SetChecked(cfg.SpoilerGuard.Enabled)
+	spoilerProvider := widget.NewSelect(spoilerProviderOptions(), nil)
+	spoilerProvider.SetSelected(spoilerProviderLabel(cfg.SpoilerGuard.Provider))
 	spoilerModel := widget.NewEntry()
 	spoilerModel.SetText(cfg.SpoilerGuard.Model)
-	spoilerModel.SetPlaceHolder("(optional: blank = oracle model)")
+	spoilerModel.SetPlaceHolder("(optional: blank = provider default)")
 
 	openaiKey := widget.NewPasswordEntry()
 	anthropicKey := widget.NewPasswordEntry()
@@ -103,6 +105,7 @@ func (g *gui) showSettings() {
 		widget.NewFormItem("TTS enabled", ttsEnabled),
 		widget.NewFormItem("TTS voice", ttsVoice),
 		widget.NewFormItem("Spoiler guard (Virtual DM)", spoilerGuard),
+		widget.NewFormItem("Spoiler-guard provider", spoilerProvider),
 		widget.NewFormItem("Spoiler-guard model", spoilerModel),
 		widget.NewFormItem("OpenAI API key", openaiKey),
 		widget.NewFormItem("Anthropic API key", anthropicKey),
@@ -129,6 +132,7 @@ func (g *gui) showSettings() {
 		cfg.TTS.Enabled = ttsEnabled.Checked
 		cfg.TTS.Voice = domain.TTSVoice(ttsVoice.Selected)
 		cfg.SpoilerGuard.Enabled = spoilerGuard.Checked
+		cfg.SpoilerGuard.Provider = spoilerProviderValue(spoilerProvider.Selected)
 		cfg.SpoilerGuard.Model = strings.TrimSpace(spoilerModel.Text)
 		if k := strings.TrimSpace(openaiKey.Text); k != "" {
 			cfg.OpenAIAPIKey = k
@@ -189,6 +193,36 @@ func (g *gui) applySettings(cfg *domain.Config) error {
 	g.config = &eff
 	g.prov = providers.New(&eff)
 	return nil
+}
+
+// spoilerSameAsOracle is the Select label meaning "reuse the oracle's provider"
+// (stored as an empty SpoilerGuard.Provider).
+const spoilerSameAsOracle = "(same as oracle)"
+
+// spoilerProviderOptions is the provider dropdown for the spoiler-guard section:
+// the "same as oracle" sentinel plus every supported engine.
+func spoilerProviderOptions() []string {
+	return []string{
+		spoilerSameAsOracle,
+		string(domain.ProviderOpenAI), string(domain.ProviderAnthropic),
+		string(domain.ProviderGemini), string(domain.ProviderClaudeCLI),
+	}
+}
+
+// spoilerProviderLabel maps a stored provider to its dropdown label ("" → sentinel).
+func spoilerProviderLabel(p domain.ProviderType) string {
+	if p == "" {
+		return spoilerSameAsOracle
+	}
+	return string(p)
+}
+
+// spoilerProviderValue maps a dropdown label back to a stored provider (sentinel → "").
+func spoilerProviderValue(label string) domain.ProviderType {
+	if label == "" || label == spoilerSameAsOracle {
+		return ""
+	}
+	return domain.ProviderType(label)
 }
 
 func entryWith(text string) *widget.Entry {
