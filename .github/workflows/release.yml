@@ -169,6 +169,11 @@ jobs:
     permissions:
       contents: read
       packages: write # push to GHCR
+    env:
+      # Don't upload build-record (.dockerbuild) artifacts: the release job
+      # downloads by pattern, but keeping them out avoids shipping build records
+      # and shrinks the artifact set.
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -283,6 +288,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          # Only the release bundles (binaries-*, gui-*) — never other artifacts
+          # such as build-push-action's .dockerbuild records.
+          pattern: '{binaries,gui}-*'
           merge-multiple: true
       - name: List artifacts
         run: ls -la artifacts
