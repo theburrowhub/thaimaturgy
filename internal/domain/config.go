@@ -44,8 +44,13 @@ type TTSConfig struct {
 // Disabled by default (opt-in) — it costs one extra model call per DM turn.
 type SpoilerGuardConfig struct {
 	Enabled bool `json:"enabled"`
+	// Provider overrides the engine used for the review pass (openai | anthropic |
+	// gemini | claude-cli), reusing the same stored credentials. Empty → the active
+	// oracle provider.
+	Provider ProviderType `json:"provider,omitempty"`
 	// Model overrides the model used for the review pass (may be a cheaper/faster
-	// one). Empty → the active oracle model.
+	// one). Empty → the oracle model when Provider matches the oracle, else that
+	// provider's default model.
 	Model string `json:"model,omitempty"`
 }
 

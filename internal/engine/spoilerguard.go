@@ -49,9 +49,29 @@ func (o *Oracle) reviewSpoilers(ctx context.Context, narration string) string {
 		return narration // nothing secret to leak
 	}
 
-	model := cfg.SpoilerGuard.Model
-	if model == "" {
+	// Choose the review engine + model. By default reuse the oracle's provider and
+	// model; if a spoiler-guard provider is configured (and differs), build a
+	// provider for that engine reusing the same stored credentials, defaulting the
+	// model to that provider's default when none is set.
+	prov := o.provider
+	model := strings.TrimSpace(cfg.SpoilerGuard.Model)
+	if p := cfg.SpoilerGuard.Provider; p != "" && p != cfg.Provider {
+		if model == "" {
+			model = domain.DefaultModel(p)
+		}
+		sub := *cfg
+		sub.Provider = p
+		sub.Model = model
+		sub.RunModel = ""
+		sub.EditModel = ""
+		if pr := providers.New(&sub); pr != nil {
+			prov = pr
+		}
+	} else if model == "" {
 		model = cfg.Model
+	}
+	if prov == nil {
+		return narration // fail-open: no usable engine for the review
 	}
 
 	var user strings.Builder
@@ -65,7 +85,7 @@ func (o *Oracle) reviewSpoilers(ctx context.Context, narration string) string {
 
 	rctx, cancel := context.WithTimeout(ctx, spoilerReviewTimeout)
 	defer cancel()
-	resp, err := o.provider.Chat(rctx, providers.ChatRequest{
+	resp, err := prov.Chat(rctx, providers.ChatRequest{
 		Model:       model,
 		Temperature: 0.2,
 		MaxTokens:   spoilerReviewMaxTokens,

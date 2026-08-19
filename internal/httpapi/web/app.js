@@ -1039,7 +1039,8 @@ async function loadSettings() {
 
   sec("Spoiler guard (Virtual DM)");
   const sgEnabled = g("Review DM narration for spoilers", checkbox(c.spoiler_guard && c.spoiler_guard.enabled));
-  const sgModel = g("Review model (optional; blank = oracle model)", input((c.spoiler_guard && c.spoiler_guard.model) || ""));
+  const sgProvider = g("Review provider", selectFrom(["(same as oracle)", "openai", "anthropic", "gemini", "claude-cli"], (c.spoiler_guard && c.spoiler_guard.provider) || "(same as oracle)"));
+  const sgModel = g("Review model (optional; blank = provider default)", input((c.spoiler_guard && c.spoiler_guard.model) || ""));
 
   sec("API keys (write-only)");
   const kOpenAI = g("OpenAI API key", passwordInput());
@@ -1052,7 +1053,7 @@ async function loadSettings() {
   const tgUsers = g("Allowed users (one numeric id per line)", textarea((c.telegram_allowed_users || []).join("\n"), 3));
 
   const save = el("button", null, "Save settings"); save.type = "submit"; f.append(save);
-  settingsRefs = { provider, model, runModel, editModel, lang, importLang, temp, maxTokens, importMax, oracleIters, timeout, autosave, autosaveInt, ttsEnabled, ttsVoice, sgEnabled, sgModel, kOpenAI, kAnthropic, kGemini, tgToken, tgChat, tgUsers };
+  settingsRefs = { provider, model, runModel, editModel, lang, importLang, temp, maxTokens, importMax, oracleIters, timeout, autosave, autosaveInt, ttsEnabled, ttsVoice, sgEnabled, sgProvider, sgModel, kOpenAI, kAnthropic, kGemini, tgToken, tgChat, tgUsers };
 }
 
 $("#settings-form").addEventListener("submit", async (e) => {
@@ -1073,7 +1074,8 @@ $("#settings-form").addEventListener("submit", async (e) => {
   cfg.auto_save = r.autosave.checked;
   cfg.auto_save_interval = parseInt(r.autosaveInt.value, 10) || 0;
   cfg.tts = Object.assign({}, cfgCache.tts || {}, { enabled: r.ttsEnabled.checked, voice: r.ttsVoice.value });
-  cfg.spoiler_guard = Object.assign({}, cfgCache.spoiler_guard || {}, { enabled: r.sgEnabled.checked, model: r.sgModel.value.trim() });
+  const sgProv = r.sgProvider.value === "(same as oracle)" ? "" : r.sgProvider.value;
+  cfg.spoiler_guard = Object.assign({}, cfgCache.spoiler_guard || {}, { enabled: r.sgEnabled.checked, provider: sgProv, model: r.sgModel.value.trim() });
   cfg.telegram_chat_id = parseInt(r.tgChat.value, 10) || 0;
   cfg.telegram_allowed_users = r.tgUsers.value.split("\n").map((s) => s.trim()).filter(Boolean);
   // Secrets are write-only: send what was typed (empty = keep current, per the server).

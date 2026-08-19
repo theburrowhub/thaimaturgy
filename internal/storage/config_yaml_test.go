@@ -147,3 +147,28 @@ func TestConfigSpoilerGuardRoundTrip(t *testing.T) {
 		t.Errorf("spoiler guard round-trip = %+v", loaded.SpoilerGuard)
 	}
 }
+
+// TestConfigSpoilerGuardProviderRoundTrip verifies the spoiler-guard provider
+// override persists to YAML and loads back (#126).
+func TestConfigSpoilerGuardProviderRoundTrip(t *testing.T) {
+	clearProviderEnv(t)
+	store, _ := NewWithPath(t.TempDir())
+
+	c := domain.DefaultConfig()
+	c.SpoilerGuard.Enabled = true
+	c.SpoilerGuard.Provider = domain.ProviderOpenAI
+	c.SpoilerGuard.Model = "gpt-4o-mini"
+	if err := store.SaveConfig(c); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if raw, _ := os.ReadFile(store.ConfigPath()); !strings.Contains(string(raw), "provider: openai") {
+		t.Errorf("spoiler_guard.provider not written:\n%s", raw)
+	}
+	loaded, err := store.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if loaded.SpoilerGuard.Provider != domain.ProviderOpenAI || loaded.SpoilerGuard.Model != "gpt-4o-mini" || !loaded.SpoilerGuard.Enabled {
+		t.Errorf("spoiler guard not round-tripped: %+v", loaded.SpoilerGuard)
+	}
+}

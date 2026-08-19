@@ -64,8 +64,9 @@ type fileConfig struct {
 	} `yaml:"tts"`
 
 	SpoilerGuard struct {
-		Enabled bool   `yaml:"enabled"`
-		Model   string `yaml:"model,omitempty"`
+		Enabled  bool   `yaml:"enabled"`
+		Provider string `yaml:"provider,omitempty"`
+		Model    string `yaml:"model,omitempty"`
 	} `yaml:"spoiler_guard"`
 
 	Telegram struct {
@@ -114,6 +115,7 @@ func fromConfig(c *domain.Config) fileConfig {
 	fc.TTS.Speed = c.TTS.Speed
 
 	fc.SpoilerGuard.Enabled = c.SpoilerGuard.Enabled
+	fc.SpoilerGuard.Provider = string(c.SpoilerGuard.Provider)
 	fc.SpoilerGuard.Model = c.SpoilerGuard.Model
 
 	fc.Telegram.BotToken = c.TelegramToken
@@ -160,6 +162,7 @@ func toConfig(fc *fileConfig, c *domain.Config) {
 	c.TTS.Speed = fc.TTS.Speed
 
 	c.SpoilerGuard.Enabled = fc.SpoilerGuard.Enabled
+	c.SpoilerGuard.Provider = domain.ProviderType(fc.SpoilerGuard.Provider)
 	c.SpoilerGuard.Model = fc.SpoilerGuard.Model
 
 	c.TelegramToken = fc.Telegram.BotToken
