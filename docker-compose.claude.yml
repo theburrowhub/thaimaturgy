@@ -24,8 +24,10 @@ services:
       # leave this unset and pick the provider in Settings.
       THAIM_PROVIDER: ${THAIM_PROVIDER:-claude-cli}
       # Fallback when you DON'T mount a ~/.claude login: the claude CLI reads
-      # ANTHROPIC_API_KEY (note: not the THAIM_ prefix). Harmless if empty.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # ANTHROPIC_API_KEY. Populated from ANTHROPIC_API_KEY, or from
+      # THAIM_ANTHROPIC_API_KEY (the name the base compose file documents), so
+      # either works. Harmless if both are empty.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-${THAIM_ANTHROPIC_API_KEY:-}}
     # Replace (not merge) the base file's named-volume mount.
     volumes: !override
       - ${HOME}/.thaimaturgy:/data # your adventures/sessions/config
