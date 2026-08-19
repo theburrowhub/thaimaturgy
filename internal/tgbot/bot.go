@@ -377,6 +377,9 @@ var playerSafeCommands = map[string]bool{
 	"rest":       true, // short/long rest for the party (or a named character)
 	"recap":      true, // "previously on…" from session state (no DM notes/secrets)
 	"previously": true, // alias of /recap
+	"glosario":   true, // known people + visited places (player-safe, no secrets)
+	"glossary":   true, // alias of /glosario
+	"who":        true, // alias of /glosario
 }
 
 // delegateToEngine routes a small, player-safe subset of slash commands through
@@ -987,6 +990,7 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /setnote <text> — set your character's notes
 /quests — list tracked quests
 /recap — a quick "previously on…" recap of the session so far
+/glosario (/glossary, /who) — people you know + places you've been
 /note <text> — add a note to the timeline
 /chatid — show this chat's id
 /help — this help`
