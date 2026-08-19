@@ -12,14 +12,20 @@
 
 # --- build the static server binary --------------------------------------
 FROM golang:1.25 AS build
+ARG VERSION=
+ARG COMMIT=
+ARG DATE=
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # The server has no CGO dependencies (no Fyne), so build a static binary. It also
 # answers the `__mcp-tools` subcommand, which the claude-cli backend re-execs to
-# serve the session tools to `claude` over MCP.
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/thaimaturgy-server ./cmd/thaimaturgy-server
+# serve the session tools to `claude` over MCP. VERSION is stamped into
+# internal/buildinfo (shown at /api/version and the web badge).
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Version=${VERSION} -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Commit=${COMMIT} -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Date=${DATE}" \
+    -o /out/thaimaturgy-server ./cmd/thaimaturgy-server
 
 # --- runtime: Node.js + the Claude Code CLI ------------------------------
 FROM node:22-slim AS runtime

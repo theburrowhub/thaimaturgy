@@ -193,14 +193,18 @@ uninstall: ## Uninstall from GOPATH/bin
 
 ##@ Docker
 
-docker-build: ## Build Docker image
+docker-build: ## Build Docker image (version stamped into the image)
 	@echo "$(CYAN)Building Docker image...$(RESET)"
-	docker build -t $(BINARY_NAME):$(VERSION) .
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(BUILD_TIME) -t $(BINARY_NAME):$(VERSION) .
 	@echo "$(GREEN)Docker image built: $(BINARY_NAME):$(VERSION)$(RESET)"
 
 docker-run: docker-build ## Run in Docker
 	@echo "$(CYAN)Running in Docker...$(RESET)"
 	docker run -it --rm $(BINARY_NAME):$(VERSION)
+
+docker-up: ## Build + start the server via docker compose (version stamped)
+	@echo "$(CYAN)docker compose up (version $(VERSION))...$(RESET)"
+	THAIM_VERSION=$(VERSION) THAIM_COMMIT=$(COMMIT) THAIM_DATE=$(BUILD_TIME) docker compose up -d --build
 
 ##@ Adventure Modules
 
