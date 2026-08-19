@@ -33,6 +33,7 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/appservice"
 	"github.com/theburrowhub/thaimaturgy/internal/bookpdf"
+	"github.com/theburrowhub/thaimaturgy/internal/buildinfo"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
 
@@ -95,6 +96,13 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{
+			"version":    buildinfo.String(),
+			"commit":     buildinfo.Commit,
+			"build_time": buildinfo.Date,
+		})
 	})
 	mux.HandleFunc("GET /api/adventures", s.listAdventures)
 	mux.HandleFunc("POST /api/adventures/import", s.importAdventure)

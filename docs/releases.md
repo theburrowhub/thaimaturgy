@@ -76,6 +76,10 @@ tar xzf thaimaturgy_v1.2.3_linux_amd64.tar.gz
 
 ## Version embedding
 
-The build passes `-ldflags "-X main.Version=<tag> -X main.Commit=<sha> -X
-main.BuildTime=<ts>"` (mirroring the Makefile). Wiring a `--version` flag that
-prints these is a small follow-up.
+The build injects the version into `internal/buildinfo` via
+`-ldflags "-X …/internal/buildinfo.Version=<tag> -X ….Commit=<sha> -X ….Date=<ts>"`
+(the Makefile uses `git describe --tags`; the release workflow uses the pushed
+tag). Every frontend reads `buildinfo.String()`, so the version shows in a corner
+of the desktop GUI and the web UI, and the server exposes it at `GET /api/version`.
+Without ldflags (a plain `go build`/`go run`) it falls back to the embedded VCS
+revision (`dev+<sha>`) or `dev`.

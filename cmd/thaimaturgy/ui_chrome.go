@@ -6,6 +6,9 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
+
+	"github.com/theburrowhub/thaimaturgy/internal/buildinfo"
 )
 
 // Desktop chrome tokens mirror .hermes/designs/dm-oracle-moderno.html.
@@ -22,7 +25,12 @@ var (
 )
 
 func appShell(obj fyne.CanvasObject) fyne.CanvasObject {
-	return container.NewStack(canvas.NewRectangle(chromeBg), obj)
+	// A small, faint version tag pinned to the bottom-right corner. canvas.Text is
+	// not a widget, so it never intercepts clicks on the content beneath it.
+	ver := canvas.NewText(buildinfo.String()+"  ", chromeFaint)
+	ver.TextSize = 10
+	corner := container.NewBorder(nil, container.NewHBox(layout.NewSpacer(), ver), nil, nil)
+	return container.NewStack(canvas.NewRectangle(chromeBg), obj, corner)
 }
 
 func modernPanel(title, subtitle string, body fyne.CanvasObject) fyne.CanvasObject {

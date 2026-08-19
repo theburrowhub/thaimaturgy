@@ -258,7 +258,7 @@ func (g *gui) showEditor() {
 	if g.editor == nil {
 		g.editor = newEditor(g)
 	}
-	g.win.SetContent(g.editor.buildUI())
+	g.win.SetContent(appShell(g.editor.buildUI()))
 	g.editor.reload()
 }
 

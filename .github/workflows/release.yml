@@ -93,7 +93,7 @@ jobs:
           set -euo pipefail
           COMMIT="$(git rev-parse --short HEAD)"
           BUILD_TIME="$(date -u '+%Y-%m-%d_%H:%M:%S')"
-          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildTime=${BUILD_TIME}"
+          LDFLAGS="-s -w -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Version=${VERSION} -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Commit=${COMMIT} -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Date=${BUILD_TIME}"
           ext=""
           [ "${GOOS}" = "windows" ] && ext=".exe"
           mkdir -p out
@@ -145,7 +145,7 @@ jobs:
           set -euo pipefail
           COMMIT="$(git rev-parse --short HEAD)"
           BUILD_TIME="$(date -u '+%Y-%m-%d_%H:%M:%S')"
-          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildTime=${BUILD_TIME}"
+          LDFLAGS="-s -w -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Version=${VERSION} -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Commit=${COMMIT} -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Date=${BUILD_TIME}"
           mkdir -p out
           go build -trimpath -ldflags "${LDFLAGS}" -o "out/thaimaturgy" ./cmd/thaimaturgy
       - name: Package + checksum
