@@ -36,9 +36,12 @@ Publishing is split so moving tags stay correct even if releases run out of orde
 | `latest`   | highest published stable version in the whole repo |
 
 Every run reconciles all moving tags to the true highest (never "self"), and falls
-back past a failed higher build to an older published image — so order/overlap
-don't matter and no serialization is needed; an older tag can't clobber a newer
-one, and any single run leaves every moving tag correct. Prereleases publish only
+back past a failed higher build to an older published image. Promotions are
+serialized (a concurrency group, `cancel-in-progress: false`) so two reconcilers
+can't overlap and overwrite each other from stale tag snapshots; because each run
+reconciles *all* moving tags, a replaced pending run is harmless and the last run
+leaves everything at the true highest. An older tag can't clobber a newer one.
+Prereleases publish only
 their immutable image + a prerelease GitHub Release. **Build metadata**
 (`v1.2.3+meta`) is rejected: Docker tag normalization drops it, so it would
 collide with `v1.2.3`.
