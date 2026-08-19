@@ -64,8 +64,12 @@ func (o *Oracle) reviewSpoilers(ctx context.Context, narration string) string {
 		sub.Model = model
 		sub.RunModel = ""
 		sub.EditModel = ""
-		if pr := providers.New(&sub); pr != nil {
-			prov = pr
+		prov = providers.New(&sub)
+		if prov == nil {
+			// The requested engine can't be built (e.g. an unsupported provider
+			// value). Fail open rather than fall back to the oracle provider, which
+			// would be sent this provider's (mismatched) model.
+			return narration
 		}
 	} else if model == "" {
 		model = cfg.Model
