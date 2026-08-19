@@ -1,0 +1,38 @@
+name: CI
+
+# Publishing is PAUSED: the single app binary is now the Fyne desktop GUI
+# (cmd/thaimaturgy), which needs CGO + OpenGL/X11 and can't be cross-built by the
+# previous CGO_ENABLED=0 goreleaser pipeline. A multiplatform GUI release (e.g.
+# via fyne-cross with per-OS runners) will be set up separately. This workflow no
+# longer auto-tags or publishes — it just tests and builds on every push/PR so
+# regressions are caught. Build/release locally with `make build`.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Install build dependencies (audio + Fyne GUI)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
+
+      - name: Test
+        run: go test ./... -race
+
+      - name: Build app + bot
+        run: make build build-bot

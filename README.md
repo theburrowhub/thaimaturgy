@@ -91,6 +91,18 @@ go build -o thaimaturgy ./cmd/thaimaturgy
 ./thaimaturgy
 ```
 
+### Prebuilt releases
+
+Tagged releases publish multi-arch Docker images to GHCR and binary bundles to the
+GitHub Releases page:
+
+```bash
+docker pull ghcr.io/theburrowhub/thaimaturgy-server:latest
+```
+
+See [docs/releases.md](docs/releases.md) for the full list (server/bot/novel + GUI
+binaries, the `claude-cli` image) and how to cut/consume a release.
+
 ## Configuration & credentials
 
 thAImaturgy supports **OpenAI, Anthropic, and Google Gemini**, and finds credentials in

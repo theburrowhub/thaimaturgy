@@ -1,38 +1,294 @@
-name: CI
+name: Release
 
-# Publishing is PAUSED: the single app binary is now the Fyne desktop GUI
-# (cmd/thaimaturgy), which needs CGO + OpenGL/X11 and can't be cross-built by the
-# previous CGO_ENABLED=0 goreleaser pipeline. A multiplatform GUI release (e.g.
-# via fyne-cross with per-OS runners) will be set up separately. This workflow no
-# longer auto-tags or publishes — it just tests and builds on every push/PR so
-# regressions are caught. Build/release locally with `make build`.
+# Publishes versioned artifacts when a semver tag (vX.Y.Z) is pushed:
+#   - static binaries (server, bot, novel) for linux/darwin/windows × amd64/arm64;
+#   - the desktop GUI (CGO/Fyne) for linux + macOS, on native runners;
+#   - multi-arch Docker images (default + claude-cli) pushed to GHCR.
+#
+# Two-phase publishing keeps moving tags correct under concurrent/out-of-order
+# releases:
+#   1. Each release pushes only its IMMUTABLE image tag (X.Y.Z / X.Y.Z-pre) and
+#      attaches its binaries to a GitHub Release. These run independently and are
+#      never serialized/cancelled, so every release always ships its artifacts.
+#   2. A separate `promote` job (stable releases only) that is a FULL, idempotent
+#      reconciler: it RE-READS all tags and repoints `latest` and EVERY `X.Y` at
+#      the highest stable image that is actually published (falling back past a
+#      failed build). It is serialized (a concurrency group, cancel-in-progress:
+#      false) so two reconcilers can't overlap and overwrite each other from
+#      stale snapshots; because it reconciles ALL moving tags, a replaced pending
+#      run is harmless and the last run leaves everything at the true highest.
+#
+# Everyday build+test lives in ci.yml; this only runs for tags. Cut a release:
+#   git tag v1.2.3 && git push origin v1.2.3
+# Build metadata (v1.2.3+meta) is rejected: it would collide on the Docker tag.
+#
+# NOTE: the Windows desktop GUI is not built here (Fyne needs a mingw toolchain on
+# the Windows runner); Windows users get the static binaries. A Windows GUI build
+# (fyne-cross or a mingw setup) can follow.
+
 on:
   push:
-    branches:
-      - main
-  pull_request:
-  workflow_dispatch:
+    tags:
+      - 'v*.*.*'
 
 permissions:
-  contents: read
+  contents: read # least privilege by default; jobs elevate as needed
+
+env:
+  GO_VERSION: '1.25'
 
 jobs:
-  check:
+  # --- validate the tag ----------------------------------------------------
+  prepare:
+    name: Validate version
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      is_stable: ${{ steps.v.outputs.is_stable }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - id: v
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          # Strict SemVer WITHOUT build metadata (semver.org grammar minus +build):
+          # build metadata is dropped by Docker tag normalization, so v1.2.3 and
+          # v1.2.3+meta would collide on the immutable tag — reject it outright.
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
+          if [[ ! "$VERSION" =~ $re ]]; then
+            echo "::error::tag '$VERSION' is not accepted (need vMAJOR.MINOR.PATCH[-prerelease], no +build metadata)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          case "$VERSION" in *-*) echo "is_stable=false" ;; *) echo "is_stable=true" ;; esac >> "$GITHUB_OUTPUT"
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+  # --- static CLI/server binaries (cross-compiled, CGO-free) ---------------
+  binaries:
+    name: Binaries ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: ${{ env.GO_VERSION }}
+      - name: Build static binaries
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          COMMIT="$(git rev-parse --short HEAD)"
+          BUILD_TIME="$(date -u '+%Y-%m-%d_%H:%M:%S')"
+          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildTime=${BUILD_TIME}"
+          ext=""
+          [ "${GOOS}" = "windows" ] && ext=".exe"
+          mkdir -p out
+          for cmd in thaimaturgy-server thaimaturgy-bot thaimaturgy-novel; do
+            go build -trimpath -ldflags "${LDFLAGS}" -o "out/${cmd}${ext}" "./cmd/${cmd}"
+          done
+      - name: Package + checksum
+        run: |
+          set -euo pipefail
+          pkg="thaimaturgy_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          mkdir -p dist
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            (cd out && zip -q "../dist/${pkg}.zip" ./*)
+          else
+            tar -C out -czf "dist/${pkg}.tar.gz" .
+          fi
+          (cd dist && for f in *; do sha256sum "$f" > "$f.sha256"; done)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
 
-      - name: Install build dependencies (audio + Fyne GUI)
+  # --- desktop GUI (CGO/Fyne) on native runners ----------------------------
+  gui:
+    name: GUI ${{ matrix.goos }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, goos: linux, arch: amd64 }
+          - { os: macos-latest, goos: darwin, arch: arm64 }
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Linux GUI build deps
+        if: matrix.goos == 'linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
+      - name: Build the desktop GUI
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          set -euo pipefail
+          COMMIT="$(git rev-parse --short HEAD)"
+          BUILD_TIME="$(date -u '+%Y-%m-%d_%H:%M:%S')"
+          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildTime=${BUILD_TIME}"
+          mkdir -p out
+          go build -trimpath -ldflags "${LDFLAGS}" -o "out/thaimaturgy" ./cmd/thaimaturgy
+      - name: Package + checksum
+        run: |
+          set -euo pipefail
+          pkg="thaimaturgy-gui_${VERSION}_${{ matrix.goos }}_${{ matrix.arch }}"
+          mkdir -p dist
+          tar -C out -czf "dist/${pkg}.tar.gz" .
+          (cd dist && for f in *.tar.gz; do shasum -a 256 "$f" > "$f.sha256"; done)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-${{ matrix.goos }}
+          path: dist/*
+          if-no-files-found: error
 
-      - name: Test
-        run: go test ./... -race
+  # --- immutable multi-arch Docker images to GHCR --------------------------
+  images:
+    name: Image ${{ matrix.image }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: thaimaturgy-server, dockerfile: Dockerfile }
+          - { image: thaimaturgy-server-claude, dockerfile: Dockerfile.claude-cli }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          # Push ONLY the immutable version tag here. Moving tags (latest, X.Y) are
+          # handled by the serialized `promote` job. latest=false stops the action
+          # from auto-adding `latest`.
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
 
-      - name: Build app + bot
-        run: make build build-bot
+  # --- serialized promotion of the moving tags (latest, X.Y) ---------------
+  promote:
+    name: Promote moving tags
+    needs: [prepare, images]
+    if: needs.prepare.outputs.is_stable == 'true' # prereleases never move latest / X.Y
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    # Serialize promotions so they never overlap: two concurrent reconcilers can
+    # each snapshot tags at a different instant, and a slower/older one could then
+    # overwrite a newer one's result. cancel-in-progress:false keeps the running
+    # job; a replaced pending job is harmless here because this job is a FULL,
+    # idempotent reconciler (below) — whichever job runs last re-reads all tags and
+    # brings `latest` and EVERY `X.Y` to the true highest.
+    concurrency:
+      group: promote-moving-tags
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the full tag history, re-read at job start
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Reconcile latest + every X.Y to the highest published stable image
+        shell: bash
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          # Same strict grammar as prepare: re-validate every historical tag so a
+          # malformed one (e.g. v9.9.9.9) can't win the version sort.
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
+          stable=()
+          while read -r t; do
+            [[ "$t" =~ $re ]] || continue      # drop malformed tags
+            [[ "$t" == *-* ]] && continue       # drop prereleases
+            stable+=("$t")
+          done < <(git tag -l 'v*.*.*')
+          if [ "${#stable[@]}" -eq 0 ]; then echo "no stable tags to promote"; exit 0; fi
+          minors="$(printf '%s\n' "${stable[@]}" | sed -E 's/^(v[0-9]+\.[0-9]+)\..*/\1/' | sort -Vr -u)"
+          exists() { docker buildx imagetools inspect "$1" >/dev/null 2>&1; }
+          # Point $moving at the highest stable tag (within $filter, a grep -E or '.')
+          # whose image actually exists — so a failed higher build falls back to an
+          # older published one instead of leaving the tag stale.
+          promote_highest_existing() {
+            local repo="$1" moving="$2" filter="$3" t
+            for t in $(printf '%s\n' "${stable[@]}" | grep -E "$filter" | sort -Vr); do
+              if exists "${repo}:${t#v}"; then
+                docker buildx imagetools create --tag "${repo}:${moving}" "${repo}:${t#v}"
+                echo "${repo}:${moving} -> ${t#v}"
+                return 0
+              fi
+            done
+            echo "no published image for ${repo}:${moving}; left unchanged"
+          }
+          for img in thaimaturgy-server thaimaturgy-server-claude; do
+            repo="ghcr.io/${OWNER}/${img}"
+            promote_highest_existing "$repo" "latest" '.'
+            for mm in $minors; do
+              promote_highest_existing "$repo" "${mm#v}" "^${mm//./\\.}\."
+            done
+          done
+
+  # --- GitHub Release with all binary artifacts ----------------------------
+  release:
+    name: GitHub Release
+    needs: [prepare, binaries, gui, images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the Release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -la artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          prerelease: ${{ needs.prepare.outputs.is_stable != 'true' }}
