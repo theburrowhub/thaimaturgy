@@ -1,40 +1,82 @@
 name: Release
 
-# Publishes versioned artifacts on a semver tag push (vX.Y.Z):
+# Publishes versioned artifacts when a semver tag (vX.Y.Z) is pushed:
 #   - static binaries (server, bot, novel) for linux/darwin/windows × amd64/arm64,
 #     attached to a GitHub Release with SHA-256 checksums;
 #   - the desktop GUI (CGO/Fyne) for linux + macOS, built on native runners;
 #   - multi-arch Docker images (default + claude-cli) pushed to GHCR.
 #
-# The version is taken from the tag (e.g. v1.2.3). Everyday testing lives in
-# ci.yml; this workflow only runs for tags. Trigger a release with:
+# The version comes from the tag; `prepare` validates it is strict semver and
+# decides which moving tags to update (see below). Everyday build+test lives in
+# ci.yml; this workflow only runs for tags. Cut a release with:
 #   git tag v1.2.3 && git push origin v1.2.3
 #
-# NOTE: the Windows desktop GUI is not built here yet (Fyne needs a mingw toolchain
-# on the Windows runner); Windows users get the static server/bot/novel binaries.
-# A Windows GUI build (fyne-cross or a mingw setup) can follow.
+# Moving-tag policy (avoids an out-of-order run clobbering a newer release):
+#   X.Y.Z  -> always (immutable, incl. prereleases like v1.2.3-rc1)
+#   X.Y    -> only for STABLE releases (no prerelease suffix)
+#   latest -> only when this tag is the HIGHEST stable semver in the repo
+# Releases are also serialized (concurrency) so two runs never overlap.
+#
+# NOTE: the Windows desktop GUI is not built here (Fyne needs a mingw toolchain on
+# the Windows runner); Windows users get the static binaries. A Windows GUI build
+# (fyne-cross or a mingw setup) can follow.
 
 on:
   push:
     tags:
       - 'v*.*.*'
-  workflow_dispatch: {}
 
 permissions:
-  contents: write # create the GitHub Release
-  packages: write # push images to GHCR
+  contents: read # least privilege by default; jobs elevate as needed
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release # serialize ALL releases so none overlap
   cancel-in-progress: false
 
 env:
   GO_VERSION: '1.25'
 
 jobs:
+  # --- validate the tag and decide moving-tag policy -----------------------
+  prepare:
+    name: Validate version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      is_stable: ${{ steps.v.outputs.is_stable }}
+      is_latest: ${{ steps.v.outputs.is_latest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need all tags to find the highest stable semver
+      - id: v
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          # Strict semver: vMAJOR.MINOR.PATCH with optional -prerelease / +build.
+          if ! echo "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag '$VERSION' is not a semver vX.Y.Z tag; refusing to publish"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if echo "$VERSION" | grep -q '-'; then
+            # Prerelease: immutable tag only, never X.Y or latest.
+            echo "is_stable=false" >> "$GITHUB_OUTPUT"
+            echo "is_latest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_stable=true" >> "$GITHUB_OUTPUT"
+            highest="$(git tag -l 'v*.*.*' | grep -Ev '[-]' | sort -V | tail -1)"
+            if [ "$highest" = "$VERSION" ]; then
+              echo "is_latest=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_latest=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
   # --- static CLI/server binaries (cross-compiled, CGO-free) ---------------
   binaries:
     name: Binaries ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: prepare
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -45,6 +87,9 @@ jobs:
           - { goos: darwin, goarch: amd64 }
           - { goos: darwin, goarch: arm64 }
           - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -57,7 +102,6 @@ jobs:
           CGO_ENABLED: '0'
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME}"
           COMMIT="$(git rev-parse --short HEAD)"
           BUILD_TIME="$(date -u '+%Y-%m-%d_%H:%M:%S')"
           LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildTime=${BUILD_TIME}"
@@ -70,7 +114,7 @@ jobs:
       - name: Package + checksum
         run: |
           set -euo pipefail
-          pkg="thaimaturgy_${GITHUB_REF_NAME}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          pkg="thaimaturgy_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
           mkdir -p dist
           if [ "${{ matrix.goos }}" = "windows" ]; then
             (cd out && zip -q "../dist/${pkg}.zip" ./*)
@@ -87,13 +131,16 @@ jobs:
   # --- desktop GUI (CGO/Fyne) on native runners ----------------------------
   gui:
     name: GUI ${{ matrix.goos }}
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, goos: linux, arch: amd64, ext: '' }
-          - { os: macos-latest, goos: darwin, arch: arm64, ext: '' }
+          - { os: ubuntu-latest, goos: linux, arch: amd64 }
+          - { os: macos-latest, goos: darwin, arch: arm64 }
     runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -107,16 +154,15 @@ jobs:
           CGO_ENABLED: '1'
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME}"
           COMMIT="$(git rev-parse --short HEAD)"
           BUILD_TIME="$(date -u '+%Y-%m-%d_%H:%M:%S')"
           LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildTime=${BUILD_TIME}"
           mkdir -p out
-          go build -trimpath -ldflags "${LDFLAGS}" -o "out/thaimaturgy${{ matrix.ext }}" ./cmd/thaimaturgy
+          go build -trimpath -ldflags "${LDFLAGS}" -o "out/thaimaturgy" ./cmd/thaimaturgy
       - name: Package + checksum
         run: |
           set -euo pipefail
-          pkg="thaimaturgy-gui_${GITHUB_REF_NAME}_${{ matrix.goos }}_${{ matrix.arch }}"
+          pkg="thaimaturgy-gui_${VERSION}_${{ matrix.goos }}_${{ matrix.arch }}"
           mkdir -p dist
           tar -C out -czf "dist/${pkg}.tar.gz" .
           (cd dist && for f in *.tar.gz; do shasum -a 256 "$f" > "$f.sha256"; done)
@@ -129,7 +175,11 @@ jobs:
   # --- multi-arch Docker images to GHCR ------------------------------------
   images:
     name: Image ${{ matrix.image }}
+    needs: prepare
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to GHCR
     strategy:
       fail-fast: false
       matrix:
@@ -151,8 +201,8 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.prepare.outputs.is_stable == 'true' }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.is_latest == 'true' }}
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -166,8 +216,10 @@ jobs:
   # --- GitHub Release with all binary artifacts ----------------------------
   release:
     name: GitHub Release
-    needs: [binaries, gui, images]
+    needs: [prepare, binaries, gui, images]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the Release
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -180,3 +232,4 @@ jobs:
           files: artifacts/*
           generate_release_notes: true
           fail_on_unmatched_files: true
+          prerelease: ${{ needs.prepare.outputs.is_stable != 'true' }}

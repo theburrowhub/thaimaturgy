@@ -14,10 +14,21 @@ from the tag:
   - `ghcr.io/theburrowhub/thaimaturgy-server` (default, distroless)
   - `ghcr.io/theburrowhub/thaimaturgy-server-claude` (Node + the claude CLI, for the
     `claude-cli` provider — see [server-credentials.md](server-credentials.md))
-  tagged `X.Y.Z`, `X.Y`, and `latest`.
 
 Everyday testing (build + `go test -race` on every push/PR) lives in
 `.github/workflows/ci.yml`.
+
+### Tag policy
+
+A `prepare` job validates the tag is strict semver and decides which moving tags
+to update, so an out-of-order run can't clobber a newer release:
+
+| Tag pushed        | `X.Y.Z` | `X.Y` | `latest` | GitHub Release |
+|-------------------|:-------:|:-----:|:--------:|:--------------:|
+| `v1.2.3` (stable) |   ✅    |  ✅   | ✅ *(if highest stable)* | normal |
+| `v1.2.3-rc1` (prerelease) | ✅ |  —   |    —     | prerelease |
+
+Releases are serialized (one run at a time) as an extra guard.
 
 ## Cut a release
 
@@ -26,7 +37,8 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-The workflow also has a manual `workflow_dispatch` trigger.
+Only strict-semver `vX.Y.Z` tags publish; a malformed tag fails validation before
+anything is pushed.
 
 ## Consume a release
 
