@@ -31,7 +31,9 @@ resolves quick mechanics, and tracks the running state of your session.
   met, events triggered, story flags, quests, and free-form notes, so answers stay
   contextual as the adventure unfolds.
 - **Roleplay & mechanics support** — NPC voice/motivations/secrets, read-aloud text,
-  stat blocks, and dice (`/roll`, ability checks).
+  stat blocks, and dice (`/roll`, ability checks). The AI never invents die results:
+  it rolls through the `roll_dice`/`ability_check` tools (real RNG) and reports the
+  result and DC, so you can compare against the difficulty class.
 - **Images** — the desktop app renders maps and artwork **inline** (no external viewer).
 - **Adventure browser** — a live tree of zones/rooms, NPCs, events and items; click any
   entry to view its full detail (with inline art) and act on it — move the party to a
