@@ -81,6 +81,44 @@ func TestCommandHandlerRecap(t *testing.T) {
 	}
 }
 
+func TestGlossaryCommand(t *testing.T) {
+	session := createTestSession() // Zone One: r1 "Entrance" (npc guard), r2 "Hall"
+	handler := NewCommandHandler(session)
+
+	// Fresh session: the command works; no NPC met yet, so people is empty (the
+	// party starts placed in the first room, so a place is already present).
+	res := handler.Execute(ParseCommand("/glosario"))
+	if !res.Success || !strings.Contains(res.Response, "=== GLOSSARY ===") {
+		t.Fatalf("/glosario on a fresh session = %+v", res)
+	}
+	if !strings.Contains(res.Response, "(none yet)") {
+		t.Errorf("with no NPC met, people should be empty:\n%s", res.Response)
+	}
+
+	// Discover a room and an NPC, then the glossary reflects them.
+	handler.Execute(ParseCommand("/goto r1"))
+	handler.Execute(ParseCommand("/met guard"))
+
+	res = handler.Execute(ParseCommand("/who")) // alias
+	if !res.Success {
+		t.Fatalf("/who failed: %s", res.Message)
+	}
+	for _, want := range []string{
+		"Gate Guard", // met NPC resolved to its module name
+		"sentry",     // its role
+		"Entrance",   // the visited/current room
+		"Zone One",   // grouped by zone
+	} {
+		if !strings.Contains(res.Response, want) {
+			t.Errorf("glossary missing %q\n---\n%s", want, res.Response)
+		}
+	}
+	// Player-safe: a room the party has NOT visited must not be listed.
+	if strings.Contains(res.Response, "Hall") {
+		t.Errorf("glossary leaked an unvisited room:\n%s", res.Response)
+	}
+}
+
 // A dice roll must not leak into the narrative recap (mechanics are filtered).
 func TestRecapFiltersMechanics(t *testing.T) {
 	session := paritySession()

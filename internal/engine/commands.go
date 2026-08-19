@@ -35,17 +35,18 @@ const (
 	CmdRoll
 	CmdSearch
 	CmdStatus
-	CmdChat    // in-character dialogue added as context (no round action)
-	CmdMeta    // out-of-character question/correction the DM answers immediately
-	CmdRest    // short/long rest for the party
-	CmdMode    // switch between oracle (assistant) and virtual-DM mode
-	CmdMet     // mark an NPC as met (known) in the session state
-	CmdTrigger // mark a scripted event as triggered
-	CmdTable   // roll on a random table
-	CmdBegin   // (virtual-DM) start the game: the DM narrates the opening scene
-	CmdRecap   // instant "previously on…" recap built from session state
-	CmdScene   // show or switch the active narrative scene/phase
-	CmdOracle  // free-form query to the oracle (no slash prefix)
+	CmdChat     // in-character dialogue added as context (no round action)
+	CmdMeta     // out-of-character question/correction the DM answers immediately
+	CmdRest     // short/long rest for the party
+	CmdMode     // switch between oracle (assistant) and virtual-DM mode
+	CmdMet      // mark an NPC as met (known) in the session state
+	CmdTrigger  // mark a scripted event as triggered
+	CmdTable    // roll on a random table
+	CmdBegin    // (virtual-DM) start the game: the DM narrates the opening scene
+	CmdRecap    // instant "previously on…" recap built from session state
+	CmdScene    // show or switch the active narrative scene/phase
+	CmdGlossary // instant reference of known people + visited places
+	CmdOracle   // free-form query to the oracle (no slash prefix)
 )
 
 // Command is a parsed DM instruction.
@@ -141,6 +142,8 @@ func ParseCommand(input string) *Command {
 		cmd.Type = CmdRecap
 	case "scene", "phase":
 		cmd.Type = CmdScene
+	case "glosario", "glossary", "who":
+		cmd.Type = CmdGlossary
 	default:
 		cmd.Type = CmdUnknown
 	}
@@ -254,6 +257,8 @@ func (h *CommandHandler) Execute(cmd *Command) *CommandResult {
 		r.Response = h.recapText()
 	case CmdScene:
 		h.handleScene(cmd, r)
+	case CmdGlossary:
+		r.Response = h.glossaryText()
 	case CmdUnknown:
 		r.Success = false
 		r.Message = "Unknown command: " + cmd.Raw + ". Type /help."
@@ -749,6 +754,89 @@ func (h *CommandHandler) recapText() string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+// glossaryText builds an instant, deterministic reference of what the PARTY has
+// discovered: the NPCs they've met (name + role, with disposition/deceased) and
+// the places they've visited (grouped by zone, in module order), plus where they
+// are now. Like /recap it calls no model and reads only session state — never the
+// module's hidden NPCs, unvisited rooms, secrets, motivations, or event names —
+// so it is safe to show players (exposed on Telegram).
+func (h *CommandHandler) glossaryText() string {
+	st := h.state()
+	adv := h.adv()
+	var sb strings.Builder
+	sb.WriteString("=== GLOSSARY ===\n")
+
+	// People the party has met, resolved to module name + role, with status.
+	people := make([]string, 0, len(st.KnownNPCs))
+	for id, ns := range st.KnownNPCs {
+		if ns == nil || !ns.Met {
+			continue
+		}
+		name := id
+		role := ""
+		if n := adv.NPC(id); n != nil {
+			if n.Name != "" {
+				name = n.Name
+			}
+			role = n.Role
+		}
+		line := name
+		if role != "" {
+			line += " — " + role
+		}
+		var tags []string
+		if ns.Disposition != "" {
+			tags = append(tags, ns.Disposition)
+		}
+		if !ns.Alive {
+			tags = append(tags, "deceased")
+		}
+		if len(tags) > 0 {
+			line += " (" + strings.Join(tags, ", ") + ")"
+		}
+		people = append(people, line)
+	}
+	sort.Strings(people)
+
+	sb.WriteString("\nPeople you know:\n")
+	if len(people) == 0 {
+		sb.WriteString("  (none yet)\n")
+	} else {
+		for _, p := range people {
+			sb.WriteString("  - " + p + "\n")
+		}
+	}
+
+	// Places visited, grouped by zone in module order (only rooms actually visited).
+	sb.WriteString("\nPlaces you've been:\n")
+	if room, zone := adv.Room(st.CurrentRoom); room != nil {
+		loc := room.Name
+		if zone != nil {
+			loc = zone.Name + " — " + room.Name
+		}
+		fmt.Fprintf(&sb, "  Currently at: %s\n", loc)
+	}
+	anyPlace := false
+	for zi := range adv.Zones {
+		z := &adv.Zones[zi]
+		var rooms []string
+		for ri := range z.Rooms {
+			if st.VisitedRooms[z.Rooms[ri].ID] {
+				rooms = append(rooms, z.Rooms[ri].Name)
+			}
+		}
+		if len(rooms) > 0 {
+			anyPlace = true
+			fmt.Fprintf(&sb, "  %s: %s\n", z.Name, strings.Join(rooms, ", "))
+		}
+	}
+	if !anyPlace {
+		sb.WriteString("  (nowhere visited yet)\n")
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
 // handleScene shows the active narrative scene and where it can lead (no arg) or
 // switches to another scene (with a scene id). Scene switching is a DM action:
 // it re-dresses the current locations for a new phase of the story, it does not
@@ -895,6 +983,7 @@ SESSION STATE:
   /scene [id]          Show or switch the active narrative scene/phase
   /quests              Show tracked quests
   /recap               Quick "previously on…" recap of the session so far
+  /glosario            Known people + visited places (aliases: /glossary, /who)
   /party               Show tracked player characters
   /roll <dice>         Roll dice (e.g. /roll 2d6+3)
   /status              Session status
