@@ -10,11 +10,12 @@ name: Release
 #   1. Each release pushes only its IMMUTABLE image tag (X.Y.Z / X.Y.Z-pre) and
 #      attaches its binaries to a GitHub Release. These run independently and are
 #      never serialized/cancelled, so every release always ships its artifacts.
-#   2. A separate `promote` job (stable releases only), serialized so runs can't
-#      interleave, RE-READS all tags and repoints the moving tags `latest` and
-#      `X.Y` at the highest stable immutable image that exists. Because it always
-#      targets the true global/minor highest (not "self"), whichever promote runs
-#      last leaves the correct state — an older tag never clobbers a newer one.
+#   2. A separate `promote` job (stable releases only) that is a FULL, idempotent
+#      reconciler: it RE-READS all tags and repoints `latest` and EVERY `X.Y` at
+#      the highest stable image that is actually published (falling back past a
+#      failed build). Because every run reconciles all moving tags to the true
+#      highest — never "self" — order/overlap don't matter and no serialization is
+#      needed; an older tag can't clobber a newer one.
 #
 # Everyday build+test lives in ci.yml; this only runs for tags. Cut a release:
 #   git tag v1.2.3 && git push origin v1.2.3
@@ -211,55 +212,59 @@ jobs:
     permissions:
       contents: read
       packages: write
-    concurrency:
-      group: promote-moving-tags # serialize promotion across releases
-      cancel-in-progress: false
+    # No concurrency group on purpose. This job is a FULL, idempotent reconciler:
+    # it recomputes `latest` and EVERY `X.Y` from the whole tag set + what's
+    # actually published, so any run leaves all moving tags correct regardless of
+    # order or overlap. A serialized single-pending-slot group would instead let a
+    # third release cancel a queued promotion and leave some minor tag stale.
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # need the full tag history to find the highest stable
+          fetch-depth: 0 # need the full tag history
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Repoint latest and X.Y at the highest stable images
+      - name: Reconcile latest + every X.Y to the highest published stable image
         shell: bash
         env:
           OWNER: ${{ github.repository_owner }}
-          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          # Same strict grammar as prepare: every historical tag is re-validated, so
-          # a malformed tag (e.g. v9.9.9.9) can't win the version sort.
+          # Same strict grammar as prepare: re-validate every historical tag so a
+          # malformed one (e.g. v9.9.9.9) can't win the version sort.
           re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
           stable=()
           while read -r t; do
-            [[ "$t" =~ $re ]] || continue     # drop malformed tags
-            [[ "$t" == *-* ]] && continue      # drop prereleases
+            [[ "$t" =~ $re ]] || continue      # drop malformed tags
+            [[ "$t" == *-* ]] && continue       # drop prereleases
             stable+=("$t")
           done < <(git tag -l 'v*.*.*')
           if [ "${#stable[@]}" -eq 0 ]; then echo "no stable tags to promote"; exit 0; fi
-          sorted="$(printf '%s\n' "${stable[@]}" | sort -V)"
-          highest="$(printf '%s\n' "$sorted" | tail -1)"
-          mm="${VERSION%.*}"; mm_esc="${mm//./\\.}"
-          highest_mm="$(printf '%s\n' "$sorted" | grep -E "^${mm_esc}\." | tail -1)"
-          # Repoint a moving tag at an immutable source, but only if that image is
-          # already published; the highest release's own promote sets it otherwise.
-          repoint() {
-            local repo="$1" moving="$2" src="${3#v}"
-            if docker buildx imagetools inspect "${repo}:${src}" >/dev/null 2>&1; then
-              docker buildx imagetools create --tag "${repo}:${moving}" "${repo}:${src}"
-              echo "repointed ${repo}:${moving} -> ${src}"
-            else
-              echo "skip ${repo}:${moving}: source ${repo}:${src} not published yet"
-            fi
+          minors="$(printf '%s\n' "${stable[@]}" | sed -E 's/^(v[0-9]+\.[0-9]+)\..*/\1/' | sort -Vr -u)"
+          exists() { docker buildx imagetools inspect "$1" >/dev/null 2>&1; }
+          # Point $moving at the highest stable tag (within $filter, a grep -E or '.')
+          # whose image actually exists — so a failed higher build falls back to an
+          # older published one instead of leaving the tag stale.
+          promote_highest_existing() {
+            local repo="$1" moving="$2" filter="$3" t
+            for t in $(printf '%s\n' "${stable[@]}" | grep -E "$filter" | sort -Vr); do
+              if exists "${repo}:${t#v}"; then
+                docker buildx imagetools create --tag "${repo}:${moving}" "${repo}:${t#v}"
+                echo "${repo}:${moving} -> ${t#v}"
+                return 0
+              fi
+            done
+            echo "no published image for ${repo}:${moving}; left unchanged"
           }
           for img in thaimaturgy-server thaimaturgy-server-claude; do
             repo="ghcr.io/${OWNER}/${img}"
-            repoint "$repo" "latest" "$highest"
-            repoint "$repo" "${mm#v}" "$highest_mm"
+            promote_highest_existing "$repo" "latest" '.'
+            for mm in $minors; do
+              promote_highest_existing "$repo" "${mm#v}" "^${mm//./\\.}\."
+            done
           done
 
   # --- GitHub Release with all binary artifacts ----------------------------

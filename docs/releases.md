@@ -25,20 +25,23 @@ Publishing is split so moving tags stay correct even if releases run out of orde
 1. **Immutable push** — each release builds and pushes only its own `X.Y.Z`
    image (or `X.Y.Z-pre`) and attaches its binaries to a GitHub Release. These
    jobs are independent and never serialized, so every release always ships.
-2. **Promote** (stable releases only, serialized) — re-reads all tags, re-validates
-   each, and repoints the moving tags at the highest stable **image that exists**:
+2. **Promote** (stable releases only) — a full, idempotent reconciler. It re-reads
+   and re-validates all tags and repoints `latest` **and every** `X.Y` at the
+   highest stable image that is actually published:
 
 | Moving tag | Points at |
 |------------|-----------|
 | `X.Y.Z`    | immutable, set once at build (incl. prereleases) |
-| `X.Y`      | highest stable patch in that `X.Y` series |
-| `latest`   | highest stable version in the whole repo |
+| `X.Y`      | highest published stable patch in that `X.Y` series |
+| `latest`   | highest published stable version in the whole repo |
 
-Because promote always targets the true global/minor highest (never "self"),
-whichever promote runs last leaves the correct state — an older tag can't clobber
-a newer one. Prereleases publish only their immutable image + a prerelease GitHub
-Release. **Build metadata** (`v1.2.3+meta`) is rejected: Docker tag normalization
-drops it, so it would collide with `v1.2.3`.
+Every run reconciles all moving tags to the true highest (never "self"), and falls
+back past a failed higher build to an older published image — so order/overlap
+don't matter and no serialization is needed; an older tag can't clobber a newer
+one, and any single run leaves every moving tag correct. Prereleases publish only
+their immutable image + a prerelease GitHub Release. **Build metadata**
+(`v1.2.3+meta`) is rejected: Docker tag normalization drops it, so it would
+collide with `v1.2.3`.
 
 ## Cut a release
 
