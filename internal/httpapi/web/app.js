@@ -576,8 +576,11 @@ $("#party-edit").onclick = () => openPartyEditor();
 
 // --- Session log ---------------------------------------------------------
 
+const LOG_ICONS = { roll: "🎲", location: "📍", event: "🎬", flag: "🚩", party: "👥", system: "⚙️", world: "🌍", note: "📝" };
 function logEntry(entry) {
-  const row = el("div", "entry");
+  // Type class + icon make entries scannable and dice rolls stand out (#110).
+  const row = el("div", "entry" + (entry.type ? " " + entry.type : ""));
+  row.append(el("span", "ic", LOG_ICONS[entry.type] || "•"));
   const ts = entry.timestamp ? new Date(entry.timestamp) : null;
   if (ts && !isNaN(ts)) row.append(el("span", "ts", ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })));
   row.append(document.createTextNode(entry.message || ""));

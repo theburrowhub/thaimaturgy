@@ -10,6 +10,31 @@ import (
 // This file renders authored adventure content into readable text blocks,
 // reused by the oracle context builder, the DM commands, and the TUI panels.
 
+// LogIcon returns a compact emoji marker for a timeline entry type, so session
+// logs are scannable at a glance and dice rolls in particular stand out (#110).
+func LogIcon(t domain.LogEntryType) string {
+	switch t {
+	case domain.LogRoll:
+		return "🎲"
+	case domain.LogLocation:
+		return "📍"
+	case domain.LogEvent:
+		return "🎬"
+	case domain.LogFlag:
+		return "🚩"
+	case domain.LogParty:
+		return "👥"
+	case domain.LogSystem:
+		return "⚙️"
+	case domain.LogWorld:
+		return "🌍"
+	case domain.LogNote:
+		return "📝"
+	default:
+		return "•"
+	}
+}
+
 // effectiveRoom returns the room as it should be presented under the active
 // scene: a copy of the authored room with the scene's overrides applied (boxed
 // text replaced, DM notes appended, present cast replaced), plus the scene's
