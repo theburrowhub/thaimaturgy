@@ -14,6 +14,7 @@ import (
 
 	"github.com/theburrowhub/thaimaturgy/internal/apiclient"
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/engine"
 	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 )
 
@@ -456,9 +457,9 @@ func (g *gui) startRemoteLogStream(name string, logBox *fyne.Container, logScrol
 			err := g.remote.StreamEvents(ctx, name, func(e domain.LogEntry) {
 				ts := ""
 				if !e.Timestamp.IsZero() {
-					ts = e.Timestamp.Format("15:04") + " "
+					ts = e.Timestamp.Format("15:04") + "  "
 				}
-				appendLog(fmt.Sprintf("%s[%s] %s", ts, e.Type, e.Message))
+				appendLog(fmt.Sprintf("%s %s%s", engine.LogIcon(e.Type), ts, e.Message))
 			})
 			if ctx.Err() != nil {
 				return

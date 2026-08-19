@@ -348,9 +348,9 @@ func (b *Bot) logText(arg string) string {
 		}
 		ts := ""
 		if !e.Timestamp.IsZero() {
-			ts = e.Timestamp.Format("15:04") + " "
+			ts = e.Timestamp.Format("15:04") + "  "
 		}
-		lines = append(lines, fmt.Sprintf("%s[%s] %s", ts, e.Type, e.Message))
+		lines = append(lines, fmt.Sprintf("%s %s%s", engine.LogIcon(e.Type), ts, e.Message))
 	}
 	if len(lines) == 0 {
 		return "The session log is empty."
@@ -358,7 +358,8 @@ func (b *Bot) logText(arg string) string {
 	if len(lines) > n {
 		lines = lines[len(lines)-n:]
 	}
-	return fmt.Sprintf("📜 Session log (last %d):\n%s", len(lines), strings.Join(lines, "\n"))
+	// Blank line between entries so rolls (🎲) and other beats are easy to scan.
+	return fmt.Sprintf("📜 Session log (last %d):\n\n%s", len(lines), strings.Join(lines, "\n\n"))
 }
 
 // playerSafeCommands is the subset of engine slash commands the Telegram bot may
