@@ -18,22 +18,27 @@ from the tag:
 Everyday testing (build + `go test -race` on every push/PR) lives in
 `.github/workflows/ci.yml`.
 
-### Tag policy
+### Tag policy (two-phase, concurrency-safe)
 
-A `prepare` job validates the tag is strict SemVer (semver.org grammar) and
-decides which moving tags to update by comparing this tag against the whole
-release history. The decision is **order-independent**, so an older tag pushed
-later never clobbers a newer release's moving tags:
+Publishing is split so moving tags stay correct even if releases run out of order:
 
-| Moving tag | Updated when… |
-|------------|---------------|
-| `X.Y.Z` (immutable) | always (incl. prereleases like `v1.2.3-rc1`) |
-| `X.Y`      | this is the highest **stable** patch in its `X.Y` series |
-| `latest`   | this is the highest **stable** version in the whole repo |
+1. **Immutable push** — each release builds and pushes only its own `X.Y.Z`
+   image (or `X.Y.Z-pre`) and attaches its binaries to a GitHub Release. These
+   jobs are independent and never serialized, so every release always ships.
+2. **Promote** (stable releases only, serialized) — re-reads all tags, re-validates
+   each, and repoints the moving tags at the highest stable **image that exists**:
 
-Prereleases publish only their immutable `X.Y.Z` image and a prerelease GitHub
-Release; they never move `X.Y` or `latest`. (No workflow-wide concurrency group —
-that could cancel a queued release; the order-independent comparison is the guard.)
+| Moving tag | Points at |
+|------------|-----------|
+| `X.Y.Z`    | immutable, set once at build (incl. prereleases) |
+| `X.Y`      | highest stable patch in that `X.Y` series |
+| `latest`   | highest stable version in the whole repo |
+
+Because promote always targets the true global/minor highest (never "self"),
+whichever promote runs last leaves the correct state — an older tag can't clobber
+a newer one. Prereleases publish only their immutable image + a prerelease GitHub
+Release. **Build metadata** (`v1.2.3+meta`) is rejected: Docker tag normalization
+drops it, so it would collide with `v1.2.3`.
 
 ## Cut a release
 

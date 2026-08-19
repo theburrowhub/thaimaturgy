@@ -1,21 +1,24 @@
 name: Release
 
 # Publishes versioned artifacts when a semver tag (vX.Y.Z) is pushed:
-#   - static binaries (server, bot, novel) for linux/darwin/windows × amd64/arm64,
-#     attached to a GitHub Release with SHA-256 checksums;
-#   - the desktop GUI (CGO/Fyne) for linux + macOS, built on native runners;
+#   - static binaries (server, bot, novel) for linux/darwin/windows × amd64/arm64;
+#   - the desktop GUI (CGO/Fyne) for linux + macOS, on native runners;
 #   - multi-arch Docker images (default + claude-cli) pushed to GHCR.
 #
-# The version comes from the tag; `prepare` validates it is strict semver and
-# decides which moving tags to update (see below). Everyday build+test lives in
-# ci.yml; this workflow only runs for tags. Cut a release with:
-#   git tag v1.2.3 && git push origin v1.2.3
+# Two-phase publishing keeps moving tags correct under concurrent/out-of-order
+# releases:
+#   1. Each release pushes only its IMMUTABLE image tag (X.Y.Z / X.Y.Z-pre) and
+#      attaches its binaries to a GitHub Release. These run independently and are
+#      never serialized/cancelled, so every release always ships its artifacts.
+#   2. A separate `promote` job (stable releases only), serialized so runs can't
+#      interleave, RE-READS all tags and repoints the moving tags `latest` and
+#      `X.Y` at the highest stable immutable image that exists. Because it always
+#      targets the true global/minor highest (not "self"), whichever promote runs
+#      last leaves the correct state — an older tag never clobbers a newer one.
 #
-# Moving-tag policy (avoids an out-of-order run clobbering a newer release):
-#   X.Y.Z  -> always (immutable, incl. prereleases like v1.2.3-rc1)
-#   X.Y    -> only for STABLE releases (no prerelease suffix)
-#   latest -> only when this tag is the HIGHEST stable semver in the repo
-# Releases are also serialized (concurrency) so two runs never overlap.
+# Everyday build+test lives in ci.yml; this only runs for tags. Cut a release:
+#   git tag v1.2.3 && git push origin v1.2.3
+# Build metadata (v1.2.3+meta) is rejected: it would collide on the Docker tag.
 #
 # NOTE: the Windows desktop GUI is not built here (Fyne needs a mingw toolchain on
 # the Windows runner); Windows users get the static binaries. A Windows GUI build
@@ -29,58 +32,33 @@ on:
 permissions:
   contents: read # least privilege by default; jobs elevate as needed
 
-# No workflow-wide concurrency group: a single group keeps only one pending run,
-# so a burst of tags could cancel a middle release before it publishes its
-# immutable artifacts. Instead, moving-tag safety is order-independent — `prepare`
-# decides latest/X.Y by comparing THIS tag against all tags in the repo, so a
-# stale run never promotes itself regardless of finish order.
-
 env:
   GO_VERSION: '1.25'
 
 jobs:
-  # --- validate the tag and decide moving-tag policy -----------------------
+  # --- validate the tag ----------------------------------------------------
   prepare:
     name: Validate version
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
       is_stable: ${{ steps.v.outputs.is_stable }}
-      is_latest: ${{ steps.v.outputs.is_latest }}
-      is_latest_minor: ${{ steps.v.outputs.is_latest_minor }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # need all tags to compare against the whole release history
       - id: v
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME}"
-          # Strict SemVer (semver.org grammar, capturing-group ERE for bash =~):
-          # rejects e.g. v1.2 / v1.2.3-01, accepts v1.2.3 / v1.2.3-rc.1 / v1.2.3+build.
-          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
+          # Strict SemVer WITHOUT build metadata (semver.org grammar minus +build):
+          # build metadata is dropped by Docker tag normalization, so v1.2.3 and
+          # v1.2.3+meta would collide on the immutable tag — reject it outright.
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
           if [[ ! "$VERSION" =~ $re ]]; then
-            echo "::error::tag '$VERSION' is not valid SemVer (vMAJOR.MINOR.PATCH[-prerelease][+build]); refusing to publish"
+            echo "::error::tag '$VERSION' is not accepted (need vMAJOR.MINOR.PATCH[-prerelease], no +build metadata)"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          core="${VERSION%%+*}" # drop +build metadata before judging prerelease
-          case "$core" in *-*) is_stable=false ;; *) is_stable=true ;; esac
-          is_latest=false
-          is_latest_minor=false
-          if [ "$is_stable" = "true" ]; then
-            # Stable release tags only (prereleases dropped), compared build-agnostically.
-            # Order-independent: an older tag pushed later sees the newer tag here and
-            # correctly declines to promote latest / X.Y.
-            stable="$(git tag -l 'v*.*.*' | while read -r t; do c="${t%%+*}"; case "$c" in *-*) : ;; *) echo "$c" ;; esac; done | sort -V -u)"
-            [ "$(printf '%s\n' "$stable" | tail -1)" = "$core" ] && is_latest=true
-            mm="${core%.*}"; mm_esc="${mm//./\\.}"
-            [ "$(printf '%s\n' "$stable" | grep -E "^${mm_esc}\." | sort -V | tail -1)" = "$core" ] && is_latest_minor=true
-          fi
-          echo "is_stable=$is_stable" >> "$GITHUB_OUTPUT"
-          echo "is_latest=$is_latest" >> "$GITHUB_OUTPUT"
-          echo "is_latest_minor=$is_latest_minor" >> "$GITHUB_OUTPUT"
+          case "$VERSION" in *-*) echo "is_stable=false" ;; *) echo "is_stable=true" ;; esac >> "$GITHUB_OUTPUT"
 
   # --- static CLI/server binaries (cross-compiled, CGO-free) ---------------
   binaries:
@@ -181,7 +159,7 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  # --- multi-arch Docker images to GHCR ------------------------------------
+  # --- immutable multi-arch Docker images to GHCR --------------------------
   images:
     name: Image ${{ matrix.image }}
     needs: prepare
@@ -208,13 +186,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
-          # latest=false: don't let metadata-action auto-tag `latest` for every
-          # semver — only the explicitly guarded raw entry below may set it.
+          # Push ONLY the immutable version tag here. Moving tags (latest, X.Y) are
+          # handled by the serialized `promote` job. latest=false stops the action
+          # from auto-adding `latest`.
           flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.prepare.outputs.is_latest_minor == 'true' }}
-            type=raw,value=latest,enable=${{ needs.prepare.outputs.is_latest == 'true' }}
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -224,6 +201,66 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
+
+  # --- serialized promotion of the moving tags (latest, X.Y) ---------------
+  promote:
+    name: Promote moving tags
+    needs: [prepare, images]
+    if: needs.prepare.outputs.is_stable == 'true' # prereleases never move latest / X.Y
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: promote-moving-tags # serialize promotion across releases
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the full tag history to find the highest stable
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Repoint latest and X.Y at the highest stable images
+        shell: bash
+        env:
+          OWNER: ${{ github.repository_owner }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Same strict grammar as prepare: every historical tag is re-validated, so
+          # a malformed tag (e.g. v9.9.9.9) can't win the version sort.
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
+          stable=()
+          while read -r t; do
+            [[ "$t" =~ $re ]] || continue     # drop malformed tags
+            [[ "$t" == *-* ]] && continue      # drop prereleases
+            stable+=("$t")
+          done < <(git tag -l 'v*.*.*')
+          if [ "${#stable[@]}" -eq 0 ]; then echo "no stable tags to promote"; exit 0; fi
+          sorted="$(printf '%s\n' "${stable[@]}" | sort -V)"
+          highest="$(printf '%s\n' "$sorted" | tail -1)"
+          mm="${VERSION%.*}"; mm_esc="${mm//./\\.}"
+          highest_mm="$(printf '%s\n' "$sorted" | grep -E "^${mm_esc}\." | tail -1)"
+          # Repoint a moving tag at an immutable source, but only if that image is
+          # already published; the highest release's own promote sets it otherwise.
+          repoint() {
+            local repo="$1" moving="$2" src="${3#v}"
+            if docker buildx imagetools inspect "${repo}:${src}" >/dev/null 2>&1; then
+              docker buildx imagetools create --tag "${repo}:${moving}" "${repo}:${src}"
+              echo "repointed ${repo}:${moving} -> ${src}"
+            else
+              echo "skip ${repo}:${moving}: source ${repo}:${src} not published yet"
+            fi
+          }
+          for img in thaimaturgy-server thaimaturgy-server-claude; do
+            repo="ghcr.io/${OWNER}/${img}"
+            repoint "$repo" "latest" "$highest"
+            repoint "$repo" "${mm#v}" "$highest_mm"
+          done
 
   # --- GitHub Release with all binary artifacts ----------------------------
   release:
