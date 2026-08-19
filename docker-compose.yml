@@ -1,6 +1,13 @@
 services:
   thaimaturgy:
-    build: .
+    build:
+      context: .
+      # Version stamp for /api/version + the web badge. Empty → "dev" in the image.
+      # `make docker-up` sets these from `git describe`; or export them yourself.
+      args:
+        VERSION: ${THAIM_VERSION:-}
+        COMMIT: ${THAIM_COMMIT:-}
+        DATE: ${THAIM_DATE:-}
     image: thaimaturgy-server
     ports:
       - "127.0.0.1:8765:8765" # publish on the host's loopback by default

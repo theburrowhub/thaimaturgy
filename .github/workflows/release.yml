@@ -208,6 +208,11 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
+          # Stamp the version into the image (shown at /api/version + web badge);
+          # .dockerignore excludes .git, so there is no in-image VCS fallback.
+          build-args: |
+            VERSION=${{ needs.prepare.outputs.version }}
+            COMMIT=${{ github.sha }}
 
   # --- serialized promotion of the moving tags (latest, X.Y) ---------------
   promote:

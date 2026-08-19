@@ -2,12 +2,20 @@
 
 # --- build ---------------------------------------------------------------
 FROM golang:1.25 AS build
+# Version stamp injected into internal/buildinfo (the image shows it at
+# /api/version and in the web badge). .dockerignore excludes .git, so there is no
+# VCS fallback in-image — pass VERSION (the semver tag) via --build-arg / compose.
+ARG VERSION=
+ARG COMMIT=
+ARG DATE=
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # The server has no CGO dependencies (no Fyne), so build a static binary.
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/thaimaturgy-server ./cmd/thaimaturgy-server
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Version=${VERSION} -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Commit=${COMMIT} -X github.com/theburrowhub/thaimaturgy/internal/buildinfo.Date=${DATE}" \
+    -o /out/thaimaturgy-server ./cmd/thaimaturgy-server
 # Pre-create the data dir owned by the non-root runtime user.
 RUN mkdir -p /out/data
 
