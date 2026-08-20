@@ -3,8 +3,77 @@ package main
 import (
 	"testing"
 
+	"fyne.io/fyne/v2/test"
+
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
+
+// TestSheetEditorFormRoundTrip guards the local/remote editor parity: building
+// the shared form from a fully populated caster and immediately collect()-ing it
+// must faithfully reproduce every exposed field (abilities, saves, skills,
+// conditions, inventory, spells and preserved spent slots).
+func TestSheetEditorFormRoundTrip(t *testing.T) {
+	test.NewApp() // a test driver so widget construction is safe headless
+
+	base := domain.GenerateCharacter("Mage", "Elf", "Wizard", 5)
+	base.AddSpell(domain.Spell{Name: "Fireball", Level: 3, Prepared: true, School: "Evocation"})
+	base.UseSpellSlot(1) // spend a slot the form doesn't expose directly
+	base.AddItem(domain.InventoryItem{Name: "Staff", Quantity: 1, Equipped: true})
+	base.AddCondition(domain.ConditionPoisoned)
+	base.Normalize()
+
+	_, _, collect := sheetEditorForm(*base)
+	edited, ok := collect()
+	if !ok {
+		t.Fatal("collect() reported a validation error on an unchanged, valid sheet")
+	}
+
+	if edited.Spellcasting == nil {
+		t.Fatal("spellcasting dropped in round-trip")
+	}
+	if got := edited.Spellcasting.Slots.Used[0]; got != base.Spellcasting.Slots.Used[0] {
+		t.Errorf("spent 1st-level slot not preserved: used=%d want %d", got, base.Spellcasting.Slots.Used[0])
+	}
+	if !hasSpell(edited.Spellcasting.Spells, "Fireball", true) {
+		t.Error("prepared Fireball lost in round-trip")
+	}
+	if !hasEquipped(edited.Inventory, "Staff") {
+		t.Error("equipped Staff lost in round-trip")
+	}
+	if !hasCondition(edited.Conditions, domain.ConditionPoisoned) {
+		t.Error("Poisoned condition lost in round-trip")
+	}
+	if !edited.SaveProficient(domain.INT) || !edited.SaveProficient(domain.WIS) {
+		t.Error("wizard INT/WIS save proficiencies lost in round-trip")
+	}
+}
+
+func hasSpell(ss []domain.Spell, name string, prepared bool) bool {
+	for _, s := range ss {
+		if s.Name == name && s.Prepared == prepared {
+			return true
+		}
+	}
+	return false
+}
+
+func hasEquipped(items []domain.InventoryItem, name string) bool {
+	for _, it := range items {
+		if it.Name == name && it.Equipped {
+			return true
+		}
+	}
+	return false
+}
+
+func hasCondition(cs []domain.Condition, want domain.Condition) bool {
+	for _, c := range cs {
+		if c == want {
+			return true
+		}
+	}
+	return false
+}
 
 func TestAtoiDefault(t *testing.T) {
 	if atoiDefault("42", 0) != 42 {
