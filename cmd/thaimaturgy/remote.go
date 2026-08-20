@@ -160,8 +160,7 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 		}
 	}
 
-	party := container.NewVBox()
-	fillParty(party, st)
+	var refreshParty func() // set when the party panel is built (below)
 
 	logBox := container.NewVBox()
 	logScroll := container.NewVScroll(logBox)
@@ -221,8 +220,9 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 				}
 				if fresh != nil {
 					curState = fresh
-					fillParty(party, fresh)
-					party.Refresh()
+					if refreshParty != nil {
+						refreshParty()
+					}
 					applyRemoteMode(fresh)
 				}
 			})
@@ -368,7 +368,9 @@ func (g *gui) buildRemoteSession(name string, st *domain.SessionState) {
 	novelBtn := widget.NewButtonWithIcon("Novel", theme.DocumentCreateIcon(), g.openNovelEditor)
 	head := container.NewHBox(back, widget.NewLabelWithStyle(name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		layoutSpacer(), modeBtn, beginBtn, restBtn, tgBtn, novelBtn, save)
-	left := modernPanel("Party", "", container.NewVScroll(party))
+	partyPanel, rp := g.remotePartyPanel(name, st)
+	refreshParty = rp
+	left := modernPanel("Party", "", partyPanel)
 	center := modernPanel("Transcript", "", transScroll)
 	right := modernPanel("Live log", "", logScroll)
 	body := container.NewHSplit(left, container.NewHSplit(center, right))
@@ -724,17 +726,6 @@ func (g *gui) stopRemoteSession() {
 		g.remoteCancel = nil
 	}
 	g.remoteName = ""
-}
-
-// fillParty (re)builds a party container from a session snapshot.
-func fillParty(party *fyne.Container, st *domain.SessionState) {
-	party.Objects = nil
-	for i := range st.Characters {
-		party.Objects = append(party.Objects, buildPCSheet(st.Characters[i])...)
-	}
-	if len(st.Characters) == 0 {
-		party.Add(widget.NewLabelWithStyle("No party.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}))
-	}
 }
 
 // conversationMessages returns a session's persisted conversation messages.

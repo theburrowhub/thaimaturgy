@@ -166,6 +166,25 @@ func (c *Client) Oracle(ctx context.Context, name, input string) (OracleResult, 
 	return out, err
 }
 
+// --- Party ---------------------------------------------------------------
+
+// Party returns a snapshot of an open session's party.
+func (c *Client) Party(ctx context.Context, name string) ([]domain.Character, error) {
+	var out []domain.Character
+	err := c.do(ctx, "GET", "/api/sessions/"+enc(name)+"/party", nil, &out)
+	return out, err
+}
+
+// SetParty replaces an open session's party.
+func (c *Client) SetParty(ctx context.Context, name string, party []*domain.Character) error {
+	return c.do(ctx, "PUT", "/api/sessions/"+enc(name)+"/party", party, nil)
+}
+
+// DefaultParty sets an open session's party to the built-in sample party.
+func (c *Client) DefaultParty(ctx context.Context, name string) error {
+	return c.do(ctx, "POST", "/api/sessions/"+enc(name)+"/party/default", nil, nil)
+}
+
 // --- Roster & config -----------------------------------------------------
 
 func (c *Client) ListCharacters(ctx context.Context) ([]*domain.Character, error) {
