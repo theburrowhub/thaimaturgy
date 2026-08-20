@@ -27,11 +27,13 @@ func (g *gui) remotePartyPanel(name string, initial *domain.SessionState) (fyne.
 
 	busy := false
 	var addBtn, defBtn *widget.Button
+	var removeBtns []*widget.Button // the per-member Remove buttons currently shown
 	var refresh func()
 
 	setBusy := func(b bool) {
 		busy = b
-		for _, btn := range []*widget.Button{addBtn, defBtn} {
+		btns := append([]*widget.Button{addBtn, defBtn}, removeBtns...)
+		for _, btn := range btns {
 			if btn == nil {
 				continue
 			}
@@ -67,23 +69,32 @@ func (g *gui) remotePartyPanel(name string, initial *domain.SessionState) (fyne.
 		}()
 	}
 
+	// gen orders refreshes: a response is applied only if no newer refresh has
+	// started since, so a slow request can't render a stale party last. gen is
+	// touched only on the UI thread (refresh is always called from there).
+	gen := 0
 	refresh = func() {
+		gen++
+		myGen := gen
 		go func() {
 			ctx, cancel := bg(15)
 			members, err := g.remote.Party(ctx, name)
 			cancel()
 			fyne.Do(func() {
+				if myGen != gen {
+					return // superseded by a newer refresh
+				}
 				if err != nil {
 					g.showErr(err)
 					return
 				}
-				g.fillRemoteParty(list, members, name, busy, mutate)
+				removeBtns = g.fillRemoteParty(list, members, name, busy, mutate)
 			})
 		}()
 	}
 
 	if initial != nil {
-		g.fillRemoteParty(list, initial.PartySnapshot(), name, busy, mutate)
+		removeBtns = g.fillRemoteParty(list, initial.PartySnapshot(), name, busy, mutate)
 	}
 
 	addBtn = widget.NewButtonWithIcon("From roster…", theme.ContentAddIcon(), func() {
@@ -96,16 +107,17 @@ func (g *gui) remotePartyPanel(name string, initial *domain.SessionState) (fyne.
 	return container.NewBorder(toolbar, nil, nil, nil, listScroll), refresh
 }
 
-// fillRemoteParty renders the party members with a Remove button each. Remove is
-// disabled while a mutation is in flight (busy) and goes through mutate so edits
-// stay serialized.
-func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, name string, busy bool, mutate func(func(context.Context) error)) {
+// fillRemoteParty renders the party members with a Remove button each and returns
+// those buttons so the caller can disable them while a mutation is in flight.
+// Remove goes through mutate so edits stay serialized.
+func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, name string, busy bool, mutate func(func(context.Context) error)) []*widget.Button {
 	list.Objects = nil
 	if len(members) == 0 {
 		list.Add(widget.NewLabelWithStyle("No party.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}))
 		list.Refresh()
-		return
+		return nil
 	}
+	removes := make([]*widget.Button, 0, len(members))
 	for i := range members {
 		m := members[i] // stable copy for the closure + &m in buildPCSheet
 		remove := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
@@ -115,11 +127,13 @@ func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, 
 		if busy {
 			remove.Disable()
 		}
+		removes = append(removes, remove)
 		title := widget.NewLabelWithStyle(m.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 		list.Add(container.NewBorder(nil, nil, nil, remove, title))
 		list.Objects = append(list.Objects, buildPCSheet(&m)...)
 	}
 	list.Refresh()
+	return removes
 }
 
 // remoteAddFromRoster lists roster characters and adds the chosen one to the
