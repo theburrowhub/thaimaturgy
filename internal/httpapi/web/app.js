@@ -969,12 +969,14 @@ async function loadRoster() {
       card.append(el("span", "title", c.name));
       card.append(el("span", "muted", `L${c.level || 1} ${c.race || ""} ${c.class || ""}`));
       card.append(el("span", "spacer"));
+      const edit = el("button", "ghost", "Edit sheet");
+      edit.onclick = () => openSheetEditor(c, { target: "roster", onDone: loadRoster });
       const del = el("button", "ghost", "Delete");
       del.onclick = async () => {
         try { await api("DELETE", "/roster/" + encodeURIComponent(c.id)); loadRoster(); }
         catch (e) { status(e.message, true); }
       };
-      card.append(del);
+      card.append(edit, del);
       box.append(card);
     }
   } catch (e) { status(e.message, true); }
@@ -1303,7 +1305,12 @@ function roll4d6() {
 
 // --- Sheet editor (full 5e sheet, optimistic concurrency) ----------------
 
-function openSheetEditor(character) {
+// openSheetEditor edits a full 5e sheet. opts.target "roster" saves the edited
+// character to the campaign roster (POST /roster, overwriting by id); otherwise
+// it edits the current session's party member (optimistic PUT). opts.onDone runs
+// after a successful save.
+function openSheetEditor(character, opts) {
+  opts = opts || {};
   const baseChar = character;                       // the loaded version (baseline)
   const c = JSON.parse(JSON.stringify(character));  // working copy
   const body = el("div", "form");
@@ -1430,11 +1437,16 @@ function openSheetEditor(character) {
     } else { edited.spellcasting = null; }
 
     try {
-      await api("PUT", "/sessions/" + encodeURIComponent(current) + "/characters/" + encodeURIComponent(baseChar.name),
-        { base: baseChar, edited });
-      await refreshState();
+      if (opts.target === "roster") {
+        await api("POST", "/roster", edited); // overwrites the same entry by id
+      } else {
+        await api("PUT", "/sessions/" + encodeURIComponent(current) + "/characters/" + encodeURIComponent(baseChar.name),
+          { base: baseChar, edited });
+        await refreshState();
+      }
       status("Sheet saved.");
       save.closest(".modal").remove();
+      if (opts.onDone) opts.onDone();
     } catch (e) {
       status(e.message, true); // 409 conflict message comes from the server
     }
