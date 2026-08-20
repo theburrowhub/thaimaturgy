@@ -47,12 +47,17 @@ func (g *gui) remotePartyPanel(name string, initial *domain.SessionState) (fyne.
 		}
 	}
 
-	// mutate runs one party mutation serialized: it no-ops if another is already
-	// in flight, disables the controls, runs fn (a blocking API call) off the UI
-	// thread, then refetches. This prevents a double-click / overlapping edit from
-	// losing an update via the GET-modify-PUT split.
-	mutate := func(fn func(ctx context.Context) error) {
+	// mutateThen runs one party mutation serialized: it no-ops if another is
+	// already in flight, disables the controls, runs fn (a blocking API call) off
+	// the UI thread, then refetches on success. This prevents a double-click /
+	// overlapping edit from losing an update via the GET-modify-PUT split. onDone
+	// (optional) is invoked on the UI thread with the result so a caller (e.g. the
+	// sheet editor) can keep its dialog open and show the error on failure.
+	mutateThen := func(fn func(ctx context.Context) error, onDone func(error)) {
 		if busy {
+			if onDone != nil {
+				onDone(errString("another change is in progress; try again"))
+			}
 			return
 		}
 		setBusy(true)
@@ -62,14 +67,18 @@ func (g *gui) remotePartyPanel(name string, initial *domain.SessionState) (fyne.
 			cancel()
 			fyne.Do(func() {
 				setBusy(false)
-				if err != nil {
+				if err == nil {
+					refresh()
+				} else if onDone == nil {
 					g.showErr(err)
-					return
 				}
-				refresh()
+				if onDone != nil {
+					onDone(err)
+				}
 			})
 		}()
 	}
+	mutate := func(fn func(ctx context.Context) error) { mutateThen(fn, nil) }
 
 	// gen orders refreshes: a response is applied only if no newer refresh has
 	// started since, so a slow request can't render a stale party last. gen is
@@ -90,13 +99,13 @@ func (g *gui) remotePartyPanel(name string, initial *domain.SessionState) (fyne.
 					g.showErr(err)
 					return
 				}
-				removeBtns = g.fillRemoteParty(list, members, name, busy, mutate)
+				removeBtns = g.fillRemoteParty(list, members, name, busy, mutateThen)
 			})
 		}()
 	}
 
 	if initial != nil {
-		removeBtns = g.fillRemoteParty(list, initial.PartySnapshot(), name, busy, mutate)
+		removeBtns = g.fillRemoteParty(list, initial.PartySnapshot(), name, busy, mutateThen)
 	}
 
 	addBtn = widget.NewButtonWithIcon("From roster…", theme.ContentAddIcon(), func() {
@@ -112,7 +121,8 @@ func (g *gui) remotePartyPanel(name string, initial *domain.SessionState) (fyne.
 // fillRemoteParty renders the party members with a Remove button each and returns
 // those buttons so the caller can disable them while a mutation is in flight.
 // Remove goes through mutate so edits stay serialized.
-func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, name string, busy bool, mutate func(func(context.Context) error)) []*widget.Button {
+func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, name string, busy bool, mutateThen func(func(context.Context) error, func(error))) []*widget.Button {
+	mutate := func(fn func(ctx context.Context) error) { mutateThen(fn, nil) }
 	list.Objects = nil
 	if len(members) == 0 {
 		list.Add(widget.NewLabelWithStyle("No party.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}))
@@ -127,7 +137,7 @@ func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, 
 		})
 		remove.Importance = widget.LowImportance
 		edit := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() {
-			g.remoteEditSheet(name, m, mutate)
+			g.remoteEditSheet(name, m, mutateThen)
 		})
 		edit.Importance = widget.LowImportance
 		if busy {
@@ -236,7 +246,7 @@ func (g *gui) remoteRemoveMember(name string, target domain.Character, mutate fu
 // UpdateCharacter with optimistic concurrency. It edits a COPY of base, so
 // fields it doesn't expose (skills, inventory, spells/slots, features) are
 // preserved untouched. Full spell/slot/skill/inventory editing is a follow-up.
-func (g *gui) remoteEditSheet(name string, base domain.Character, mutate func(func(context.Context) error)) {
+func (g *gui) remoteEditSheet(name string, base domain.Character, mutateThen func(func(context.Context) error, func(error))) {
 	nameE := entryWith(base.Name)
 	raceE := entryWith(base.Race)
 	classE := entryWith(base.Class)
@@ -275,37 +285,70 @@ func (g *gui) remoteEditSheet(name string, base domain.Character, mutate func(fu
 		widget.NewFormItem("Notes", notesE),
 	)
 
+	errLbl := widget.NewLabel("")
+	errLbl.Importance = widget.DangerImportance
+	errLbl.Wrapping = fyne.TextWrapWord
+	errLbl.Hide()
+	showErr := func(msg string) { errLbl.SetText(msg); errLbl.Show() }
+
 	var pop *widget.PopUp
-	save := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
+	var save *widget.Button
+	save = widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
+		// Validate before submitting: a valid name and whole-number fields. Keep the
+		// dialog open (with the entered values) on any error.
+		nm := strings.TrimSpace(nameE.Text)
+		if nm == "" {
+			showErr("Name can't be empty.")
+			return
+		}
+		bad := ""
+		getInt := func(label string, e *widget.Entry) int {
+			n, err := strconv.Atoi(strings.TrimSpace(e.Text))
+			if err != nil && bad == "" {
+				bad = label
+			}
+			return n
+		}
+		lvl := getInt("Level", levelE)
+		str, dex, con := getInt("STR", strE), getInt("DEX", dexE), getInt("CON", conE)
+		intel, wis, cha := getInt("INT", intE), getInt("WIS", wisE), getInt("CHA", chaE)
+		hp, mx, tmp := getInt("HP (current)", hpE), getInt("HP (max)", maxE), getInt("Temp HP", tempE)
+		ac, gold, xp := getInt("AC", acE), getInt("Gold", goldE), getInt("XP", xpE)
+		if bad != "" {
+			showErr(bad + " must be a whole number.")
+			return
+		}
+
 		edited := base // value copy; untouched fields (skills/inventory/spells) preserved
-		edited.Name = strings.TrimSpace(nameE.Text)
+		edited.Name = nm
 		edited.Race = strings.TrimSpace(raceE.Text)
 		edited.Class = strings.TrimSpace(classE.Text)
-		edited.Level = parseInt(levelE.Text, base.Level)
-		edited.Abilities.STR = parseInt(strE.Text, base.Abilities.STR)
-		edited.Abilities.DEX = parseInt(dexE.Text, base.Abilities.DEX)
-		edited.Abilities.CON = parseInt(conE.Text, base.Abilities.CON)
-		edited.Abilities.INT = parseInt(intE.Text, base.Abilities.INT)
-		edited.Abilities.WIS = parseInt(wisE.Text, base.Abilities.WIS)
-		edited.Abilities.CHA = parseInt(chaE.Text, base.Abilities.CHA)
-		edited.MaxHP = parseInt(maxE.Text, base.MaxHP)
-		edited.CurrentHP = parseInt(hpE.Text, base.CurrentHP)
-		edited.TempHP = parseInt(tempE.Text, base.TempHP)
-		edited.AC = parseInt(acE.Text, base.AC)
-		edited.Gold = parseInt(goldE.Text, base.Gold)
-		edited.XP = parseInt(xpE.Text, base.XP)
+		edited.Level = lvl
+		edited.Abilities.STR, edited.Abilities.DEX, edited.Abilities.CON = str, dex, con
+		edited.Abilities.INT, edited.Abilities.WIS, edited.Abilities.CHA = intel, wis, cha
+		edited.MaxHP, edited.CurrentHP, edited.TempHP = mx, hp, tmp
+		edited.AC, edited.Gold, edited.XP = ac, gold, xp
 		edited.Notes = notesE.Text
 		edited.Conditions = parseConditions(condE.Text)
 		b := base // stable snapshot for optimistic concurrency
-		pop.Hide()
-		mutate(func(ctx context.Context) error {
+
+		errLbl.Hide()
+		save.Disable() // prevent double-submit; the dialog stays open until we know the result
+		mutateThen(func(ctx context.Context) error {
 			return g.remote.UpdateCharacter(ctx, name, b.Name, &b, &edited)
+		}, func(err error) {
+			if err != nil {
+				showErr(err.Error()) // keep the dialog + entered values; let the user retry
+				save.Enable()
+				return
+			}
+			pop.Hide()
 		})
 	})
 	bar := container.NewHBox(layoutSpacer(), widget.NewButton("Cancel", func() { pop.Hide() }), save)
 	content := container.NewBorder(
 		widget.NewLabelWithStyle("Edit "+base.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		bar, nil, nil, container.NewVScroll(form))
+		container.NewVBox(errLbl, bar), nil, nil, container.NewVScroll(form))
 	pop = widget.NewModalPopUp(container.NewPadded(content), g.win.Canvas())
 	pop.Resize(fyne.NewSize(480, 640))
 	pop.Show()
