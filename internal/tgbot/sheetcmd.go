@@ -250,6 +250,187 @@ func (b *Bot) editSlot(m *tgbotapi.Message, arg string) {
 	b.recordSheetChange(m, name, desc, "🔮 "+name+": "+desc)
 }
 
+// editSave toggles a saving-throw proficiency: "/save WIS on" or "/save dex off".
+func (b *Bot) editSave(m *tgbotapi.Message, arg string) {
+	fields := strings.Fields(arg)
+	if len(fields) < 2 {
+		b.reply(m, "Usage: /savethrow <STR|DEX|CON|INT|WIS|CHA> on|off")
+		return
+	}
+	ab, ok := domain.ParseAbility(fields[0])
+	if !ok {
+		b.reply(m, "Unknown ability. Use one of: STR, DEX, CON, INT, WIS, CHA.")
+		return
+	}
+	var prof bool
+	switch strings.ToLower(fields[1]) {
+	case "on", "yes", "prof", "proficient", "true":
+		prof = true
+	case "off", "no", "none", "false":
+		prof = false
+	default:
+		b.reply(m, "Usage: /savethrow <ability> on|off")
+		return
+	}
+	var desc string
+	name, done := b.withOwnCharacter(m, func(c *domain.Character) {
+		c.SetSaveProficient(ab, prof)
+		if prof {
+			desc = fmt.Sprintf("is now proficient in %s saves (%+d)", ab, c.SaveBonus(ab))
+		} else {
+			desc = fmt.Sprintf("dropped %s save proficiency (%+d)", ab, c.SaveBonus(ab))
+		}
+	})
+	if !done {
+		return
+	}
+	b.recordSheetChange(m, name, desc, "🎯 "+name+" "+desc)
+}
+
+// parseSkillArg splits "<skill name…> prof|expert|none" into the skill name and a
+// normalized level ("prof", "expert" or "none"). The last field is the level and
+// everything before it is the (possibly multi-word) skill name. ok is false on
+// bad syntax.
+func parseSkillArg(arg string) (skill, level string, ok bool) {
+	fields := strings.Fields(arg)
+	if len(fields) < 2 {
+		return "", "", false
+	}
+	switch strings.ToLower(fields[len(fields)-1]) {
+	case "none", "off", "clear":
+		level = "none"
+	case "prof", "proficient", "on":
+		level = "prof"
+	case "expert", "expertise":
+		level = "expert"
+	default:
+		return "", "", false
+	}
+	skill = strings.TrimSpace(strings.Join(fields[:len(fields)-1], " "))
+	if skill == "" {
+		return "", "", false
+	}
+	return skill, level, true
+}
+
+// editSkill sets a skill proficiency: "/skill Perception prof",
+// "/skill Animal Handling expert", "/skill Stealth none".
+func (b *Bot) editSkill(m *tgbotapi.Message, arg string) {
+	skill, level, ok := parseSkillArg(arg)
+	if !ok {
+		b.reply(m, "Usage: /skill <name> prof|expert|none  (e.g. /skill Perception prof)")
+		return
+	}
+	var desc, canonical string
+	var found bool
+	name, done := b.withOwnCharacter(m, func(c *domain.Character) {
+		canonical, found = c.SetSkillProficiency(skill, level != "none", level == "expert")
+		if !found {
+			return
+		}
+		switch level {
+		case "expert":
+			desc = fmt.Sprintf("has expertise in %s (%+d)", canonical, c.SkillBonus(canonical))
+		case "prof":
+			desc = fmt.Sprintf("is proficient in %s (%+d)", canonical, c.SkillBonus(canonical))
+		default:
+			desc = fmt.Sprintf("is no longer proficient in %s (%+d)", canonical, c.SkillBonus(canonical))
+		}
+	})
+	if !done {
+		return
+	}
+	if !found {
+		b.reply(m, fmt.Sprintf("Unknown skill %q. Use a standard 5e skill name (e.g. Perception, Stealth, Arcana).", skill))
+		return
+	}
+	b.recordSheetChange(m, name, desc, "📚 "+name+" "+desc)
+}
+
+const spellUsage = "Usage: /spell add <level 0-9> <name> | /spell remove <name> | /spell prepare <name> | /spell unprepare <name>"
+
+// parseSpellArg parses a /spell argument into an action ("add", "remove",
+// "prepare" or "unprepare"), the spell name, and (for "add") the spell level
+// 0-9 (0 = cantrip). ok is false when the syntax is unusable.
+func parseSpellArg(arg string) (action, name string, level int, ok bool) {
+	fields := strings.Fields(arg)
+	if len(fields) < 2 {
+		return "", "", 0, false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(arg), fields[0]))
+	switch strings.ToLower(fields[0]) {
+	case "add":
+		lf := strings.Fields(rest)
+		if len(lf) < 2 {
+			return "", "", 0, false
+		}
+		lvl, err := strconv.Atoi(lf[0])
+		if err != nil || lvl < 0 || lvl > 9 {
+			return "", "", 0, false
+		}
+		sn := strings.TrimSpace(strings.TrimPrefix(rest, lf[0]))
+		if sn == "" {
+			return "", "", 0, false
+		}
+		return "add", sn, lvl, true
+	case "remove", "rm", "forget":
+		return "remove", rest, 0, true
+	case "prepare", "prep":
+		return "prepare", rest, 0, true
+	case "unprepare", "unprep":
+		return "unprepare", rest, 0, true
+	}
+	return "", "", 0, false
+}
+
+// editSpell manages a character's spellbook from Telegram: learn/forget a spell
+// and toggle its prepared state.
+func (b *Bot) editSpell(m *tgbotapi.Message, arg string) {
+	action, spellName, level, ok := parseSpellArg(arg)
+	if !ok {
+		b.reply(m, spellUsage)
+		return
+	}
+	var desc, failed string
+	name, done := b.withOwnCharacter(m, func(c *domain.Character) {
+		switch action {
+		case "add":
+			c.AddSpell(domain.Spell{Name: spellName, Level: level})
+			if level == 0 {
+				desc = "learned the cantrip " + spellName
+			} else {
+				desc = fmt.Sprintf("learned %s (level %d)", spellName, level)
+			}
+		case "remove":
+			if !c.RemoveSpell(spellName) {
+				failed = fmt.Sprintf("doesn't know %q", spellName)
+				return
+			}
+			desc = "forgot " + spellName
+		case "prepare":
+			if !c.SetSpellPrepared(spellName, true) {
+				failed = fmt.Sprintf("doesn't know %q", spellName)
+				return
+			}
+			desc = "prepared " + spellName
+		default: // "unprepare"
+			if !c.SetSpellPrepared(spellName, false) {
+				failed = fmt.Sprintf("doesn't know %q", spellName)
+				return
+			}
+			desc = "unprepared " + spellName
+		}
+	})
+	if !done {
+		return
+	}
+	if failed != "" {
+		b.reply(m, name+" "+failed+".")
+		return
+	}
+	b.recordSheetChange(m, name, desc, "🔮 "+name+": "+desc)
+}
+
 func (b *Bot) editCondition(m *tgbotapi.Message, arg string, add bool) {
 	cond, ok := canonicalCondition(arg)
 	if !ok {

@@ -24,6 +24,26 @@ func (a Ability) FullName() string {
 	return [...]string{"Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"}[a]
 }
 
+// ParseAbility resolves a short ("STR") or full ("Strength") ability name,
+// case-insensitively, reporting whether it matched.
+func ParseAbility(s string) (Ability, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "str", "strength":
+		return STR, true
+	case "dex", "dexterity":
+		return DEX, true
+	case "con", "constitution":
+		return CON, true
+	case "int", "intelligence":
+		return INT, true
+	case "wis", "wisdom":
+		return WIS, true
+	case "cha", "charisma":
+		return CHA, true
+	}
+	return 0, false
+}
+
 type AbilityScores struct {
 	STR int `json:"str"`
 	DEX int `json:"dex"`
@@ -295,6 +315,30 @@ func (c *Character) SkillBonus(skillName string) int {
 		}
 	}
 	return 0
+}
+
+// SetSkillProficiency sets a skill's proficiency by name (case-insensitive);
+// expert implies proficient. If the skill isn't on the sheet yet but names a
+// standard 5e skill it is added, so a freshly created character can gain a
+// proficiency without a pre-populated skill list. It returns the skill's
+// canonical name and whether a matching skill was found.
+func (c *Character) SetSkillProficiency(name string, prof, expert bool) (string, bool) {
+	for i := range c.Skills {
+		if strings.EqualFold(c.Skills[i].Name, name) {
+			c.Skills[i].Proficient = prof || expert
+			c.Skills[i].Expert = expert
+			return c.Skills[i].Name, true
+		}
+	}
+	for _, d := range DefaultSkills {
+		if strings.EqualFold(d.Name, name) {
+			d.Proficient = prof || expert
+			d.Expert = expert
+			c.Skills = append(c.Skills, d)
+			return d.Name, true
+		}
+	}
+	return "", false
 }
 
 // SaveProficient reports whether the character is proficient in an ability's
