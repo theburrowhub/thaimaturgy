@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
@@ -12,13 +14,59 @@ import (
 // remotePartyPanel builds the editable party panel for the remote GUI (#130):
 // the member sheets with a per-member Remove, plus a toolbar to add from the
 // roster or set the default party. Every mutation goes through the HTTP API and
-// then refetches so the panel reflects the server. (AI party-plan and full 5e
-// sheet editing are follow-ups.)
+// then refetches so the panel reflects the server.
+//
+// Party edits are whole-party GET-modify-PUT, so overlapping edits could lose an
+// update. All mutations here are therefore SERIALIZED behind a busy guard: while
+// one is in flight the toolbar and Remove buttons are disabled, so this client
+// can't interleave two edits. (Cross-client atomic/version-checked member ops are
+// a tracked #130 follow-up.)
 func (g *gui) remotePartyPanel(name string, initial *domain.SessionState) (fyne.CanvasObject, func()) {
 	list := container.NewVBox()
 	listScroll := container.NewVScroll(list)
 
+	busy := false
+	var addBtn, defBtn *widget.Button
 	var refresh func()
+
+	setBusy := func(b bool) {
+		busy = b
+		for _, btn := range []*widget.Button{addBtn, defBtn} {
+			if btn == nil {
+				continue
+			}
+			if b {
+				btn.Disable()
+			} else {
+				btn.Enable()
+			}
+		}
+	}
+
+	// mutate runs one party mutation serialized: it no-ops if another is already
+	// in flight, disables the controls, runs fn (a blocking API call) off the UI
+	// thread, then refetches. This prevents a double-click / overlapping edit from
+	// losing an update via the GET-modify-PUT split.
+	mutate := func(fn func(ctx context.Context) error) {
+		if busy {
+			return
+		}
+		setBusy(true)
+		go func() {
+			ctx, cancel := bg(20)
+			err := fn(ctx)
+			cancel()
+			fyne.Do(func() {
+				setBusy(false)
+				if err != nil {
+					g.showErr(err)
+					return
+				}
+				refresh()
+			})
+		}()
+	}
+
 	refresh = func() {
 		go func() {
 			ctx, cancel := bg(15)
@@ -29,39 +77,29 @@ func (g *gui) remotePartyPanel(name string, initial *domain.SessionState) (fyne.
 					g.showErr(err)
 					return
 				}
-				g.fillRemoteParty(list, members, name, refresh)
+				g.fillRemoteParty(list, members, name, busy, mutate)
 			})
 		}()
 	}
 
-	// Seed from the snapshot we already have, then keep in sync via refresh.
 	if initial != nil {
-		g.fillRemoteParty(list, initial.PartySnapshot(), name, refresh)
+		g.fillRemoteParty(list, initial.PartySnapshot(), name, busy, mutate)
 	}
 
-	addBtn := widget.NewButtonWithIcon("From roster…", theme.ContentAddIcon(), func() {
-		g.remoteAddFromRoster(name, refresh)
+	addBtn = widget.NewButtonWithIcon("From roster…", theme.ContentAddIcon(), func() {
+		g.remoteAddFromRoster(name, mutate)
 	})
-	defBtn := widget.NewButtonWithIcon("Default party", theme.AccountIcon(), func() {
-		go func() {
-			ctx, cancel := bg(15)
-			err := g.remote.DefaultParty(ctx, name)
-			cancel()
-			fyne.Do(func() {
-				if err != nil {
-					g.showErr(err)
-					return
-				}
-				refresh()
-			})
-		}()
+	defBtn = widget.NewButtonWithIcon("Default party", theme.AccountIcon(), func() {
+		mutate(func(ctx context.Context) error { return g.remote.DefaultParty(ctx, name) })
 	})
 	toolbar := container.NewHBox(addBtn, defBtn)
 	return container.NewBorder(toolbar, nil, nil, nil, listScroll), refresh
 }
 
-// fillRemoteParty renders the party members with a Remove button each.
-func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, name string, refresh func()) {
+// fillRemoteParty renders the party members with a Remove button each. Remove is
+// disabled while a mutation is in flight (busy) and goes through mutate so edits
+// stay serialized.
+func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, name string, busy bool, mutate func(func(context.Context) error)) {
 	list.Objects = nil
 	if len(members) == 0 {
 		list.Add(widget.NewLabelWithStyle("No party.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}))
@@ -69,11 +107,14 @@ func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, 
 		return
 	}
 	for i := range members {
-		m := members[i] // capture a stable copy for the closure + &m in buildPCSheet
+		m := members[i] // stable copy for the closure + &m in buildPCSheet
 		remove := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
-			g.remoteRemoveMember(name, m, refresh)
+			g.remoteRemoveMember(name, m, mutate)
 		})
 		remove.Importance = widget.LowImportance
+		if busy {
+			remove.Disable()
+		}
 		title := widget.NewLabelWithStyle(m.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 		list.Add(container.NewBorder(nil, nil, nil, remove, title))
 		list.Objects = append(list.Objects, buildPCSheet(&m)...)
@@ -82,8 +123,9 @@ func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, 
 }
 
 // remoteAddFromRoster lists roster characters and adds the chosen one to the
-// party (skipping one already present by id, mirroring the web dedup guard).
-func (g *gui) remoteAddFromRoster(name string, refresh func()) {
+// party (skipping one already present by id, mirroring the web dedup guard and
+// the server-side SetParty guard).
+func (g *gui) remoteAddFromRoster(name string, mutate func(func(context.Context) error)) {
 	go func() {
 		ctx, cancel := bg(15)
 		roster, rerr := g.remote.ListCharacters(ctx)
@@ -118,7 +160,7 @@ func (g *gui) remoteAddFromRoster(name string, refresh func()) {
 						return
 					}
 					pop.Hide()
-					g.remoteAppendMember(name, rc, refresh)
+					mutate(func(ctx context.Context) error { return g.appendPartyMember(ctx, name, rc) })
 				})
 				body.Add(container.NewBorder(nil, nil, nil, add, row))
 			}
@@ -130,60 +172,42 @@ func (g *gui) remoteAddFromRoster(name string, refresh func()) {
 	}()
 }
 
-// remoteAppendMember appends one character to the party and saves it.
-func (g *gui) remoteAppendMember(name string, add *domain.Character, refresh func()) {
-	go func() {
-		ctx, cancel := bg(15)
-		members, err := g.remote.Party(ctx, name)
-		if err == nil {
-			next := make([]*domain.Character, 0, len(members)+1)
-			for i := range members {
-				m := members[i]
-				next = append(next, &m)
-			}
-			next = append(next, add)
-			err = g.remote.SetParty(ctx, name, next)
-		}
-		cancel()
-		fyne.Do(func() {
-			if err != nil {
-				g.showErr(err)
-				return
-			}
-			refresh()
-		})
-	}()
+// appendPartyMember re-reads the party and PUTs it with one member appended.
+func (g *gui) appendPartyMember(ctx context.Context, name string, add *domain.Character) error {
+	members, err := g.remote.Party(ctx, name)
+	if err != nil {
+		return err
+	}
+	next := make([]*domain.Character, 0, len(members)+1)
+	for i := range members {
+		m := members[i]
+		next = append(next, &m)
+	}
+	next = append(next, add)
+	return g.remote.SetParty(ctx, name, next)
 }
 
-// remoteRemoveMember drops a member from the party (by roster id when set, else
-// by name) and saves the result.
-func (g *gui) remoteRemoveMember(name string, target domain.Character, refresh func()) {
-	go func() {
-		ctx, cancel := bg(15)
+// remoteRemoveMember drops a member (by roster id when set, else by name) and
+// PUTs the result.
+func (g *gui) remoteRemoveMember(name string, target domain.Character, mutate func(func(context.Context) error)) {
+	mutate(func(ctx context.Context) error {
 		members, err := g.remote.Party(ctx, name)
-		if err == nil {
-			next := make([]*domain.Character, 0, len(members))
-			dropped := false
-			for i := range members {
-				m := members[i]
-				match := (target.ID != "" && m.ID == target.ID) || (target.ID == "" && m.Name == target.Name)
-				if match && !dropped {
-					dropped = true
-					continue
-				}
-				next = append(next, &m)
-			}
-			err = g.remote.SetParty(ctx, name, next)
+		if err != nil {
+			return err
 		}
-		cancel()
-		fyne.Do(func() {
-			if err != nil {
-				g.showErr(err)
-				return
+		next := make([]*domain.Character, 0, len(members))
+		dropped := false
+		for i := range members {
+			m := members[i]
+			match := (target.ID != "" && m.ID == target.ID) || (target.ID == "" && m.Name == target.Name)
+			if match && !dropped {
+				dropped = true
+				continue
 			}
-			refresh()
-		})
-	}()
+			next = append(next, &m)
+		}
+		return g.remote.SetParty(ctx, name, next)
+	})
 }
 
 // errString is a tiny error wrapper for showErr on a plain message.
