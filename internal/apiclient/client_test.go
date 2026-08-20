@@ -236,3 +236,27 @@ func TestClientTokenAuth(t *testing.T) {
 		t.Errorf("sse ticket = %q (%v)", tk, err)
 	}
 }
+
+// TestClientParty exercises the party endpoints the remote GUI uses to assemble
+// and edit a party (#130): SetParty, Party (snapshot), and DefaultParty.
+func TestClientParty(t *testing.T) {
+	c := liveServer(t, "")
+	ctx := context.Background()
+	name, err := c.NewSession(ctx, "crypt")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	if err := c.SetParty(ctx, name, []*domain.Character{domain.NewCharacter("Alice", "Elf", "Wizard")}); err != nil {
+		t.Fatalf("SetParty: %v", err)
+	}
+	p, err := c.Party(ctx, name)
+	if err != nil || len(p) != 1 || p[0].Name != "Alice" {
+		t.Fatalf("Party = %+v (%v); want [Alice]", p, err)
+	}
+	if err := c.DefaultParty(ctx, name); err != nil {
+		t.Fatalf("DefaultParty: %v", err)
+	}
+	if p, _ := c.Party(ctx, name); len(p) == 0 {
+		t.Error("DefaultParty left the party empty")
+	}
+}
