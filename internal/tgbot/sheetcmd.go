@@ -136,6 +136,117 @@ func (b *Bot) editHP(m *tgbotapi.Message, arg string) {
 	b.recordSheetChange(m, name, desc, "❤️ "+name+": "+desc)
 }
 
+func (b *Bot) editAC(m *tgbotapi.Message, arg string) {
+	n, set, err := parseDelta(arg)
+	if strings.TrimSpace(arg) == "" || err != nil {
+		b.reply(m, "Usage: /ac =15 (set), /ac +2, or /ac -1")
+		return
+	}
+	if !deltaInRange(n) {
+		b.reply(m, fmt.Sprintf("AC amount out of range (use at most ±%d).", maxSheetDelta))
+		return
+	}
+	var desc string
+	name, ok := b.withOwnCharacter(m, func(c *domain.Character) {
+		v := n
+		if !set {
+			v = c.AC + n
+		}
+		if v < 0 {
+			v = 0
+		}
+		c.AC = v
+		desc = fmt.Sprintf("AC is now %d", c.AC)
+	})
+	if !ok {
+		return
+	}
+	b.recordSheetChange(m, name, desc, "🛡️ "+name+": "+desc)
+}
+
+func (b *Bot) editTempHP(m *tgbotapi.Message, arg string) {
+	n, set, err := parseDelta(arg)
+	if strings.TrimSpace(arg) == "" || err != nil {
+		b.reply(m, "Usage: /temphp =5 (set), /temphp +3, or /temphp -2")
+		return
+	}
+	if !deltaInRange(n) {
+		b.reply(m, fmt.Sprintf("Temp HP amount out of range (use at most ±%d).", maxSheetDelta))
+		return
+	}
+	var desc string
+	name, ok := b.withOwnCharacter(m, func(c *domain.Character) {
+		v := n
+		if !set {
+			v = c.TempHP + n
+		}
+		if v < 0 {
+			v = 0
+		}
+		c.TempHP = v
+		desc = fmt.Sprintf("temp HP is now %d", c.TempHP)
+	})
+	if !ok {
+		return
+	}
+	b.recordSheetChange(m, name, desc, "🛟 "+name+": "+desc)
+}
+
+// parseSlotArg parses "/slot <level> <use|restore>" into a 1-9 level and a
+// normalized action ("use" or "restore"). ok is false on bad level or action.
+func parseSlotArg(arg string) (level int, action string, ok bool) {
+	fields := strings.Fields(arg)
+	if len(fields) < 2 {
+		return 0, "", false
+	}
+	level, err := strconv.Atoi(fields[0])
+	if err != nil || level < 1 || level > 9 {
+		return 0, "", false
+	}
+	switch strings.ToLower(fields[1]) {
+	case "use", "spend", "cast":
+		return level, "use", true
+	case "restore", "recover", "undo":
+		return level, "restore", true
+	}
+	return 0, "", false
+}
+
+// editSlot spends or restores one spell slot at a level (in-play caster
+// bookkeeping): "/slot 2 use" or "/slot 2 restore".
+func (b *Bot) editSlot(m *tgbotapi.Message, arg string) {
+	level, action, ok := parseSlotArg(arg)
+	if !ok {
+		b.reply(m, "Usage: /slot <level 1-9> use|restore")
+		return
+	}
+	var desc, failed string
+	name, ok := b.withOwnCharacter(m, func(c *domain.Character) {
+		if c.Spellcasting == nil || c.Spellcasting.Slots.MaxAt(level) <= 0 {
+			failed = fmt.Sprintf("has no level-%d spell slots", level)
+			return
+		}
+		if action == "use" {
+			if !c.UseSpellSlot(level) {
+				failed = fmt.Sprintf("has no level-%d slots left", level)
+				return
+			}
+			desc = fmt.Sprintf("used a level-%d slot → %d/%d left", level, c.Spellcasting.Slots.RemainingAt(level), c.Spellcasting.Slots.MaxAt(level))
+		} else { // "restore" (parseSlotArg guarantees one of the two)
+			c.RestoreSpellSlot(level)
+			desc = fmt.Sprintf("restored a level-%d slot → %d/%d left", level, c.Spellcasting.Slots.RemainingAt(level), c.Spellcasting.Slots.MaxAt(level))
+		}
+	})
+	if !ok {
+		return
+	}
+	if failed != "" {
+		b.reply(m, name+" "+failed+".")
+		return
+	}
+	b.recordSheetChange(m, name, desc, "🔮 "+name+": "+desc)
+}
+
 func (b *Bot) editCondition(m *tgbotapi.Message, arg string, add bool) {
 	cond, ok := canonicalCondition(arg)
 	if !ok {
