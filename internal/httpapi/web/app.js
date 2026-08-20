@@ -1208,6 +1208,9 @@ async function openRosterPicker(onDone) {
     add.onclick = async () => {
       try {
         const party = (await api("GET", "/sessions/" + encodeURIComponent(current) + "/party")) || [];
+        // Don't add the same roster character twice: two members sharing one
+        // roster id make the roster write-back collide (last writer wins).
+        if (rc.id && party.some((p) => p.id === rc.id)) { status(rc.name + " is already in the party.", true); return; }
         party.push(rc);
         await api("PUT", "/sessions/" + encodeURIComponent(current) + "/party", party);
         await refreshState(); status(rc.name + " added to the party."); if (onDone) onDone();

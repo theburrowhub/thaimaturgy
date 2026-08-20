@@ -583,12 +583,38 @@ func (s *Service) Party(name string) ([]domain.Character, error) {
 	return os.Session.State.PartySnapshot(), nil
 }
 
-// SetParty replaces an open session's party.
+// ErrDuplicatePartyMember is returned by SetParty when two members share the same
+// non-empty roster ID: they would both write back to that one roster file on
+// autosave (last writer wins), silently corrupting the roster. Callers must not
+// add the same roster character to the party twice.
+var ErrDuplicatePartyMember = errors.New("the same roster character can't be in the party twice")
+
+// SetParty replaces an open session's party. It rejects a party with duplicate
+// roster IDs so no frontend can trigger the roster write-back collision.
 func (s *Service) SetParty(name string, party []*domain.Character) error {
+	if err := checkNoDuplicateIDs(party); err != nil {
+		return err
+	}
 	return s.withOpenSession(name, func(os *OpenSession) (bool, error) {
 		os.Session.State.SetParty(party)
 		return true, nil
 	})
+}
+
+// checkNoDuplicateIDs reports ErrDuplicatePartyMember if two members share a
+// non-empty ID. Members with no roster link (empty ID) are unrestricted.
+func checkNoDuplicateIDs(party []*domain.Character) error {
+	seen := make(map[string]bool, len(party))
+	for _, c := range party {
+		if c == nil || c.ID == "" {
+			continue
+		}
+		if seen[c.ID] {
+			return ErrDuplicatePartyMember
+		}
+		seen[c.ID] = true
+	}
+	return nil
 }
 
 // DefaultParty sets an open session's party to the built-in sample party.
