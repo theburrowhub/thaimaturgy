@@ -33,6 +33,58 @@ func TestParseDelta(t *testing.T) {
 	}
 }
 
+func TestParseSkillArg(t *testing.T) {
+	cases := []struct {
+		in        string
+		wantSkill string
+		wantLevel string
+		wantOK    bool
+	}{
+		{"Perception prof", "Perception", "prof", true},
+		{"Animal Handling expert", "Animal Handling", "expert", true},
+		{"Stealth none", "Stealth", "none", true},
+		{"stealth off", "stealth", "none", true},
+		{"Arcana on", "Arcana", "prof", true},
+		{"Perception", "", "", false},       // no level
+		{"Perception maybe", "", "", false}, // bad level
+		{"", "", "", false},
+	}
+	for _, c := range cases {
+		skill, level, ok := parseSkillArg(c.in)
+		if ok != c.wantOK || (ok && (skill != c.wantSkill || level != c.wantLevel)) {
+			t.Errorf("parseSkillArg(%q) = (%q,%q,%v); want (%q,%q,%v)", c.in, skill, level, ok, c.wantSkill, c.wantLevel, c.wantOK)
+		}
+	}
+}
+
+func TestParseSpellArg(t *testing.T) {
+	cases := []struct {
+		in         string
+		wantAction string
+		wantName   string
+		wantLevel  int
+		wantOK     bool
+	}{
+		{"add 3 Fireball", "add", "Fireball", 3, true},
+		{"add 0 Fire Bolt", "add", "Fire Bolt", 0, true},
+		{"remove Magic Missile", "remove", "Magic Missile", 0, true},
+		{"forget Shield", "remove", "Shield", 0, true},
+		{"prepare Bless", "prepare", "Bless", 0, true},
+		{"unprepare Bless", "unprepare", "Bless", 0, true},
+		{"add Fireball", "", "", 0, false}, // missing level
+		{"add 10 Wish", "", "", 0, false},  // level out of range
+		{"add 3", "", "", 0, false},        // missing name
+		{"bogus X", "", "", 0, false},      // unknown action
+		{"", "", "", 0, false},
+	}
+	for _, c := range cases {
+		action, name, level, ok := parseSpellArg(c.in)
+		if ok != c.wantOK || (ok && (action != c.wantAction || name != c.wantName || level != c.wantLevel)) {
+			t.Errorf("parseSpellArg(%q) = (%q,%q,%d,%v); want (%q,%q,%d,%v)", c.in, action, name, level, ok, c.wantAction, c.wantName, c.wantLevel, c.wantOK)
+		}
+	}
+}
+
 func TestCanonicalCondition(t *testing.T) {
 	if c, ok := canonicalCondition("poisoned"); !ok || c != domain.ConditionPoisoned {
 		t.Errorf("poisoned = (%v,%v); want Poisoned,true", c, ok)

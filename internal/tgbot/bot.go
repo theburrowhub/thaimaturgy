@@ -325,6 +325,12 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.editXP(m, arg)
 	case "item", "inv":
 		b.editItem(m, arg)
+	case "savethrow", "st":
+		b.editSave(m, arg)
+	case "skill":
+		b.editSkill(m, arg)
+	case "spell", "spells":
+		b.editSpell(m, arg)
 	case "setnote":
 		b.editNote(m, arg)
 	case "save":
@@ -997,6 +1003,9 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /gold +50 | -10 | =100 — adjust or set your gold
 /xp <n> — award your character experience
 /item add|remove <name> [xN] — edit your inventory
+/savethrow <ability> on|off — set a saving-throw proficiency
+/skill <name> prof|expert|none — set a skill proficiency
+/spell add <lvl> <name> | remove|prepare|unprepare <name> — edit your spellbook
 /setnote <text> — set your character's notes
 /quests — list tracked quests
 /recap — a quick "previously on…" recap of the session so far

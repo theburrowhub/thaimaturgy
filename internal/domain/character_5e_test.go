@@ -54,6 +54,51 @@ func TestSpellSlotsUseRestore(t *testing.T) {
 	}
 }
 
+func TestParseAbility(t *testing.T) {
+	cases := map[string]struct {
+		want Ability
+		ok   bool
+	}{
+		"STR": {STR, true}, "strength": {STR, true}, " Dex ": {DEX, true},
+		"con": {CON, true}, "Intelligence": {INT, true}, "WIS": {WIS, true},
+		"cha": {CHA, true}, "bogus": {0, false}, "": {0, false},
+	}
+	for in, c := range cases {
+		got, ok := ParseAbility(in)
+		if ok != c.ok || (ok && got != c.want) {
+			t.Errorf("ParseAbility(%q) = (%v,%v); want (%v,%v)", in, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestSetSkillProficiency(t *testing.T) {
+	c := NewCharacter("Rogue", "Human", "Rogue")
+	c.ProficiencyBonus = 2
+	c.Abilities.Set(DEX, 14) // +2
+
+	// Case-insensitive match, expert implies proficient, and the canonical name
+	// is returned regardless of the caller's casing.
+	name, ok := c.SetSkillProficiency("stealth", false, true)
+	if !ok || name != "Stealth" {
+		t.Fatalf("SetSkillProficiency(stealth, expert) = (%q,%v); want (Stealth,true)", name, ok)
+	}
+	// Expertise = ability mod (+2) + 2×proficiency (4) = 6.
+	if got := c.SkillBonus("Stealth"); got != 6 {
+		t.Errorf("Stealth (expertise) bonus = %d; want 6", got)
+	}
+	// Clearing proficiency drops both flags.
+	if _, ok := c.SetSkillProficiency("Stealth", false, false); !ok {
+		t.Fatal("clearing Stealth should succeed")
+	}
+	if got := c.SkillBonus("Stealth"); got != 2 {
+		t.Errorf("Stealth (no prof) bonus = %d; want 2", got)
+	}
+	// A non-5e skill name is rejected.
+	if _, ok := c.SetSkillProficiency("Underwater Basket Weaving", true, false); ok {
+		t.Error("an unknown skill name must not be accepted")
+	}
+}
+
 func TestSpellbookOps(t *testing.T) {
 	c := NewCharacter("Mage", "Elf", "Wizard")
 	c.AddSpell(Spell{Name: "Magic Missile", Level: 1})
