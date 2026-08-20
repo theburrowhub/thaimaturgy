@@ -358,14 +358,18 @@ func (c *Character) UseSpellSlot(level int) bool {
 }
 
 // RestoreSpellSlot recovers one spent slot at a spell level (a short-rest feature
-// or an undo); it never drops Used below zero.
-func (c *Character) RestoreSpellSlot(level int) {
+// or an undo); it never drops Used below zero. It reports whether it actually
+// changed state (false when there was no spent slot to recover), so callers don't
+// report a no-op as a restore.
+func (c *Character) RestoreSpellSlot(level int) bool {
 	if c.Spellcasting == nil {
-		return
+		return false
 	}
 	if i, ok := slotIndex(level); ok && c.Spellcasting.Slots.Used[i] > 0 {
 		c.Spellcasting.Slots.Used[i]--
+		return true
 	}
+	return false
 }
 
 // AddSpell adds (or, by name, updates) a spell in the spellbook, creating the

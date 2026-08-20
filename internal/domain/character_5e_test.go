@@ -41,9 +41,18 @@ func TestSpellSlotsUseRestore(t *testing.T) {
 	if c.SpellSlotsRemaining(1) != 0 {
 		t.Errorf("remaining = %d; want 0", c.SpellSlotsRemaining(1))
 	}
-	c.RestoreSpellSlot(1)
+	if !c.RestoreSpellSlot(1) {
+		t.Error("restoring a spent slot should report a change")
+	}
 	if c.SpellSlotsRemaining(1) != 1 {
 		t.Errorf("after restore remaining = %d; want 1", c.SpellSlotsRemaining(1))
+	}
+	// Restoring again to full works; a further restore is a no-op and reports so.
+	if !c.RestoreSpellSlot(1) {
+		t.Error("restoring the second spent slot should report a change")
+	}
+	if c.RestoreSpellSlot(1) {
+		t.Error("restoring at full slots should report NO change (no-op)")
 	}
 	// Invalid level and non-caster are safe no-ops.
 	if c.UseSpellSlot(0) || c.UseSpellSlot(10) {

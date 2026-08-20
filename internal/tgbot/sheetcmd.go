@@ -233,7 +233,10 @@ func (b *Bot) editSlot(m *tgbotapi.Message, arg string) {
 			}
 			desc = fmt.Sprintf("used a level-%d slot → %d/%d left", level, c.Spellcasting.Slots.RemainingAt(level), c.Spellcasting.Slots.MaxAt(level))
 		} else { // "restore" (parseSlotArg guarantees one of the two)
-			c.RestoreSpellSlot(level)
+			if !c.RestoreSpellSlot(level) {
+				failed = fmt.Sprintf("already has all level-%d slots", level)
+				return
+			}
 			desc = fmt.Sprintf("restored a level-%d slot → %d/%d left", level, c.Spellcasting.Slots.RemainingAt(level), c.Spellcasting.Slots.MaxAt(level))
 		}
 	})
