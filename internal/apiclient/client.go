@@ -206,6 +206,16 @@ func (c *Client) DeleteCharacter(ctx context.Context, id string) error {
 	return c.do(ctx, "DELETE", "/api/roster/"+enc(id), nil, nil)
 }
 
+// UpdateCharacter applies an edited party character over the one named charName,
+// with optimistic concurrency: base is the snapshot the edit started from, and
+// the server rejects the write (surfaced as an error) if the live character has
+// changed since. edited should carry every field (start from a copy of base) so
+// untouched fields are preserved.
+func (c *Client) UpdateCharacter(ctx context.Context, name, charName string, base, edited *domain.Character) error {
+	body := map[string]*domain.Character{"base": base, "edited": edited}
+	return c.do(ctx, "PUT", "/api/sessions/"+enc(name)+"/characters/"+enc(charName), body, nil)
+}
+
 func (c *Client) Config(ctx context.Context) (*domain.Config, error) {
 	var cfg domain.Config
 	if err := c.do(ctx, "GET", "/api/config", nil, &cfg); err != nil {

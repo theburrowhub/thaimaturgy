@@ -260,3 +260,37 @@ func TestClientParty(t *testing.T) {
 		t.Error("DefaultParty left the party empty")
 	}
 }
+
+// TestClientUpdateCharacter exercises the sheet-edit path the remote GUI uses
+// (#130): UpdateCharacter applies an edit and rejects a stale base (optimistic
+// concurrency).
+func TestClientUpdateCharacter(t *testing.T) {
+	c := liveServer(t, "")
+	ctx := context.Background()
+	name, err := c.NewSession(ctx, "crypt")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	if err := c.SetParty(ctx, name, []*domain.Character{domain.NewCharacter("Alice", "Elf", "Wizard")}); err != nil {
+		t.Fatalf("SetParty: %v", err)
+	}
+	p, err := c.Party(ctx, name)
+	if err != nil || len(p) != 1 {
+		t.Fatalf("Party = %+v (%v)", p, err)
+	}
+	base := p[0] // the live (normalized) character = the correct base
+	edited := base
+	edited.Level = 3
+	if err := c.UpdateCharacter(ctx, name, base.Name, &base, &edited); err != nil {
+		t.Fatalf("UpdateCharacter: %v", err)
+	}
+	if p2, _ := c.Party(ctx, name); len(p2) != 1 || p2[0].Level != 3 {
+		t.Fatalf("edit not applied: %+v", p2)
+	}
+	// A stale base (level 1) must be rejected now that the live level is 3.
+	edited2 := edited
+	edited2.Level = 5
+	if err := c.UpdateCharacter(ctx, name, base.Name, &base, &edited2); err == nil {
+		t.Error("expected a conflict when updating from a stale base")
+	}
+}

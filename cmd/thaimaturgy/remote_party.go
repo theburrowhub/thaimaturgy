@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -124,12 +126,17 @@ func (g *gui) fillRemoteParty(list *fyne.Container, members []domain.Character, 
 			g.remoteRemoveMember(name, m, mutate)
 		})
 		remove.Importance = widget.LowImportance
+		edit := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() {
+			g.remoteEditSheet(name, m, mutate)
+		})
+		edit.Importance = widget.LowImportance
 		if busy {
 			remove.Disable()
+			edit.Disable()
 		}
-		removes = append(removes, remove)
+		removes = append(removes, remove, edit)
 		title := widget.NewLabelWithStyle(m.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-		list.Add(container.NewBorder(nil, nil, nil, remove, title))
+		list.Add(container.NewBorder(nil, nil, nil, container.NewHBox(edit, remove), title))
 		list.Objects = append(list.Objects, buildPCSheet(&m)...)
 	}
 	list.Refresh()
@@ -222,6 +229,107 @@ func (g *gui) remoteRemoveMember(name string, target domain.Character, mutate fu
 		}
 		return g.remote.SetParty(ctx, name, next)
 	})
+}
+
+// remoteEditSheet opens a focused editor for a party member's common fields
+// (identity, abilities, HP/AC, gold/XP, conditions, notes) and saves via
+// UpdateCharacter with optimistic concurrency. It edits a COPY of base, so
+// fields it doesn't expose (skills, inventory, spells/slots, features) are
+// preserved untouched. Full spell/slot/skill/inventory editing is a follow-up.
+func (g *gui) remoteEditSheet(name string, base domain.Character, mutate func(func(context.Context) error)) {
+	nameE := entryWith(base.Name)
+	raceE := entryWith(base.Race)
+	classE := entryWith(base.Class)
+	levelE := entryWith(strconv.Itoa(base.Level))
+	strE := entryWith(strconv.Itoa(base.Abilities.STR))
+	dexE := entryWith(strconv.Itoa(base.Abilities.DEX))
+	conE := entryWith(strconv.Itoa(base.Abilities.CON))
+	intE := entryWith(strconv.Itoa(base.Abilities.INT))
+	wisE := entryWith(strconv.Itoa(base.Abilities.WIS))
+	chaE := entryWith(strconv.Itoa(base.Abilities.CHA))
+	hpE := entryWith(strconv.Itoa(base.CurrentHP))
+	maxE := entryWith(strconv.Itoa(base.MaxHP))
+	tempE := entryWith(strconv.Itoa(base.TempHP))
+	acE := entryWith(strconv.Itoa(base.AC))
+	goldE := entryWith(strconv.Itoa(base.Gold))
+	xpE := entryWith(strconv.Itoa(base.XP))
+	condE := entryWith(joinConditions(base.Conditions))
+	condE.SetPlaceHolder("comma-separated, e.g. Poisoned, Prone")
+	notesE := widget.NewMultiLineEntry()
+	notesE.SetText(base.Notes)
+
+	abilities := container.NewGridWithColumns(6, strE, dexE, conE, intE, wisE, chaE)
+	form := widget.NewForm(
+		widget.NewFormItem("Name", nameE),
+		widget.NewFormItem("Race", raceE),
+		widget.NewFormItem("Class", classE),
+		widget.NewFormItem("Level", levelE),
+		widget.NewFormItem("STR DEX CON INT WIS CHA", abilities),
+		widget.NewFormItem("HP (current)", hpE),
+		widget.NewFormItem("HP (max)", maxE),
+		widget.NewFormItem("Temp HP", tempE),
+		widget.NewFormItem("AC", acE),
+		widget.NewFormItem("Gold", goldE),
+		widget.NewFormItem("XP", xpE),
+		widget.NewFormItem("Conditions", condE),
+		widget.NewFormItem("Notes", notesE),
+	)
+
+	var pop *widget.PopUp
+	save := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
+		edited := base // value copy; untouched fields (skills/inventory/spells) preserved
+		edited.Name = strings.TrimSpace(nameE.Text)
+		edited.Race = strings.TrimSpace(raceE.Text)
+		edited.Class = strings.TrimSpace(classE.Text)
+		edited.Level = parseInt(levelE.Text, base.Level)
+		edited.Abilities.STR = parseInt(strE.Text, base.Abilities.STR)
+		edited.Abilities.DEX = parseInt(dexE.Text, base.Abilities.DEX)
+		edited.Abilities.CON = parseInt(conE.Text, base.Abilities.CON)
+		edited.Abilities.INT = parseInt(intE.Text, base.Abilities.INT)
+		edited.Abilities.WIS = parseInt(wisE.Text, base.Abilities.WIS)
+		edited.Abilities.CHA = parseInt(chaE.Text, base.Abilities.CHA)
+		edited.MaxHP = parseInt(maxE.Text, base.MaxHP)
+		edited.CurrentHP = parseInt(hpE.Text, base.CurrentHP)
+		edited.TempHP = parseInt(tempE.Text, base.TempHP)
+		edited.AC = parseInt(acE.Text, base.AC)
+		edited.Gold = parseInt(goldE.Text, base.Gold)
+		edited.XP = parseInt(xpE.Text, base.XP)
+		edited.Notes = notesE.Text
+		edited.Conditions = parseConditions(condE.Text)
+		b := base // stable snapshot for optimistic concurrency
+		pop.Hide()
+		mutate(func(ctx context.Context) error {
+			return g.remote.UpdateCharacter(ctx, name, b.Name, &b, &edited)
+		})
+	})
+	bar := container.NewHBox(layoutSpacer(), widget.NewButton("Cancel", func() { pop.Hide() }), save)
+	content := container.NewBorder(
+		widget.NewLabelWithStyle("Edit "+base.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		bar, nil, nil, container.NewVScroll(form))
+	pop = widget.NewModalPopUp(container.NewPadded(content), g.win.Canvas())
+	pop.Resize(fyne.NewSize(480, 640))
+	pop.Show()
+}
+
+// joinConditions renders conditions as a comma-separated string for editing.
+func joinConditions(cs []domain.Condition) string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, string(c))
+	}
+	return strings.Join(out, ", ")
+}
+
+// parseConditions parses a comma-separated conditions string back into a slice,
+// dropping blanks. nil when empty so it matches an unset value.
+func parseConditions(s string) []domain.Condition {
+	var out []domain.Condition
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, domain.Condition(p))
+		}
+	}
+	return out
 }
 
 // errString is a tiny error wrapper for showErr on a plain message.

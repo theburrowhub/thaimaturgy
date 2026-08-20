@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -968,18 +969,23 @@ func (s *SessionState) PartySnapshot() []Character {
 			continue
 		}
 		cp := *c
-		cp.Skills = append([]Skill(nil), c.Skills...)
-		cp.Inventory = append([]InventoryItem(nil), c.Inventory...)
-		cp.Conditions = append([]Condition(nil), c.Conditions...)
-		cp.SavingThrows = append([]Ability(nil), c.SavingThrows...)
-		cp.Languages = append([]string(nil), c.Languages...)
-		cp.Proficiencies = append([]string(nil), c.Proficiencies...)
-		cp.Features = append([]Trait(nil), c.Features...)
+		// slices.Clone (not append-to-nil) so the snapshot preserves nil-vs-empty
+		// exactly: append([]T(nil), empty...) collapses an empty slice to nil, which
+		// makes the snapshot's JSON differ from the live character's ("[]" vs "null")
+		// and breaks the byte-level optimistic-concurrency check in UpdateCharacter
+		// (a first edit would spuriously conflict).
+		cp.Skills = slices.Clone(c.Skills)
+		cp.Inventory = slices.Clone(c.Inventory)
+		cp.Conditions = slices.Clone(c.Conditions)
+		cp.SavingThrows = slices.Clone(c.SavingThrows)
+		cp.Languages = slices.Clone(c.Languages)
+		cp.Proficiencies = slices.Clone(c.Proficiencies)
+		cp.Features = slices.Clone(c.Features)
 		// Deep-copy the spellcasting block (including its spellbook slice) so the
 		// snapshot never aliases the live pointer a writer might mutate.
 		if c.Spellcasting != nil {
 			scCopy := *c.Spellcasting
-			scCopy.Spells = append([]Spell(nil), c.Spellcasting.Spells...)
+			scCopy.Spells = slices.Clone(c.Spellcasting.Spells)
 			cp.Spellcasting = &scCopy
 		}
 		out = append(out, cp)
