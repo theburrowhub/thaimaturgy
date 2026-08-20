@@ -93,3 +93,27 @@ func TestSavePartyToRosterLinksByIndex(t *testing.T) {
 		t.Fatalf("roster should contain 2 characters, got %d (%v)", len(chars), err)
 	}
 }
+
+// TestSetPartyRejectsDuplicateID: two members sharing a non-empty roster ID are
+// rejected, so no frontend can cause the roster write-back to collide (#129).
+func TestSetPartyRejectsDuplicateID(t *testing.T) {
+	svc, _ := newService(t)
+	name, err := svc.NewSession("crypt")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	a := domain.NewCharacter("Alden", "Human", "Fighter")
+	a.ID = "alden-abc123"
+	dup := domain.NewCharacter("Alden (copy)", "Human", "Fighter")
+	dup.ID = a.ID // same roster id → would clobber on write-back
+
+	if err := svc.SetParty(name, []*domain.Character{a, dup}); !errors.Is(err, ErrDuplicatePartyMember) {
+		t.Fatalf("SetParty with duplicate ids = %v; want ErrDuplicatePartyMember", err)
+	}
+	// Distinct ids (and empty-id members) are fine.
+	b := domain.NewCharacter("Bree", "Halfling", "Bard")
+	b.ID = "bree-def456"
+	if err := svc.SetParty(name, []*domain.Character{a, b, domain.NewCharacter("NoLink", "Elf", "Wizard")}); err != nil {
+		t.Fatalf("SetParty with distinct ids = %v; want nil", err)
+	}
+}
