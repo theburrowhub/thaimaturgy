@@ -78,3 +78,31 @@ func TestParseItemArg(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSlotArg(t *testing.T) {
+	cases := []struct {
+		in     string
+		level  int
+		action string
+		ok     bool
+	}{
+		{"2 use", 2, "use", true},
+		{"9 cast", 9, "use", true},
+		{"1 spend", 1, "use", true},
+		{"3 restore", 3, "restore", true},
+		{"3 recover", 3, "restore", true},
+		{"5 undo", 5, "restore", true},
+		{"0 use", 0, "", false},    // level too low
+		{"10 use", 0, "", false},   // level too high
+		{"x use", 0, "", false},    // non-numeric level
+		{"2 wobble", 0, "", false}, // unknown action
+		{"2", 0, "", false},        // missing action
+		{"", 0, "", false},         // empty
+	}
+	for _, c := range cases {
+		lvl, act, ok := parseSlotArg(c.in)
+		if ok != c.ok || (ok && (lvl != c.level || act != c.action)) {
+			t.Errorf("parseSlotArg(%q) = (%d,%q,%v); want (%d,%q,%v)", c.in, lvl, act, ok, c.level, c.action, c.ok)
+		}
+	}
+}

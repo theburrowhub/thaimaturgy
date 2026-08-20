@@ -309,6 +309,12 @@ func (b *Bot) handleCommand(m *tgbotapi.Message) {
 		b.reply(m, rollText(arg))
 	case "hp":
 		b.editHP(m, arg)
+	case "ac":
+		b.editAC(m, arg)
+	case "temphp", "thp":
+		b.editTempHP(m, arg)
+	case "slot", "slots":
+		b.editSlot(m, arg)
 	case "condition", "cond":
 		b.editCondition(m, arg, true)
 	case "uncondition", "uncond":
@@ -983,6 +989,9 @@ const helpText = `thAImaturgy — multiplayer DM bot
 /log [n] — show the last n timeline entries (default 15)
 /rest short|long [character] — take a short or long rest
 /hp -5 | +3 | =10 — damage, heal, or set your HP
+/ac +2 | =15 — adjust or set your armor class
+/temphp +3 | =5 — adjust or set your temporary HP
+/slot <1-9> use|restore — spend or recover a spell slot
 /condition <name> — apply a condition to your character
 /uncondition <name> — remove a condition
 /gold +50 | -10 | =100 — adjust or set your gold
