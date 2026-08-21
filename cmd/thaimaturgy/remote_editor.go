@@ -2,18 +2,28 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"fyne.io/fyne/v2"
 
+	"github.com/theburrowhub/thaimaturgy/internal/domain"
 	"github.com/theburrowhub/thaimaturgy/internal/storage"
 )
 
 // This file wires the module editor to a remote server (#144), so an adventure
 // in the server library can be edited in place, and a new one authored from
 // scratch, from the remote GUI's main window. It reuses the exact editor UI
-// (editor.go); only load and save are redirected to the HTTP API.
+// (editor.go); only load and save are redirected to the HTTP API. All network
+// I/O runs off the UI thread; save hooks report completion via fyne.Do.
+
+// snapshotAdventure marshals the editor's adventure on the UI thread (the only
+// safe place to read it), so the background save can't race a concurrent form
+// edit. The bytes are decoded back into a detached value for PUTs.
+func snapshotAdventure(adv *domain.Adventure) ([]byte, error) {
+	return json.MarshalIndent(adv, "", "  ")
+}
 
 // editRemoteAdventure loads an adventure from the server and opens it in the
 // editor, saving edits back with PUT /api/adventures/{id}.
@@ -25,9 +35,9 @@ func (g *gui) editRemoteAdventure(id string) {
 		adv, err := g.remote.GetAdventure(ctx, id)
 		cancel()
 		fyne.Do(func() {
-			// Drop a late load if the user has since opened another adventure (or a
-			// new one) — otherwise this stale result would replace the newer editor
-			// session and its persistence hooks, discarding an unsaved draft.
+			// Drop a late load if any newer navigation happened since (opening another
+			// adventure, starting a session, Settings, Characters…) — otherwise this
+			// stale result would replace the newer screen and discard an unsaved draft.
 			if myGen != g.editorGen {
 				return
 			}
@@ -45,19 +55,32 @@ func (g *gui) editRemoteAdventure(id string) {
 			e.remoteMode = true
 			e.onBack = g.showRemoteLibrary
 			e.onPlay = func(string) { g.remoteNewSession(id) }
-			e.saveHook = func() error {
-				sctx, scancel := bg(30)
-				defer scancel()
-				return g.remote.SaveAdventure(sctx, id, e.adv)
+			e.saveHook = func(done func(error)) {
+				data, merr := snapshotAdventure(e.adv) // on the UI thread
+				if merr != nil {
+					done(merr)
+					return
+				}
+				go func() {
+					var snap domain.Adventure
+					if err := json.Unmarshal(data, &snap); err != nil {
+						fyne.Do(func() { done(err) })
+						return
+					}
+					sctx, scancel := bg(30)
+					err := g.remote.SaveAdventure(sctx, id, &snap)
+					scancel()
+					fyne.Do(func() { done(err) })
+				}()
 			}
 			g.showEditor()
 		})
 	}()
 }
 
-// newRemoteAdventure opens the editor on a fresh adventure whose first save
-// PACKAGES the working dir and imports it to the server (create); subsequent
-// saves update the now-existing server adventure by id.
+// newRemoteAdventure opens the editor on a fresh adventure. The first save
+// packages the working dir and imports it to the server (create); afterwards
+// saves update the created adventure in place by id.
 func (g *gui) newRemoteAdventure() {
 	g.editorGen++ // supersede any in-flight remote editor load
 	if g.editor == nil {
@@ -70,71 +93,89 @@ func (g *gui) newRemoteAdventure() {
 
 	created := false
 	var savedID string
-	// markCreated records that the adventure now exists on the server, switching
-	// future saves to an in-place PUT and Play to a session for it.
+	// markCreated (called on the UI thread) records that the adventure now exists
+	// on the server, switching future saves to an in-place PUT and Play to it.
 	markCreated := func(id string) {
 		savedID, created = id, true
 		e.onPlay = func(string) { g.remoteNewSession(savedID) }
 	}
-	e.saveHook = func() error {
-		if created {
-			sctx, scancel := bg(30)
-			defer scancel()
-			return g.remote.SaveAdventure(sctx, savedID, e.adv)
+
+	e.saveHook = func(done func(error)) {
+		id := e.adv.ID
+		data, merr := snapshotAdventure(e.adv) // on the UI thread
+		if merr != nil {
+			done(merr)
+			return
 		}
-		// Reconcile first: if an adventure with this id already exists on the server
-		// (e.g. a prior import whose response we lost), switch to update rather than
-		// importing again — so a retry is idempotent and never duplicates.
-		rctx, rcancel := bg(20)
-		if _, err := g.remote.GetAdventure(rctx, e.adv.ID); err == nil {
-			rcancel()
-			markCreated(e.adv.ID)
-			sctx, scancel := bg(30)
-			defer scancel()
-			return g.remote.SaveAdventure(sctx, savedID, e.adv)
-		}
-		rcancel()
-		// Not present: write adventure.json into the working dir, package it, and
-		// import it to create the adventure server-side.
-		data, err := json.MarshalIndent(e.adv, "", "  ")
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(filepath.Join(e.workingDir, storage.AdventureFile), data, 0o644); err != nil {
-			return err
-		}
-		tgz, err := os.CreateTemp("", "thaim-newremote-*.tar.gz")
-		if err != nil {
-			return err
-		}
-		tgzPath := tgz.Name()
-		_ = tgz.Close()
-		defer os.Remove(tgzPath)
-		_ = os.Remove(tgzPath) // PackageModule recreates it
-		if err := storage.PackageModule(e.workingDir, tgzPath); err != nil {
-			return err
-		}
-		ictx, icancel := bg(120)
-		defer icancel()
-		newID, _, err := g.remote.ImportAdventure(ictx, tgzPath)
-		if err != nil {
-			// Ambiguous failure (e.g. lost/undecodable response): if the adventure
-			// got created anyway, reconcile so a retry updates instead of duplicating.
+		alreadyCreated := created
+		workingDir := e.workingDir
+		go func() {
+			// Update path: the adventure was created by THIS draft already.
+			if alreadyCreated {
+				var snap domain.Adventure
+				if err := json.Unmarshal(data, &snap); err != nil {
+					fyne.Do(func() { done(err) })
+					return
+				}
+				sctx, scancel := bg(30)
+				err := g.remote.SaveAdventure(sctx, savedID, &snap)
+				scancel()
+				fyne.Do(func() { done(err) })
+				return
+			}
+			// First save. A pre-existing id we never imported is a COLLISION — refuse
+			// rather than PUT over (and destroy) an unrelated adventure.
 			cctx, ccancel := bg(20)
-			_, gerr := g.remote.GetAdventure(cctx, e.adv.ID)
+			_, gerr := g.remote.GetAdventure(cctx, id)
 			ccancel()
 			if gerr == nil {
-				markCreated(e.adv.ID)
-				return nil
+				fyne.Do(func() {
+					done(fmt.Errorf("an adventure with id %q already exists on the server — choose a different id", id))
+				})
+				return
 			}
-			return err
-		}
-		markCreated(newID)
-		return nil
+			// Create it: write adventure.json into the working dir, package, import.
+			if err := os.WriteFile(filepath.Join(workingDir, storage.AdventureFile), data, 0o644); err != nil {
+				fyne.Do(func() { done(err) })
+				return
+			}
+			tgz, err := os.CreateTemp("", "thaim-newremote-*.tar.gz")
+			if err != nil {
+				fyne.Do(func() { done(err) })
+				return
+			}
+			tgzPath := tgz.Name()
+			_ = tgz.Close()
+			defer os.Remove(tgzPath)
+			_ = os.Remove(tgzPath) // PackageModule recreates it
+			if err := storage.PackageModule(workingDir, tgzPath); err != nil {
+				fyne.Do(func() { done(err) })
+				return
+			}
+			ictx, icancel := bg(120)
+			newID, _, ierr := g.remote.ImportAdventure(ictx, tgzPath)
+			icancel()
+			if ierr != nil {
+				// Ambiguous failure (e.g. lost/undecodable response): if OUR import
+				// created it anyway (it wasn't there in the pre-check above), reconcile
+				// so a retry updates in place instead of duplicating.
+				rctx, rcancel := bg(20)
+				_, rerr := g.remote.GetAdventure(rctx, id)
+				rcancel()
+				if rerr == nil {
+					fyne.Do(func() { markCreated(id); done(nil) })
+					return
+				}
+				fyne.Do(func() { done(ierr) })
+				return
+			}
+			fyne.Do(func() { markCreated(newID); done(nil) })
+		}()
 	}
 	// Before the first save the adventure isn't on the server yet; playCurrent runs
-	// save() first (creating it) and then reads e.onPlay, so this is only a
-	// pre-create fallback and is replaced once creation succeeds.
+	// save first (creating it) and then, on success, reads e.onPlay — which
+	// markCreated has by then repointed at the created id. This is the pre-create
+	// fallback.
 	e.onPlay = func(string) { g.remoteNewSession(e.adv.ID) }
 	g.showEditor()
 }

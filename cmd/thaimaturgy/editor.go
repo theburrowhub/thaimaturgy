@@ -54,7 +54,10 @@ type editor struct {
 	// Remote editing (#144): when saveHook is set the editor persists over the HTTP
 	// API (a server adventure) instead of to workingDir on disk, and remoteMode
 	// relaxes on-disk image validation (assets live on the server, not locally).
-	saveHook   func() error
+	// saveHook runs its network I/O OFF the UI thread and reports the result by
+	// calling done on the UI thread (via fyne.Do), so a stalled server never
+	// freezes the GUI. It is invoked only from doSave.
+	saveHook   func(done func(error))
 	remoteMode bool
 
 	// translate toggles AI translation of the imported module into the configured
@@ -84,20 +87,22 @@ func (e *editor) playCurrent() {
 	if e.adv == nil {
 		return
 	}
-	if err := e.save(); err != nil {
-		return
-	}
-	// Remote mode already persisted to the server via save(); there is no local
-	// working copy to install into the on-disk library.
-	if !e.remoteMode {
-		if err := e.installToLibrary(); err != nil {
-			e.showErr(err)
-			return
+	e.doSave(func(err error) {
+		if err != nil {
+			return // doSave already surfaced it
 		}
-	}
-	if e.onPlay != nil {
-		e.onPlay(e.adv.ID)
-	}
+		// Remote mode already persisted to the server; there is no local working
+		// copy to install into the on-disk library.
+		if !e.remoteMode {
+			if err := e.installToLibrary(); err != nil {
+				e.showErr(err)
+				return
+			}
+		}
+		if e.onPlay != nil {
+			e.onPlay(e.adv.ID)
+		}
+	})
 }
 
 // installToLibrary makes the current working module available in the player's
@@ -195,7 +200,7 @@ func (e *editor) buildUI() fyne.CanvasObject {
 				e.onBack()
 			}
 		}),
-		widget.NewButton("Save", func() { _ = e.save() }),
+		widget.NewButton("Save", func() { e.doSave(nil) }),
 		widget.NewButton("▶ Play", e.playCurrent),
 		widget.NewButton("Import…", e.importDialog),
 		translateCheck,
@@ -833,17 +838,35 @@ func (e *editor) reload() {
 	e.formHost.Refresh()
 }
 
-func (e *editor) save() error {
-	// Remote editing: persist over the API instead of to a local working dir.
+// doSave persists the adventure and invokes onDone (on the UI thread) with the
+// result. In remote mode it delegates to saveHook, which runs its HTTP off the UI
+// thread and reports back via fyne.Do — so a slow/stalled server never freezes the
+// UI. In local mode it writes synchronously to the working dir. onDone may be nil.
+func (e *editor) doSave(onDone func(error)) {
 	if e.saveHook != nil {
-		if err := e.saveHook(); err != nil {
-			e.showErr(err)
-			return err
-		}
-		e.dirty = false
-		e.setStatus("Saved to server")
-		return nil
+		e.setStatus("Saving…")
+		e.saveHook(func(err error) {
+			if err != nil {
+				e.showErr(err)
+			} else {
+				e.dirty = false
+				e.setStatus("Saved to server")
+			}
+			if onDone != nil {
+				onDone(err)
+			}
+		})
+		return
 	}
+	err := e.save()
+	if onDone != nil {
+		onDone(err)
+	}
+}
+
+// save writes the adventure.json to the local working dir. It is the on-disk
+// (local-mode) path; remote persistence goes through doSave/saveHook instead.
+func (e *editor) save() error {
 	if e.workingDir == "" {
 		e.showErr(fmt.Errorf("no working directory"))
 		return nil

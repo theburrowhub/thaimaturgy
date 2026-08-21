@@ -74,6 +74,7 @@ func (g *gui) remoteRosterOps() rosterOps {
 // without opening a session (#146). Editing reuses the shared full 5e sheet
 // editor (sheetEditorForm).
 func (g *gui) showRosterManager(ops rosterOps) {
+	g.editorGen++ // opening the roster manager supersedes any pending editor load
 	list := container.NewVBox()
 	status := widget.NewLabel("")
 	status.Wrapping = fyne.TextWrapWord
