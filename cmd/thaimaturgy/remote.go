@@ -116,19 +116,31 @@ func (g *gui) remoteImportDialog() {
 }
 
 func (g *gui) remoteNewSession(adventureID string) {
+	mode := g.startMode // capture on the UI thread; the goroutine must not read the
+	// selector-mutated field concurrently (data race), and the session should use
+	// the mode chosen when it was launched, not a later selector change.
 	go func() {
 		ctx, cancel := bg(15)
 		defer cancel()
 		name, err := g.remote.NewSession(ctx, adventureID)
-		// Honor the mode chosen on the library before play. A new session defaults
-		// to Oracle server-side, so only a Virtual-DM choice needs applying.
-		if err == nil && g.startMode == domain.ModeVirtualDM {
-			_, err = g.remote.Command(ctx, name, "/mode dm")
+		if err != nil {
+			fyne.Do(func() { g.showErr(err) })
+			return
+		}
+		// The session now exists on the server. Honor the mode chosen on the library
+		// (a new session defaults to Oracle server-side, so only a Virtual-DM choice
+		// needs applying), using its OWN context. If that fails we still OPEN the
+		// created session — reporting the mode-update failure — so a retry can't
+		// create a duplicate session and the created one isn't orphaned.
+		var modeErr error
+		if mode == domain.ModeVirtualDM {
+			mctx, mcancel := bg(15)
+			_, modeErr = g.remote.Command(mctx, name, "/mode dm")
+			mcancel()
 		}
 		fyne.Do(func() {
-			if err != nil {
-				g.showErr(err)
-				return
+			if modeErr != nil {
+				g.showErr(fmt.Errorf("session started, but switching to Virtual DM failed (you can toggle mode inside): %w", modeErr))
 			}
 			g.openRemoteSession(name)
 		})
