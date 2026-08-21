@@ -36,10 +36,11 @@ func bg(seconds int) (context.Context, context.CancelFunc) {
 func (g *gui) showRemoteLibrary() {
 	g.stopRemoteSession()
 
+	newBtn := widget.NewButtonWithIcon("New adventure…", theme.DocumentCreateIcon(), g.newRemoteAdventure)
 	importBtn := widget.NewButtonWithIcon("Import (.tar.gz)…", theme.FolderOpenIcon(), g.remoteImportDialog)
 	charsBtn := widget.NewButtonWithIcon("Characters…", theme.AccountIcon(), func() { g.showRosterManager(g.remoteRosterOps()) })
 	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.showRemoteSettings)
-	hero := modernLibraryHero("thAImaturgy", "Connected to "+g.remote.BaseURL(), container.NewHBox(g.startModeSelector(), importBtn, charsBtn, settingsBtn))
+	hero := modernLibraryHero("thAImaturgy", "Connected to "+g.remote.BaseURL(), container.NewHBox(g.startModeSelector(), newBtn, importBtn, charsBtn, settingsBtn))
 
 	list := container.NewVBox()
 	status := widget.NewLabel("")
@@ -75,7 +76,10 @@ func (g *gui) reloadRemoteLibrary(list *fyne.Container, status *widget.Label, re
 			list.Add(widget.NewLabelWithStyle("Adventures", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
 			for _, a := range advs {
 				id, title := a.ID, a.Title
-				list.Add(widget.NewButton("▶  "+title, func() { g.remoteNewSession(id) }))
+				play := widget.NewButton("▶  "+title, func() { g.remoteNewSession(id) })
+				edit := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() { g.editRemoteAdventure(id) })
+				edit.Importance = widget.LowImportance
+				list.Add(container.NewBorder(nil, nil, nil, edit, play))
 			}
 			if serr != nil {
 				list.Add(widget.NewLabel("⚠ " + serr.Error()))

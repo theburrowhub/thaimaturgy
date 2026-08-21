@@ -118,6 +118,22 @@ func (c *Client) ListAdventures(ctx context.Context) ([]storage.AdventureInfo, e
 	return out, err
 }
 
+// GetAdventure fetches a full authored adventure by id (for the remote editor).
+func (c *Client) GetAdventure(ctx context.Context, id string) (*domain.Adventure, error) {
+	var adv domain.Adventure
+	if err := c.do(ctx, "GET", "/api/adventures/"+enc(id), nil, &adv); err != nil {
+		return nil, err
+	}
+	return &adv, nil
+}
+
+// SaveAdventure persists an edited adventure to the server (PUT). The adventure
+// must already exist server-side (create a new one via ImportAdventure); the id
+// is pinned to the module folder server-side, so it can't be moved here.
+func (c *Client) SaveAdventure(ctx context.Context, id string, adv *domain.Adventure) error {
+	return c.do(ctx, "PUT", "/api/adventures/"+enc(id), adv, nil)
+}
+
 // ImportAdventure uploads a .tar.gz module to the server (multipart/form-data,
 // file field "module") and returns the imported adventure's id and title. It
 // sends the X-Thaim-CSRF header the server's multipart endpoint requires (that

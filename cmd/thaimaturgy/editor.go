@@ -51,6 +51,12 @@ type editor struct {
 	workingDir string // holds adventure.json + assets/
 	dirty      bool
 
+	// Remote editing (#144): when saveHook is set the editor persists over the HTTP
+	// API (a server adventure) instead of to workingDir on disk, and remoteMode
+	// relaxes on-disk image validation (assets live on the server, not locally).
+	saveHook   func() error
+	remoteMode bool
+
 	// translate toggles AI translation of the imported module into the configured
 	// import language. Off by default: import in the source document's language.
 	translate bool
@@ -70,9 +76,13 @@ func (e *editor) playCurrent() {
 	if err := e.save(); err != nil {
 		return
 	}
-	if err := e.installToLibrary(); err != nil {
-		e.showErr(err)
-		return
+	// Remote mode already persisted to the server via save(); there is no local
+	// working copy to install into the on-disk library.
+	if !e.remoteMode {
+		if err := e.installToLibrary(); err != nil {
+			e.showErr(err)
+			return
+		}
 	}
 	if e.onPlay != nil {
 		e.onPlay(e.adv.ID)
@@ -805,6 +815,16 @@ func (e *editor) reload() {
 }
 
 func (e *editor) save() error {
+	// Remote editing: persist over the API instead of to a local working dir.
+	if e.saveHook != nil {
+		if err := e.saveHook(); err != nil {
+			e.showErr(err)
+			return err
+		}
+		e.dirty = false
+		e.setStatus("Saved to server")
+		return nil
+	}
 	if e.workingDir == "" {
 		e.showErr(fmt.Errorf("no working directory"))
 		return nil
@@ -826,6 +846,11 @@ func (e *editor) save() error {
 
 func (e *editor) validate() {
 	imageExists := func(rel string) bool {
+		// In remote mode the assets live on the server, not in a local working dir,
+		// so we can't stat them here — don't flag referenced images as missing.
+		if e.remoteMode {
+			return true
+		}
 		if e.workingDir == "" {
 			return false
 		}
