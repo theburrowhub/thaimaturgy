@@ -55,11 +55,15 @@ func (s *Storage) CreateUser(username string, role domain.UserRole, password str
 	if !domain.ValidUserRole(role) {
 		return nil, fmt.Errorf("invalid role %q", role)
 	}
-	existing, _ := s.listUsersLocked()
-	for _, u := range existing {
-		if domain.NormalizeUsername(u.Username) == domain.NormalizeUsername(uname) {
-			return nil, ErrUsernameTaken
-		}
+	// Abort on a listing error rather than trusting a partial list: if an existing
+	// user file is unreadable it might hide a name clash, and we must not let a
+	// duplicate username slip through the uniqueness check.
+	existing, err := s.listUsersLocked()
+	if err != nil {
+		return nil, fmt.Errorf("cannot verify username uniqueness: %w", err)
+	}
+	if hasUsername(existing, uname, "") {
+		return nil, ErrUsernameTaken
 	}
 	id, err := newUserID(uname)
 	if err != nil {
@@ -77,12 +81,49 @@ func (s *Storage) CreateUser(username string, role domain.UserRole, password str
 	return u, nil
 }
 
-// SaveUser persists an existing user (updating in place by id). Use CreateUser
-// for a new account so username uniqueness is enforced.
+// SaveUser updates an EXISTING user in place (by id), enforcing the account
+// invariants: the id must already exist, the username must be non-blank and stay
+// unique (case-insensitive) among OTHER users, and the role must be valid. Use
+// CreateUser to add a new account. These checks run under usersMu so a concurrent
+// create/save can't race the uniqueness guarantee.
 func (s *Storage) SaveUser(u *domain.User) error {
 	s.usersMu.Lock()
 	defer s.usersMu.Unlock()
+
+	if strings.TrimSpace(u.Username) == "" {
+		return errors.New("username is required")
+	}
+	if !domain.ValidUserRole(u.Role) {
+		return fmt.Errorf("invalid role %q", u.Role)
+	}
+	if _, err := s.loadUserLocked(u.ID); err != nil {
+		// SaveUser only updates; creating goes through CreateUser (which mints the id
+		// and enforces uniqueness). Refuse to persist an unknown/forged id.
+		return err
+	}
+	others, err := s.listUsersLocked()
+	if err != nil {
+		return fmt.Errorf("cannot verify username uniqueness: %w", err)
+	}
+	if hasUsername(others, u.Username, u.ID) {
+		return ErrUsernameTaken
+	}
 	return s.saveUserLocked(u)
+}
+
+// hasUsername reports whether any user (other than exceptID) has the given
+// username, compared case-insensitively.
+func hasUsername(users []*domain.User, username, exceptID string) bool {
+	want := domain.NormalizeUsername(username)
+	for _, u := range users {
+		if u.ID == exceptID {
+			continue
+		}
+		if domain.NormalizeUsername(u.Username) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Storage) saveUserLocked(u *domain.User) error {

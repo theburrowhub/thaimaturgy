@@ -2,6 +2,8 @@ package storage
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
@@ -89,5 +91,57 @@ func TestCreateUserValidation(t *testing.T) {
 	}
 	if _, err := s.CreateUser("bob", domain.UserRole("wizard"), "pw"); err == nil {
 		t.Error("invalid role should be rejected")
+	}
+}
+
+func TestSaveUserEnforcesInvariants(t *testing.T) {
+	s, _ := NewWithPath(t.TempDir())
+	admin, _ := s.CreateUser("Admin", domain.RoleAdmin, "pw")
+	aria, _ := s.CreateUser("Aria", domain.RolePlayer, "pw")
+
+	// Unknown/forged id is refused (SaveUser only updates).
+	ghost := &domain.User{ID: "ghost-000000", Username: "ghost", Role: domain.RolePlayer}
+	if err := s.SaveUser(ghost); err == nil {
+		t.Error("SaveUser must refuse an id that doesn't already exist")
+	}
+
+	// Renaming Aria onto Admin's username (case-insensitively) is rejected.
+	aria.Username = "ADMIN"
+	if err := s.SaveUser(aria); !errors.Is(err, ErrUsernameTaken) {
+		t.Errorf("rename to an existing username should be ErrUsernameTaken, got %v", err)
+	}
+
+	// Blank username and invalid role are rejected.
+	admin.Username = "   "
+	if err := s.SaveUser(admin); err == nil {
+		t.Error("blank username should be rejected")
+	}
+	reload, _ := s.LoadUser(admin.ID)
+	reload.Role = domain.UserRole("wizard")
+	if err := s.SaveUser(reload); err == nil {
+		t.Error("invalid role should be rejected")
+	}
+
+	// A legitimate in-place update (same username) still works.
+	ok, _ := s.LoadUser(aria.ID)
+	ok.AssignCharacter("aria-abc123")
+	if err := s.SaveUser(ok); err != nil {
+		t.Errorf("valid update should succeed, got %v", err)
+	}
+}
+
+func TestCreateUserAbortsOnUnreadableRoster(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewWithPath(dir)
+	if _, err := s.CreateUser("Admin", domain.RoleAdmin, "pw"); err != nil {
+		t.Fatal(err)
+	}
+	// Corrupt an existing user file so listing reports an error; a create that
+	// can't verify uniqueness must abort rather than risk a duplicate.
+	if err := os.WriteFile(filepath.Join(dir, UsersDir, "broken.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateUser("Someone", domain.RolePlayer, "pw"); err == nil {
+		t.Error("CreateUser should abort when the existing users can't be listed")
 	}
 }
