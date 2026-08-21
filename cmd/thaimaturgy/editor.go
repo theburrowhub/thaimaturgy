@@ -58,6 +58,12 @@ type editor struct {
 	editRev int
 	saving  bool
 
+	// navGen reports the app's editor-navigation generation (gui.editorGen), which
+	// bumps on every navigation including "← Library". A save snapshots it and its
+	// success continuation (playCurrent) is skipped if it changed meanwhile — so a
+	// pending Play can't override a newer Back navigation. nil in tests.
+	navGen func() int
+
 	// Remote editing (#144): when saveHook is set the editor persists over the HTTP
 	// API (a server adventure) instead of to workingDir on disk, and remoteMode
 	// relaxes on-disk image validation (assets live on the server, not locally).
@@ -191,6 +197,7 @@ func newEditor(g *gui) *editor {
 		visionProv: buildVisionProvider(cfg),
 		onBack:     g.showLibrary,
 		onPlay:     func(id string) { g.startSession(id) },
+		navGen:     func() int { return g.editorGen },
 	}
 	return e
 }
@@ -892,13 +899,19 @@ func (e *editor) doSave(onDone func(error)) {
 	e.setStatus("Saving…")
 	advAtSnap := e.adv     // the adventure this save is for
 	revAtSnap := e.editRev // the content revision it captured
+	navAtSnap := 0         // the navigation generation it started under
+	if e.navGen != nil {
+		navAtSnap = e.navGen()
+	}
 	e.saveHook(func(err error) {
 		e.saving = false
-		// Superseded: the editor moved to a different adventure since this save
-		// started (navigation reused the shared editor). The result is irrelevant to
+		// Superseded: the editor moved to a different adventure OR the app navigated
+		// away (e.g. "← Library") since this save started. The result is irrelevant to
 		// what's on screen now — don't touch its dirty flag or status, and report it
-		// as unsuccessful so a continuation (playCurrent) doesn't act on stale state.
-		if e.adv != advAtSnap {
+		// as unsuccessful so a continuation (playCurrent) doesn't act on stale state
+		// or override the newer navigation.
+		navChanged := e.navGen != nil && e.navGen() != navAtSnap
+		if e.adv != advAtSnap || navChanged {
 			if onDone != nil {
 				onDone(errSaveSuperseded)
 			}
@@ -1134,6 +1147,14 @@ func copyFileContents(src, dst string) error {
 // importImage copies a chosen file into workingDir/assets/<kind>/ and calls set
 // with the new relative path.
 func (e *editor) importImage(kind string, set func(string)) {
+	// In remote mode there is no asset-upload path: saves send JSON only, so pointing
+	// an ImageRef at a locally-copied file would replace a valid server reference with
+	// one whose bytes never reach the server. Block image import/replacement here too.
+	if e.remoteMode {
+		go nativeui.Info("Images not editable remotely",
+			"Replacing image assets isn't available when editing on a server. Package the module and use Import (.tar.gz) to change assets.")
+		return
+	}
 	if e.workingDir == "" {
 		e.showErr(fmt.Errorf("save or create a module first"))
 		return
