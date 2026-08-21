@@ -10,7 +10,21 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
+	"github.com/theburrowhub/thaimaturgy/internal/nativeui"
 )
+
+// derefCharacters copies a slice of character pointers to values, skipping any
+// nil entry so a malformed response (e.g. a JSON [null]) can't panic the GUI.
+func derefCharacters(ptrs []*domain.Character) []domain.Character {
+	out := make([]domain.Character, 0, len(ptrs))
+	for _, c := range ptrs {
+		if c == nil {
+			continue
+		}
+		out = append(out, *c)
+	}
+	return out
+}
 
 // rosterOps abstracts the character-roster backend for the library-level
 // character manager (#146), so one UI serves both the local disk store and a
@@ -31,11 +45,7 @@ func (g *gui) localRosterOps() rosterOps {
 		back:     g.showLibrary,
 		list: func(context.Context) ([]domain.Character, error) {
 			ptrs, err := g.store.ListCharacters()
-			out := make([]domain.Character, 0, len(ptrs))
-			for _, c := range ptrs {
-				out = append(out, *c)
-			}
-			return out, err
+			return derefCharacters(ptrs), err
 		},
 		save:   func(_ context.Context, c *domain.Character) error { _, err := g.store.SaveCharacter(c); return err },
 		remove: func(_ context.Context, id string) error { return g.store.DeleteCharacter(id) },
@@ -49,11 +59,7 @@ func (g *gui) remoteRosterOps() rosterOps {
 		back:     g.showRemoteLibrary,
 		list: func(ctx context.Context) ([]domain.Character, error) {
 			ptrs, err := g.remote.ListCharacters(ctx)
-			out := make([]domain.Character, 0, len(ptrs))
-			for _, c := range ptrs {
-				out = append(out, *c)
-			}
-			return out, err
+			return derefCharacters(ptrs), err
 		},
 		save: func(ctx context.Context, c *domain.Character) error {
 			_, err := g.remote.SaveCharacter(ctx, c)
@@ -72,14 +78,23 @@ func (g *gui) showRosterManager(ops rosterOps) {
 	status := widget.NewLabel("")
 	status.Wrapping = fyne.TextWrapWord
 
+	// gen orders refreshes: a completion is applied only if no newer refresh has
+	// started since, so a slow list can't render a stale roster (e.g. resurrecting
+	// a just-deleted character). gen is touched only on the UI thread.
+	gen := 0
 	var refresh func()
 	refresh = func() {
+		gen++
+		myGen := gen
 		status.SetText("Loading…")
 		go func() {
 			ctx, cancel := bg(15)
 			chars, err := ops.list(ctx)
 			cancel()
 			fyne.Do(func() {
+				if myGen != gen {
+					return // superseded by a newer refresh
+				}
 				status.SetText("")
 				objs := []fyne.CanvasObject{}
 				if err != nil {
@@ -173,6 +188,11 @@ func (g *gui) deleteRosterCharacter(ops rosterOps, c domain.Character, status *w
 		return
 	}
 	go func() {
+		// Deleting a roster entry is irreversible, so confirm (naming the character)
+		// before touching the backend — one stray click must not wipe a character.
+		if !nativeui.Confirm("Delete character", "Permanently delete "+c.Name+" from the roster? This can't be undone.") {
+			return
+		}
 		ctx, cancel := bg(15)
 		err := ops.remove(ctx, c.ID)
 		cancel()

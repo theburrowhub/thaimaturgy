@@ -48,3 +48,16 @@ func TestLocalRosterOps(t *testing.T) {
 		t.Errorf("after delete: got %d chars; want 0", len(got))
 	}
 }
+
+// TestDerefCharactersSkipsNil guards against a malformed roster response (a nil
+// element, e.g. JSON [null]) panicking the GUI (#146 review).
+func TestDerefCharactersSkipsNil(t *testing.T) {
+	in := []*domain.Character{{Name: "A"}, nil, {Name: "B"}}
+	out := derefCharacters(in)
+	if len(out) != 2 || out[0].Name != "A" || out[1].Name != "B" {
+		t.Fatalf("got %+v; want [A B] with the nil skipped", out)
+	}
+	if got := derefCharacters(nil); got == nil || len(got) != 0 {
+		t.Errorf("nil input should yield an empty non-nil slice, got %v", got)
+	}
+}
