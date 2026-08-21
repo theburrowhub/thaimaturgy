@@ -84,10 +84,18 @@ type editor struct {
 func (e *editor) useLocalBackend(onBack func(), onPlay func(string)) {
 	e.remoteMode = false
 	e.saveHook = nil
-	e.saving = false // a fresh session must not inherit a stuck in-flight guard
+	// NOTE: do NOT clear e.saving here. A remote save may still be in flight; the
+	// serialization guard must stay set until that save's own completion clears it,
+	// so navigating through a local editor can't let a second remote save overlap
+	// the first. The guard is bounded by the save's context timeout.
 	e.onBack = onBack
 	e.onPlay = onPlay
 }
+
+// errSaveSuperseded marks a save whose result no longer applies to what's on
+// screen (the editor navigated away, or newer edits arrived after the snapshot),
+// so continuations like playCurrent don't act on stale server state.
+var errSaveSuperseded = fmt.Errorf("save superseded by a newer edit or navigation")
 
 // markDirty flags unsaved changes and advances the edit revision, so an in-flight
 // save that snapshotted an earlier revision won't clear the dirty flag on completion.
@@ -705,6 +713,15 @@ func (e *editor) loadFromArchive(src string) {
 // importDialog builds a new module with AI from either a PDF file or a folder of
 // images, chosen from a single dialog.
 func (e *editor) importDialog() {
+	// AI import scaffolds a fresh working dir with locally-extracted images. In
+	// remote mode those assets are never uploaded (saves send JSON only), so the
+	// server would end up with references to files it doesn't have. Block it and
+	// steer the user to full-module import from the library, which carries assets.
+	if e.remoteMode {
+		go nativeui.Info("Import not available remotely",
+			"Building a module from a PDF/images isn't available when editing on a server (its images wouldn't be uploaded). Author locally and Import the .tar.gz, or use Import (.tar.gz) from the library.")
+		return
+	}
 	if !e.requireProvider() {
 		return
 	}
@@ -877,27 +894,37 @@ func (e *editor) doSave(onDone func(error)) {
 	revAtSnap := e.editRev // the content revision it captured
 	e.saveHook(func(err error) {
 		e.saving = false
-		// If the editor has since moved to a different adventure (navigation reused
-		// the shared editor), this result is irrelevant to what's on screen now:
-		// don't touch its dirty flag or status.
+		// Superseded: the editor moved to a different adventure since this save
+		// started (navigation reused the shared editor). The result is irrelevant to
+		// what's on screen now — don't touch its dirty flag or status, and report it
+		// as unsuccessful so a continuation (playCurrent) doesn't act on stale state.
 		if e.adv != advAtSnap {
 			if onDone != nil {
-				onDone(err)
+				onDone(errSaveSuperseded)
 			}
 			return
 		}
 		if err != nil {
 			e.showErr(err)
-		} else {
-			// Only mark clean if no edit happened after the snapshot; otherwise there
-			// are newer unsaved changes this save didn't include.
-			if e.editRev == revAtSnap {
-				e.dirty = false
+			if onDone != nil {
+				onDone(err)
 			}
-			e.setStatus("Saved to server")
+			return
 		}
+		if e.editRev != revAtSnap {
+			// Newer edits arrived after the snapshot and weren't included in this
+			// save. Keep dirty set, and treat it as non-success so playCurrent won't
+			// launch a session on the older (just-saved) server state.
+			e.setStatus("Saved an earlier revision — you have newer unsaved changes.")
+			if onDone != nil {
+				onDone(errSaveSuperseded)
+			}
+			return
+		}
+		e.dirty = false
+		e.setStatus("Saved to server")
 		if onDone != nil {
-			onDone(err)
+			onDone(nil)
 		}
 	})
 }
