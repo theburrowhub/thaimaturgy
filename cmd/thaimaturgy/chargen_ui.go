@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"sort"
 	"strconv"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -90,6 +91,15 @@ func (g *gui) showCharacterCreator() {
 			base.Set(ab, clampScore(atoiDefault(entries[ab].Text, 10)))
 		}
 		c := domain.GenerateCharacterWithAbilities(name.Text, race.Text, class.Text, atoiDefault(level.Text, 1), base)
+		// Apply the Background/Alignment the form collected — the generator only sets
+		// defaults, so without this the fields the user typed were silently dropped.
+		// A blank field keeps the generator's default rather than storing "".
+		if bg := strings.TrimSpace(background.Text); bg != "" {
+			c.Background = bg
+		}
+		if al := strings.TrimSpace(alignment.Text); al != "" {
+			c.Alignment = al
+		}
 		party := partyPointers(g.session.State.PartySnapshot())
 		party = append(party, c)
 		g.session.State.SetParty(party) // dedupes names
