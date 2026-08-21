@@ -129,20 +129,24 @@ func (c *Client) ImportAdventure(ctx context.Context, path string) (id, title st
 	}
 	defer f.Close()
 
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	part, err := mw.CreateFormFile("module", filepath.Base(path))
-	if err != nil {
-		return "", "", err
-	}
-	if _, err = io.Copy(part, f); err != nil {
-		return "", "", err
-	}
-	if err = mw.Close(); err != nil {
-		return "", "", err
-	}
+	// Stream the multipart body through a pipe so the archive is never fully
+	// buffered in memory — a huge file can't exhaust the heap and crash the GUI
+	// before the server applies its own upload limit. A write error (read failure,
+	// etc.) is propagated to the reader side via CloseWithError so the request fails.
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
+	go func() {
+		part, werr := mw.CreateFormFile("module", filepath.Base(path))
+		if werr == nil {
+			_, werr = io.Copy(part, f)
+		}
+		if werr == nil {
+			werr = mw.Close()
+		}
+		_ = pw.CloseWithError(werr)
+	}()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/adventures/import", &buf)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/adventures/import", pr)
 	if err != nil {
 		return "", "", err
 	}
