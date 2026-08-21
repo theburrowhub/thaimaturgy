@@ -38,7 +38,7 @@ func (g *gui) showRemoteLibrary() {
 
 	importBtn := widget.NewButtonWithIcon("Import (.tar.gz)…", theme.FolderOpenIcon(), g.remoteImportDialog)
 	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.showRemoteSettings)
-	hero := modernLibraryHero("thAImaturgy", "Connected to "+g.remote.BaseURL(), container.NewHBox(importBtn, settingsBtn))
+	hero := modernLibraryHero("thAImaturgy", "Connected to "+g.remote.BaseURL(), container.NewHBox(g.startModeSelector(), importBtn, settingsBtn))
 
 	list := container.NewVBox()
 	status := widget.NewLabel("")
@@ -120,6 +120,11 @@ func (g *gui) remoteNewSession(adventureID string) {
 		ctx, cancel := bg(15)
 		defer cancel()
 		name, err := g.remote.NewSession(ctx, adventureID)
+		// Honor the mode chosen on the library before play. A new session defaults
+		// to Oracle server-side, so only a Virtual-DM choice needs applying.
+		if err == nil && g.startMode == domain.ModeVirtualDM {
+			_, err = g.remote.Command(ctx, name, "/mode dm")
+		}
 		fyne.Do(func() {
 			if err != nil {
 				g.showErr(err)

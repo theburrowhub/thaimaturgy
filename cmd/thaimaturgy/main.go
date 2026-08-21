@@ -75,6 +75,11 @@ type gui struct {
 	locLabel      *widget.Label
 	currentUID    string
 
+	// startMode is the mode a NEWLY started game begins in, chosen on the library
+	// (main window) before play begins (#143). Empty = the default (Oracle);
+	// resuming a saved session ignores it and keeps the session's own mode.
+	startMode domain.SessionMode
+
 	// Mode toggle (Oracle ↔ Virtual DM) and the player-character panel shown in
 	// virtual-DM mode in place of the adventure browser.
 	modeBtn     *widget.Button
@@ -197,7 +202,7 @@ func (g *gui) showLibrary() {
 	newBtn := widget.NewButtonWithIcon("New / author…", theme.DocumentCreateIcon(), g.newAuthoring)
 	importBtn := widget.NewButtonWithIcon("Import (.tar.gz)…", theme.FolderOpenIcon(), g.importDialog)
 	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.showSettings)
-	actions := container.NewHBox(newBtn, importBtn, settingsBtn)
+	actions := container.NewHBox(g.startModeSelector(), newBtn, importBtn, settingsBtn)
 	hero := modernLibraryHero("thAImaturgy", "A starlit oracle for running tabletop adventures", actions)
 
 	list := container.NewVBox()
@@ -402,7 +407,30 @@ func (g *gui) startSession(advID string) {
 	for i := 1; g.store.SessionExists(name); i++ {
 		name = fmt.Sprintf("%s-%d", advID, i)
 	}
-	g.openSession(domain.NewSessionState(name, adv), adv)
+	st := domain.NewSessionState(name, adv)
+	if g.startMode != "" {
+		st.SetMode(g.startMode) // honor the mode chosen on the library before play
+	}
+	g.openSession(st, adv)
+}
+
+// startModeSelector builds the library's "Start as" control: the mode a NEW game
+// begins in (Oracle or Virtual DM), chosen before play. It only affects sessions
+// started from the library; resuming a saved session keeps that session's mode.
+func (g *gui) startModeSelector() fyne.CanvasObject {
+	sel := widget.NewSelect([]string{"Oracle", "Virtual DM"}, func(s string) {
+		if s == "Virtual DM" {
+			g.startMode = domain.ModeVirtualDM
+		} else {
+			g.startMode = domain.ModeAssistant
+		}
+	})
+	if g.startMode == domain.ModeVirtualDM {
+		sel.SetSelected("Virtual DM")
+	} else {
+		sel.SetSelected("Oracle")
+	}
+	return container.NewHBox(widget.NewLabel("Start as:"), sel)
 }
 
 func (g *gui) resumeSession(name string) {
