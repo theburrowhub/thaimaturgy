@@ -11,6 +11,7 @@ require (
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/ncruces/zenity v0.10.14
 	github.com/pdfcpu/pdfcpu v0.13.0
+	golang.org/x/crypto v0.52.0
 	golang.org/x/image v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -56,7 +57,6 @@ require (
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
