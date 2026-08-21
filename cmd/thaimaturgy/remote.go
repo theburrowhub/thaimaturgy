@@ -103,6 +103,7 @@ func (g *gui) reloadRemoteLibrary(list *fyne.Container, status *widget.Label, re
 // remoteImportDialog picks a .tar.gz module and uploads it to the server, then
 // refreshes the library (mirrors the local importDialog, but over the API).
 func (g *gui) remoteImportDialog() {
+	g.editorGen++ // starting an import supersedes any pending editor load
 	go func() {
 		path, ok := nativeui.OpenFile("Import adventure module",
 			nativeui.Filter{Name: "Adventure module", Patterns: []string{"*.tar.gz", "*.tgz", "*.gz"}})

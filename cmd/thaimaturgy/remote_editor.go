@@ -156,16 +156,12 @@ func (g *gui) newRemoteAdventure() {
 			newID, _, ierr := g.remote.ImportAdventure(ictx, tgzPath)
 			icancel()
 			if ierr != nil {
-				// Ambiguous failure (e.g. lost/undecodable response): if OUR import
-				// created it anyway (it wasn't there in the pre-check above), reconcile
-				// so a retry updates in place instead of duplicating.
-				rctx, rcancel := bg(20)
-				_, rerr := g.remote.GetAdventure(rctx, id)
-				rcancel()
-				if rerr == nil {
-					fyne.Do(func() { markCreated(id); done(nil) })
-					return
-				}
+				// Report the error and do NOT infer ownership from a later ID lookup:
+				// with concurrent clients, an adventure appearing under this id may have
+				// been created by someone else, and treating it as ours would let a
+				// later save PUT over their content. If our import actually succeeded
+				// but the response was lost, a retry hits the collision check above and
+				// the user opens the now-listed adventure via "Edit".
 				fyne.Do(func() { done(ierr) })
 				return
 			}

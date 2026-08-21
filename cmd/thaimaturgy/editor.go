@@ -51,6 +51,13 @@ type editor struct {
 	workingDir string // holds adventure.json + assets/
 	dirty      bool
 
+	// editRev bumps on every content edit (via markDirty); a save snapshots it and
+	// only clears the dirty flag if it is unchanged on completion, so edits made
+	// after the snapshot aren't marked as saved. saving serializes remote saves so
+	// an older async PUT can't land after (and overwrite) a newer one.
+	editRev int
+	saving  bool
+
 	// Remote editing (#144): when saveHook is set the editor persists over the HTTP
 	// API (a server adventure) instead of to workingDir on disk, and remoteMode
 	// relaxes on-disk image validation (assets live on the server, not locally).
@@ -77,8 +84,16 @@ type editor struct {
 func (e *editor) useLocalBackend(onBack func(), onPlay func(string)) {
 	e.remoteMode = false
 	e.saveHook = nil
+	e.saving = false // a fresh session must not inherit a stuck in-flight guard
 	e.onBack = onBack
 	e.onPlay = onPlay
+}
+
+// markDirty flags unsaved changes and advances the edit revision, so an in-flight
+// save that snapshotted an earlier revision won't clear the dirty flag on completion.
+func (e *editor) markDirty() {
+	e.dirty = true
+	e.editRev++
 }
 
 // playCurrent saves the current adventure, ensures it's installed in the library,
@@ -427,7 +442,7 @@ func (e *editor) refreshTree() {
 func (e *editor) addZone() {
 	id := uniqueID("zone", func(s string) bool { return e.adv.Zone(s) != nil })
 	e.adv.Zones = append(e.adv.Zones, domain.Zone{ID: id, Name: "New Zone"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("zone:" + id)
 }
@@ -441,7 +456,7 @@ func (e *editor) addRoom() {
 	z := e.adv.Zone(zid)
 	rid := uniqueID("room", func(s string) bool { r, _ := e.adv.Room(s); return r != nil })
 	z.Rooms = append(z.Rooms, domain.Room{ID: rid, Name: "New Room"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("room:" + zid + "::" + rid)
 }
@@ -449,7 +464,7 @@ func (e *editor) addRoom() {
 func (e *editor) addNPC() {
 	id := uniqueID("npc", func(s string) bool { return e.adv.NPC(s) != nil })
 	e.adv.NPCs = append(e.adv.NPCs, domain.NPC{ID: id, Name: "New NPC"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("npc:" + id)
 }
@@ -457,7 +472,7 @@ func (e *editor) addNPC() {
 func (e *editor) addEvent() {
 	id := uniqueID("event", func(s string) bool { return e.adv.Event(s) != nil })
 	e.adv.Events = append(e.adv.Events, domain.Event{ID: id, Name: "New Event"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("event:" + id)
 }
@@ -465,7 +480,7 @@ func (e *editor) addEvent() {
 func (e *editor) addItem() {
 	id := uniqueID("item", func(s string) bool { return e.adv.Item(s) != nil })
 	e.adv.Items = append(e.adv.Items, domain.Item{ID: id, Name: "New Item"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("item:" + id)
 }
@@ -481,7 +496,7 @@ func (e *editor) addImage() {
 	}
 	id := uniqueID("image", func(s string) bool { return e.adv.ImageByID(s) != nil })
 	e.adv.Images = append(e.adv.Images, domain.ImageRef{ID: id, Kind: "art"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("img:" + id)
 }
@@ -489,7 +504,7 @@ func (e *editor) addImage() {
 func (e *editor) addTable() {
 	id := uniqueID("table", func(s string) bool { return e.adv.Table(s) != nil })
 	e.adv.Tables = append(e.adv.Tables, domain.Table{ID: id, Name: "New Table", Dice: "d20"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("table:" + id)
 }
@@ -507,7 +522,7 @@ func (e *editor) deleteSelected() {
 		}
 		fyne.Do(func() {
 			e.removeByUID(uid)
-			e.dirty = true
+			e.markDirty()
 			e.currentUID = ""
 			e.refreshTree()
 			e.formHost.Objects = []fyne.CanvasObject{widget.NewLabel("Deleted.")}
@@ -806,7 +821,7 @@ func (e *editor) runIngest(msg string, build func(workingDir string) (*domain.Ad
 			}
 			e.adv = adv
 			e.workingDir = dir
-			e.dirty = true
+			e.markDirty()
 			e.reload()
 			e.setStatus(fmt.Sprintf("Imported scaffold: %d zone(s), %d room(s), %d image(s). Review, then Save/Package.",
 				len(adv.Zones), countRooms(adv), len(adv.ImageRefs())))
@@ -843,25 +858,48 @@ func (e *editor) reload() {
 // thread and reports back via fyne.Do — so a slow/stalled server never freezes the
 // UI. In local mode it writes synchronously to the working dir. onDone may be nil.
 func (e *editor) doSave(onDone func(error)) {
-	if e.saveHook != nil {
-		e.setStatus("Saving…")
-		e.saveHook(func(err error) {
-			if err != nil {
-				e.showErr(err)
-			} else {
-				e.dirty = false
-				e.setStatus("Saved to server")
-			}
+	if e.saveHook == nil {
+		err := e.save()
+		if onDone != nil {
+			onDone(err)
+		}
+		return
+	}
+	// Serialize remote saves: one in flight at a time, so an older PUT can't land
+	// after (and overwrite) a newer one.
+	if e.saving {
+		e.setStatus("A save is already in progress…")
+		return
+	}
+	e.saving = true
+	e.setStatus("Saving…")
+	advAtSnap := e.adv     // the adventure this save is for
+	revAtSnap := e.editRev // the content revision it captured
+	e.saveHook(func(err error) {
+		e.saving = false
+		// If the editor has since moved to a different adventure (navigation reused
+		// the shared editor), this result is irrelevant to what's on screen now:
+		// don't touch its dirty flag or status.
+		if e.adv != advAtSnap {
 			if onDone != nil {
 				onDone(err)
 			}
-		})
-		return
-	}
-	err := e.save()
-	if onDone != nil {
-		onDone(err)
-	}
+			return
+		}
+		if err != nil {
+			e.showErr(err)
+		} else {
+			// Only mark clean if no edit happened after the snapshot; otherwise there
+			// are newer unsaved changes this save didn't include.
+			if e.editRev == revAtSnap {
+				e.dirty = false
+			}
+			e.setStatus("Saved to server")
+		}
+		if onDone != nil {
+			onDone(err)
+		}
+	})
 }
 
 // save writes the adventure.json to the local working dir. It is the on-disk
@@ -1106,7 +1144,7 @@ func (e *editor) importImage(kind string, set func(string)) {
 		rel := filepath.ToSlash(filepath.Join(relDir, name))
 		fyne.Do(func() {
 			set(rel)
-			e.dirty = true
+			e.markDirty()
 			e.setStatus("Imported image: " + rel)
 		})
 	}()
