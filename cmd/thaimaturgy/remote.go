@@ -37,8 +37,9 @@ func (g *gui) showRemoteLibrary() {
 	g.stopRemoteSession()
 
 	importBtn := widget.NewButtonWithIcon("Import (.tar.gz)…", theme.FolderOpenIcon(), g.remoteImportDialog)
+	charsBtn := widget.NewButtonWithIcon("Characters…", theme.AccountIcon(), func() { g.showRosterManager(g.remoteRosterOps()) })
 	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.showRemoteSettings)
-	hero := modernLibraryHero("thAImaturgy", "Connected to "+g.remote.BaseURL(), container.NewHBox(g.startModeSelector(), importBtn, settingsBtn))
+	hero := modernLibraryHero("thAImaturgy", "Connected to "+g.remote.BaseURL(), container.NewHBox(g.startModeSelector(), importBtn, charsBtn, settingsBtn))
 
 	list := container.NewVBox()
 	status := widget.NewLabel("")

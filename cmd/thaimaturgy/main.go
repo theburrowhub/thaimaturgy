@@ -201,8 +201,9 @@ func (g *gui) showLibrary() {
 
 	newBtn := widget.NewButtonWithIcon("New / author…", theme.DocumentCreateIcon(), g.newAuthoring)
 	importBtn := widget.NewButtonWithIcon("Import (.tar.gz)…", theme.FolderOpenIcon(), g.importDialog)
+	charsBtn := widget.NewButtonWithIcon("Characters…", theme.AccountIcon(), func() { g.showRosterManager(g.localRosterOps()) })
 	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.showSettings)
-	actions := container.NewHBox(g.startModeSelector(), newBtn, importBtn, settingsBtn)
+	actions := container.NewHBox(g.startModeSelector(), newBtn, importBtn, charsBtn, settingsBtn)
 	hero := modernLibraryHero("thAImaturgy", "A starlit oracle for running tabletop adventures", actions)
 
 	list := container.NewVBox()
