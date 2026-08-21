@@ -36,8 +36,9 @@ func bg(seconds int) (context.Context, context.CancelFunc) {
 func (g *gui) showRemoteLibrary() {
 	g.stopRemoteSession()
 
+	importBtn := widget.NewButtonWithIcon("Import (.tar.gz)…", theme.FolderOpenIcon(), g.remoteImportDialog)
 	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.showRemoteSettings)
-	hero := modernLibraryHero("thAImaturgy", "Connected to "+g.remote.BaseURL(), container.NewHBox(settingsBtn))
+	hero := modernLibraryHero("thAImaturgy", "Connected to "+g.remote.BaseURL(), container.NewHBox(importBtn, settingsBtn))
 
 	list := container.NewVBox()
 	status := widget.NewLabel("")
@@ -90,6 +91,27 @@ func (g *gui) reloadRemoteLibrary(list *fyne.Container, status *widget.Label, re
 			}
 			list.Refresh()
 		})
+	}()
+}
+
+// remoteImportDialog picks a .tar.gz module and uploads it to the server, then
+// refreshes the library (mirrors the local importDialog, but over the API).
+func (g *gui) remoteImportDialog() {
+	go func() {
+		path, ok := nativeui.OpenFile("Import adventure module",
+			nativeui.Filter{Name: "Adventure module", Patterns: []string{"*.tar.gz", "*.tgz", "*.gz"}})
+		if !ok {
+			return
+		}
+		ctx, cancel := bg(120) // an upload + server-side extract can take a while
+		_, title, err := g.remote.ImportAdventure(ctx, path)
+		cancel()
+		if err != nil {
+			g.showErr(err)
+			return
+		}
+		nativeui.Info("Imported", "Imported: "+title)
+		fyne.Do(func() { g.showRemoteLibrary() })
 	}()
 }
 

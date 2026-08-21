@@ -3,6 +3,7 @@ package apiclient
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -292,5 +293,62 @@ func TestClientUpdateCharacter(t *testing.T) {
 	edited2.Level = 5
 	if err := c.UpdateCharacter(ctx, name, base.Name, &base, &edited2); err == nil {
 		t.Error("expected a conflict when updating from a stale base")
+	}
+}
+
+func TestClientImportAdventure(t *testing.T) {
+	// A temp file standing in for a module archive; the handler just echoes back
+	// what it received so we can assert the client's multipart upload and headers.
+	tmp := filepath.Join(t.TempDir(), "mod.tar.gz")
+	if err := os.WriteFile(tmp, []byte("PRETEND-TARBALL"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotCSRF, gotField, gotBody, gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCSRF = r.Header.Get("X-Thaim-CSRF")
+		gotAuth = r.Header.Get("Authorization")
+		f, hdr, err := r.FormFile("module")
+		if err != nil {
+			http.Error(w, `{"error":"missing module"}`, http.StatusBadRequest)
+			return
+		}
+		defer f.Close()
+		gotField = hdr.Filename
+		b, _ := io.ReadAll(f)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": "the-crypt", "title": "The Crypt"})
+	}))
+	defer ts.Close()
+
+	c := New(ts.URL, "sekret")
+	id, title, err := c.ImportAdventure(context.Background(), tmp)
+	if err != nil {
+		t.Fatalf("ImportAdventure: %v", err)
+	}
+	if id != "the-crypt" || title != "The Crypt" {
+		t.Errorf("got id=%q title=%q; want the-crypt/The Crypt", id, title)
+	}
+	if gotCSRF == "" {
+		t.Error("client must send a non-empty X-Thaim-CSRF header (the endpoint's CSRF guard)")
+	}
+	if gotAuth != "Bearer sekret" {
+		t.Errorf("Authorization = %q; want Bearer sekret", gotAuth)
+	}
+	if gotField != "mod.tar.gz" {
+		t.Errorf("uploaded filename = %q; want mod.tar.gz", gotField)
+	}
+	if gotBody != "PRETEND-TARBALL" {
+		t.Errorf("uploaded body = %q; want the file contents", gotBody)
+	}
+
+	// A server error surfaces its message.
+	tsErr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"not a valid module"}`, http.StatusBadRequest)
+	}))
+	defer tsErr.Close()
+	if _, _, err := New(tsErr.URL, "").ImportAdventure(context.Background(), tmp); err == nil {
+		t.Error("expected an error from a 400 response")
 	}
 }
