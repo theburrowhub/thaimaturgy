@@ -11,6 +11,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/base64"
@@ -75,6 +76,9 @@ type Server struct {
 
 	ticketMu sync.Mutex
 	tickets  map[string]time.Time // single-use SSE tickets → expiry
+
+	authMu       sync.Mutex             // guards authSessions
+	authSessions map[string]authSession // per-user session tokens → user id + expiry (#151)
 }
 
 // OnConfigSaved registers a callback run after a successful config save (see the
@@ -87,7 +91,12 @@ func (s *Server) OnConfigSaved(fn func(*domain.Config)) *Server {
 // New builds an HTTP server over the service. token may be empty (no auth — only
 // safe when bound to loopback).
 func New(svc *appservice.Service, token string) *Server {
-	return &Server{svc: svc, token: token, tickets: make(map[string]time.Time)}
+	return &Server{
+		svc:          svc,
+		token:        token,
+		tickets:      make(map[string]time.Time),
+		authSessions: make(map[string]authSession),
+	}
 }
 
 // Handler returns the routed, auth-wrapped http.Handler.
@@ -104,6 +113,12 @@ func (s *Server) Handler() http.Handler {
 			"build_time": buildinfo.Date,
 		})
 	})
+	// Authentication (#151): login/logout/whoami. /api/login is exempt from the auth
+	// gate in withAuth so a user can obtain a session token.
+	mux.HandleFunc("POST /api/login", s.handleLogin)
+	mux.HandleFunc("POST /api/logout", s.handleLogout)
+	mux.HandleFunc("GET /api/whoami", s.handleWhoami)
+
 	mux.HandleFunc("GET /api/adventures", s.listAdventures)
 	mux.HandleFunc("POST /api/adventures/import", s.importAdventure)
 	mux.HandleFunc("POST /api/import-jobs", s.startImportJob)
@@ -164,18 +179,30 @@ func (s *Server) Handler() http.Handler {
 // the local API.
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api") {
-			if s.token != "" {
-				if !strings.HasSuffix(r.URL.Path, "/events") && r.Header.Get("Authorization") != "Bearer "+s.token {
-					httpError(w, http.StatusUnauthorized, "missing or invalid token")
-					return
-				}
-			} else if code, msg := csrfGuard(r); code != 0 {
+		if !strings.HasPrefix(r.URL.Path, "/api") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Login must be reachable without prior auth (it's how you get a token). The
+		// SSE stream authenticates with a single-use ticket in the query string, not
+		// a header, so it's exempt from the bearer gate here.
+		if r.URL.Path == "/api/login" || strings.HasSuffix(r.URL.Path, "/events") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		user, loopback, ok := s.resolveUser(r)
+		if !ok {
+			httpError(w, http.StatusUnauthorized, "missing or invalid token")
+			return
+		}
+		// Token-less loopback still needs the anti-CSRF / anti-DNS-rebinding guard.
+		if loopback {
+			if code, msg := csrfGuard(r); code != 0 {
 				httpError(w, code, msg)
 				return
 			}
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userCtxKey, user)))
 	})
 }
 
