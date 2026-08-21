@@ -25,6 +25,7 @@ type Storage struct {
 	configPath string // the YAML config file
 
 	rosterMu sync.Mutex // serializes campaign-roster reads/writes/deletes (#33)
+	usersMu  sync.Mutex // serializes user-account reads/writes/deletes (#151)
 }
 
 func New() (*Storage, error) {
