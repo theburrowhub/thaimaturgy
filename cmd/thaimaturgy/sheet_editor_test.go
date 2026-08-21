@@ -1,10 +1,167 @@
 package main
 
 import (
+	"strconv"
+	"strings"
 	"testing"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"github.com/theburrowhub/thaimaturgy/internal/domain"
 )
+
+// TestSheetEditorFormRoundTrip guards the local/remote editor parity: building
+// the shared form from a fully populated caster and immediately collect()-ing it
+// must faithfully reproduce every exposed field (abilities, saves, skills,
+// conditions, inventory, spells and preserved spent slots).
+func TestSheetEditorFormRoundTrip(t *testing.T) {
+	test.NewApp() // a test driver so widget construction is safe headless
+
+	base := domain.GenerateCharacter("Mage", "Elf", "Wizard", 5)
+	base.AddSpell(domain.Spell{Name: "Fireball", Level: 3, Prepared: true, School: "Evocation"})
+	base.UseSpellSlot(1) // spend a slot the form doesn't expose directly
+	base.AddItem(domain.InventoryItem{Name: "Staff", Quantity: 1, Equipped: true, Weight: 4})
+	base.AddCondition(domain.ConditionPoisoned)
+	base.Normalize()
+
+	_, _, collect := sheetEditorForm(*base)
+	edited, ok := collect()
+	if !ok {
+		t.Fatal("collect() reported a validation error on an unchanged, valid sheet")
+	}
+	// Unexposed inventory metadata (Weight) must survive an open→save cycle.
+	if w := weightOf(edited.Inventory, "Staff"); w != 4 {
+		t.Errorf("item Weight lost in round-trip: got %v want 4", w)
+	}
+
+	if edited.Spellcasting == nil {
+		t.Fatal("spellcasting dropped in round-trip")
+	}
+	if got := edited.Spellcasting.Slots.Used[0]; got != base.Spellcasting.Slots.Used[0] {
+		t.Errorf("spent 1st-level slot not preserved: used=%d want %d", got, base.Spellcasting.Slots.Used[0])
+	}
+	if !hasSpell(edited.Spellcasting.Spells, "Fireball", true) {
+		t.Error("prepared Fireball lost in round-trip")
+	}
+	if !hasEquipped(edited.Inventory, "Staff") {
+		t.Error("equipped Staff lost in round-trip")
+	}
+	if !hasCondition(edited.Conditions, domain.ConditionPoisoned) {
+		t.Error("Poisoned condition lost in round-trip")
+	}
+	if !edited.SaveProficient(domain.INT) || !edited.SaveProficient(domain.WIS) {
+		t.Error("wizard INT/WIS save proficiencies lost in round-trip")
+	}
+}
+
+// TestSheetEditorFormRejectsMalformedNumber guards that a malformed numeric field
+// is reported (dialog kept open via the status label) rather than silently
+// falling back to the baseline and reporting a misleading partial success.
+func TestSheetEditorFormRejectsMalformedNumber(t *testing.T) {
+	test.NewApp()
+
+	base := domain.GenerateCharacter("Bob", "Human", "Fighter", 3)
+	content, status, collect := sheetEditorForm(*base)
+	if _, ok := collect(); !ok {
+		t.Fatal("valid baseline should collect cleanly")
+	}
+	// Corrupt the first numeric entry (one whose current text is an integer — an
+	// ability score, reachable in the form's grid) with a malformed value; collect()
+	// must reject it instead of silently reverting to the baseline.
+	corrupted := false
+	for _, e := range findEntries(content) {
+		if _, err := strconv.Atoi(strings.TrimSpace(e.Text)); err == nil {
+			e.SetText("12x")
+			corrupted = true
+			break
+		}
+	}
+	if !corrupted {
+		t.Fatal("expected at least one numeric entry to corrupt")
+	}
+	if _, ok := collect(); ok {
+		t.Error("collect() accepted a malformed numeric field instead of rejecting it")
+	}
+	if strings.TrimSpace(status.Text) == "" {
+		t.Error("expected a field-specific validation message in the status label")
+	}
+}
+
+// findEntries walks a widget tree and collects every *widget.Entry reachable
+// through containers (used by the malformed-number test).
+func findEntries(obj fyne.CanvasObject) []*widget.Entry {
+	switch w := obj.(type) {
+	case *widget.Entry:
+		return []*widget.Entry{w}
+	case *fyne.Container:
+		var out []*widget.Entry
+		for _, c := range w.Objects {
+			out = append(out, findEntries(c)...)
+		}
+		return out
+	}
+	return nil
+}
+
+// TestMergeInventoryMetadataDuplicateNames guards that two items sharing a name
+// but with different weights each keep their own weight across an unchanged
+// open→save round trip (a name-keyed map would corrupt them to the last weight).
+func TestMergeInventoryMetadataDuplicateNames(t *testing.T) {
+	prev := []domain.InventoryItem{
+		{Name: "Potion", Quantity: 1, Weight: 0.5},
+		{Name: "Potion", Quantity: 1, Weight: 2.0},
+		{Name: "Rope", Quantity: 1, Weight: 5},
+	}
+	// An unchanged round-trip: format then parse reproduces the same lines and order.
+	merged := mergeInventoryMetadata(parseInventoryLines(formatInventoryLines(prev)), prev)
+	if len(merged) != 3 {
+		t.Fatalf("got %d items, want 3", len(merged))
+	}
+	if merged[0].Weight != 0.5 || merged[1].Weight != 2.0 {
+		t.Errorf("duplicate-name weights not preserved by occurrence: %v / %v", merged[0].Weight, merged[1].Weight)
+	}
+	if merged[2].Weight != 5 {
+		t.Errorf("Rope weight = %v; want 5", merged[2].Weight)
+	}
+}
+
+func weightOf(items []domain.InventoryItem, name string) float64 {
+	for _, it := range items {
+		if it.Name == name {
+			return it.Weight
+		}
+	}
+	return -1
+}
+
+func hasSpell(ss []domain.Spell, name string, prepared bool) bool {
+	for _, s := range ss {
+		if s.Name == name && s.Prepared == prepared {
+			return true
+		}
+	}
+	return false
+}
+
+func hasEquipped(items []domain.InventoryItem, name string) bool {
+	for _, it := range items {
+		if it.Name == name && it.Equipped {
+			return true
+		}
+	}
+	return false
+}
+
+func hasCondition(cs []domain.Condition, want domain.Condition) bool {
+	for _, c := range cs {
+		if c == want {
+			return true
+		}
+	}
+	return false
+}
 
 func TestAtoiDefault(t *testing.T) {
 	if atoiDefault("42", 0) != 42 {

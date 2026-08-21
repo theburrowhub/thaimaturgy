@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"strconv"
-	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -241,138 +239,44 @@ func (g *gui) remoteRemoveMember(name string, target domain.Character, mutate fu
 	})
 }
 
-// remoteEditSheet opens a focused editor for a party member's common fields
-// (identity, abilities, HP/AC, gold/XP, conditions, notes) and saves via
-// UpdateCharacter with optimistic concurrency. It edits a COPY of base, so
-// fields it doesn't expose (skills, inventory, spells/slots, features) are
-// preserved untouched. Full spell/slot/skill/inventory editing is a follow-up.
+// remoteEditSheet opens the full 5e sheet editor for a party member on the
+// remote GUI and saves via the HTTP API with optimistic concurrency
+// (UpdateCharacter compares the server's live record against `base`). It shares
+// the exact editor UI and field mapping with the local editor (sheetEditorForm),
+// so the local and remote frontends stay at parity.
 func (g *gui) remoteEditSheet(name string, base domain.Character, mutateThen func(func(context.Context) error, func(error))) {
-	nameE := entryWith(base.Name)
-	raceE := entryWith(base.Race)
-	classE := entryWith(base.Class)
-	levelE := entryWith(strconv.Itoa(base.Level))
-	strE := entryWith(strconv.Itoa(base.Abilities.STR))
-	dexE := entryWith(strconv.Itoa(base.Abilities.DEX))
-	conE := entryWith(strconv.Itoa(base.Abilities.CON))
-	intE := entryWith(strconv.Itoa(base.Abilities.INT))
-	wisE := entryWith(strconv.Itoa(base.Abilities.WIS))
-	chaE := entryWith(strconv.Itoa(base.Abilities.CHA))
-	hpE := entryWith(strconv.Itoa(base.CurrentHP))
-	maxE := entryWith(strconv.Itoa(base.MaxHP))
-	tempE := entryWith(strconv.Itoa(base.TempHP))
-	acE := entryWith(strconv.Itoa(base.AC))
-	goldE := entryWith(strconv.Itoa(base.Gold))
-	xpE := entryWith(strconv.Itoa(base.XP))
-	condE := entryWith(joinConditions(base.Conditions))
-	condE.SetPlaceHolder("comma-separated, e.g. Poisoned, Prone")
-	notesE := widget.NewMultiLineEntry()
-	notesE.SetText(base.Notes)
-
-	abilities := container.NewGridWithColumns(6, strE, dexE, conE, intE, wisE, chaE)
-	form := widget.NewForm(
-		widget.NewFormItem("Name", nameE),
-		widget.NewFormItem("Race", raceE),
-		widget.NewFormItem("Class", classE),
-		widget.NewFormItem("Level", levelE),
-		widget.NewFormItem("STR DEX CON INT WIS CHA", abilities),
-		widget.NewFormItem("HP (current)", hpE),
-		widget.NewFormItem("HP (max)", maxE),
-		widget.NewFormItem("Temp HP", tempE),
-		widget.NewFormItem("AC", acE),
-		widget.NewFormItem("Gold", goldE),
-		widget.NewFormItem("XP", xpE),
-		widget.NewFormItem("Conditions", condE),
-		widget.NewFormItem("Notes", notesE),
-	)
-
-	errLbl := widget.NewLabel("")
-	errLbl.Importance = widget.DangerImportance
-	errLbl.Wrapping = fyne.TextWrapWord
-	errLbl.Hide()
-	showErr := func(msg string) { errLbl.SetText(msg); errLbl.Show() }
+	content, status, collect := sheetEditorForm(base)
 
 	var pop *widget.PopUp
 	var save *widget.Button
 	save = widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
-		// Validate before submitting: a valid name and whole-number fields. Keep the
-		// dialog open (with the entered values) on any error.
-		nm := strings.TrimSpace(nameE.Text)
-		if nm == "" {
-			showErr("Name can't be empty.")
-			return
+		edited, ok := collect()
+		if !ok {
+			return // collect already reported the problem in status
 		}
-		bad := ""
-		getInt := func(label string, e *widget.Entry) int {
-			n, err := strconv.Atoi(strings.TrimSpace(e.Text))
-			if err != nil && bad == "" {
-				bad = label
-			}
-			return n
-		}
-		lvl := getInt("Level", levelE)
-		str, dex, con := getInt("STR", strE), getInt("DEX", dexE), getInt("CON", conE)
-		intel, wis, cha := getInt("INT", intE), getInt("WIS", wisE), getInt("CHA", chaE)
-		hp, mx, tmp := getInt("HP (current)", hpE), getInt("HP (max)", maxE), getInt("Temp HP", tempE)
-		ac, gold, xp := getInt("AC", acE), getInt("Gold", goldE), getInt("XP", xpE)
-		if bad != "" {
-			showErr(bad + " must be a whole number.")
-			return
-		}
-
-		edited := base // value copy; untouched fields (skills/inventory/spells) preserved
-		edited.Name = nm
-		edited.Race = strings.TrimSpace(raceE.Text)
-		edited.Class = strings.TrimSpace(classE.Text)
-		edited.Level = lvl
-		edited.Abilities.STR, edited.Abilities.DEX, edited.Abilities.CON = str, dex, con
-		edited.Abilities.INT, edited.Abilities.WIS, edited.Abilities.CHA = intel, wis, cha
-		edited.MaxHP, edited.CurrentHP, edited.TempHP = mx, hp, tmp
-		edited.AC, edited.Gold, edited.XP = ac, gold, xp
-		edited.Notes = notesE.Text
-		edited.Conditions = parseConditions(condE.Text)
 		b := base // stable snapshot for optimistic concurrency
-
-		errLbl.Hide()
+		status.SetText("")
 		save.Disable() // prevent double-submit; the dialog stays open until we know the result
 		mutateThen(func(ctx context.Context) error {
 			return g.remote.UpdateCharacter(ctx, name, b.Name, &b, &edited)
 		}, func(err error) {
 			if err != nil {
-				showErr(err.Error()) // keep the dialog + entered values; let the user retry
+				status.SetText(err.Error()) // keep the dialog + entered values; let the user retry
 				save.Enable()
 				return
 			}
 			pop.Hide()
 		})
 	})
-	bar := container.NewHBox(layoutSpacer(), widget.NewButton("Cancel", func() { pop.Hide() }), save)
-	content := container.NewBorder(
+	cancel := widget.NewButton("Cancel", func() { pop.Hide() })
+	scroll := container.NewVScroll(container.NewPadded(content))
+	scroll.SetMinSize(fyne.NewSize(480, 560))
+	box := container.NewBorder(
 		widget.NewLabelWithStyle("Edit "+base.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		container.NewVBox(errLbl, bar), nil, nil, container.NewVScroll(form))
-	pop = widget.NewModalPopUp(container.NewPadded(content), g.win.Canvas())
-	pop.Resize(fyne.NewSize(480, 640))
+		container.NewVBox(status, container.NewHBox(layoutSpacer(), cancel, save)), nil, nil, scroll)
+	pop = widget.NewModalPopUp(container.NewPadded(box), g.win.Canvas())
+	pop.Resize(fyne.NewSize(560, 720))
 	pop.Show()
-}
-
-// joinConditions renders conditions as a comma-separated string for editing.
-func joinConditions(cs []domain.Condition) string {
-	out := make([]string, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, string(c))
-	}
-	return strings.Join(out, ", ")
-}
-
-// parseConditions parses a comma-separated conditions string back into a slice,
-// dropping blanks. nil when empty so it matches an unset value.
-func parseConditions(s string) []domain.Condition {
-	var out []domain.Condition
-	for _, part := range strings.Split(s, ",") {
-		if p := strings.TrimSpace(part); p != "" {
-			out = append(out, domain.Condition(p))
-		}
-	}
-	return out
 }
 
 // errString is a tiny error wrapper for showErr on a plain message.

@@ -137,6 +137,29 @@ func mergeSpellMetadata(edited, prev []domain.Spell) []domain.Spell {
 	return edited
 }
 
+// mergeInventoryMetadata copies unexposed item fields (Weight) from the previous
+// inventory onto freshly parsed items, since the editor's line format carries only
+// name/quantity/equipped. Without this, opening and saving a sheet would erase
+// every item's weight. Prior weights are queued per normalized name IN ORDER and
+// consumed by occurrence, so two items with the same name but different weights
+// each keep their own weight (a single weight-per-name map would give every
+// same-named entry the last weight, corrupting the data).
+func mergeInventoryMetadata(edited, prev []domain.InventoryItem) []domain.InventoryItem {
+	byName := make(map[string][]float64, len(prev))
+	for _, it := range prev {
+		k := strings.ToLower(it.Name)
+		byName[k] = append(byName[k], it.Weight)
+	}
+	for i := range edited {
+		k := strings.ToLower(edited[i].Name)
+		if q := byName[k]; len(q) > 0 {
+			edited[i].Weight = q[0]
+			byName[k] = q[1:]
+		}
+	}
+	return edited
+}
+
 // mergeSlotUsage preserves spent-slot counts from the previous spellcasting block
 // onto a freshly parsed max table (clamped to the new maxima), so editing the
 // slot maxima doesn't silently refill all spent slots.
@@ -320,34 +343,15 @@ var abilityOrder = []domain.Ability{domain.STR, domain.DEX, domain.CON, domain.I
 
 // --- Editor dialog ---------------------------------------------------------
 
-// showSheetEditor opens a full D&D 5e character-sheet editor for the named party
-// member, letting the user hand-edit every field (identity, abilities, combat,
-// saves, skills, inventory, spells, notes). On save the edited sheet is
-// normalized to a self-consistent state, applied under the session lock, logged
-// to the timeline for the DM, and persisted.
-func (g *gui) showSheetEditor(name string) {
-	if g.session == nil {
-		return
-	}
-	// Work from a value copy so cancelling changes nothing.
-	var base domain.Character
-	found := false
-	for _, c := range g.session.State.PartySnapshot() {
-		if strings.EqualFold(c.Name, name) {
-			base = c
-			found = true
-			break
-		}
-	}
-	if !found {
-		return
-	}
-	// Baseline snapshot of the character as it was when the dialog opened. On save
-	// we compare the live record against this and refuse to overwrite it if another
-	// writer (the DM, a rest, a Telegram edit) changed it meanwhile — otherwise we
-	// would clobber that newer change and autosave the loss.
-	baseJSON, _ := json.Marshal(base)
-
+// sheetEditorForm builds the full D&D 5e character-sheet editor UI for `base`
+// (identity, abilities, combat, saves, skills, conditions, languages,
+// inventory, features, spellcasting, notes) and returns the scrollable content,
+// a status label for inline messages, and collect(): a function that reads the
+// widgets into a normalized edited Character. collect reports ok=false and writes
+// to the status label on a validation error (empty name, bad slot spec). The UI
+// and field mapping are shared by the local editor (showSheetEditor) and the
+// remote GUI editor (remoteEditSheet) so the two frontends stay at parity.
+func sheetEditorForm(base domain.Character) (content fyne.CanvasObject, status *widget.Label, collect func() (domain.Character, bool)) {
 	nameE := widget.NewEntry()
 	nameE.SetText(base.Name)
 	raceE := widget.NewSelectEntry(domain.Races)
@@ -471,7 +475,8 @@ func (g *gui) showSheetEditor(name string) {
 	notesE.SetMinRowsVisible(3)
 	notesE.SetText(base.Notes)
 
-	status := widget.NewLabel("")
+	status = widget.NewLabel("")
+	status.Wrapping = fyne.TextWrapWord
 
 	form := widget.NewForm(
 		widget.NewFormItem("Name", nameE),
@@ -500,9 +505,7 @@ func (g *gui) showSheetEditor(name string) {
 		widget.NewFormItem("Slots (lvl:max)", slotsE),
 	)
 
-	content := container.NewVBox(
-		widget.NewLabelWithStyle("Edit character sheet", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
-		widget.NewSeparator(),
+	content = container.NewVBox(
 		form,
 		sectionLabel("Abilities"), abilityGrid,
 		sectionLabel("Combat & resources"), combatForm, inspC,
@@ -517,39 +520,52 @@ func (g *gui) showSheetEditor(name string) {
 		sectionLabel("Spellcasting"), spellForm,
 		widget.NewLabel("Spells (one per line: Name | level | prepared)"), spellsE,
 		sectionLabel("Notes"), notesE,
-		status,
 	)
 
-	var pop *widget.PopUp
-	save := widget.NewButtonWithIcon("Save", nil, func() {
+	collect = func() (domain.Character, bool) {
 		edited := base // start from the snapshot, override edited fields
 
 		edited.Name = strings.TrimSpace(nameE.Text)
 		if edited.Name == "" {
 			status.SetText("Name is required.")
-			return
+			return domain.Character{}, false
 		}
 		edited.Race = strings.TrimSpace(raceE.Text)
 		edited.Class = strings.TrimSpace(classE.Text)
-		edited.Level = atoiDefault(levelE.Text, base.Level)
 		edited.Background = strings.TrimSpace(bgE.Text)
 		edited.Alignment = strings.TrimSpace(alignE.Text)
 
-		for _, ab := range abilityOrder {
-			edited.Abilities.Set(ab, atoiDefault(abilityEntries[ab].Text, base.Abilities.Get(ab)))
+		// Every numeric field is parsed STRICTLY: a malformed value (e.g. "12x")
+		// records the first offending field so collect() reports it and returns
+		// false with the dialog kept open — never silently falling back to the
+		// baseline and reporting a misleading partial "success".
+		bad := ""
+		getInt := func(label, text string) int {
+			n, err := strconv.Atoi(strings.TrimSpace(text))
+			if err != nil && bad == "" {
+				bad = label
+			}
+			return n
 		}
-
-		edited.MaxHP = atoiDefault(maxHPE.Text, base.MaxHP)
-		edited.CurrentHP = atoiDefault(curHPE.Text, base.CurrentHP)
-		edited.TempHP = atoiDefault(tempHPE.Text, base.TempHP)
-		edited.AC = atoiDefault(acE.Text, base.AC)
-		edited.Initiative = atoiDefault(initE.Text, base.Initiative)
-		edited.Speed = atoiDefault(speedE.Text, base.Speed)
-		edited.ProficiencyBonus = atoiDefault(profE.Text, base.ProficiencyBonus)
-		edited.HitDiceUsed = atoiDefault(hdUsedE.Text, base.HitDiceUsed)
+		edited.Level = getInt("Level", levelE.Text)
+		for _, ab := range abilityOrder {
+			edited.Abilities.Set(ab, getInt(ab.String(), abilityEntries[ab].Text))
+		}
+		edited.MaxHP = getInt("Max HP", maxHPE.Text)
+		edited.CurrentHP = getInt("Current HP", curHPE.Text)
+		edited.TempHP = getInt("Temp HP", tempHPE.Text)
+		edited.AC = getInt("AC", acE.Text)
+		edited.Initiative = getInt("Initiative", initE.Text)
+		edited.Speed = getInt("Speed", speedE.Text)
+		edited.ProficiencyBonus = getInt("Prof. bonus", profE.Text)
+		edited.HitDiceUsed = getInt("Hit dice used", hdUsedE.Text)
 		edited.Inspiration = inspC.Checked
-		edited.Gold = atoiDefault(goldE.Text, base.Gold)
-		edited.XP = atoiDefault(xpE.Text, base.XP)
+		edited.Gold = getInt("Gold", goldE.Text)
+		edited.XP = getInt("XP", xpE.Text)
+		if bad != "" {
+			status.SetText(bad + " must be a whole number.")
+			return domain.Character{}, false
+		}
 
 		// Saving throws.
 		edited.SavingThrows = nil
@@ -581,20 +597,9 @@ func (g *gui) showSheetEditor(name string) {
 		}
 		edited.Skills = skills
 
-		// Reject a rename that collides (case-insensitive) with another member, so
-		// characters stay addressable by name (the editor looks them up by name).
-		if !strings.EqualFold(edited.Name, name) {
-			for _, other := range g.session.State.PartyNames() {
-				if strings.EqualFold(other, edited.Name) {
-					status.SetText("Another character is already named " + edited.Name + ". Choose a different name.")
-					return
-				}
-			}
-		}
-
 		edited.Languages = parseCSVList(langE.Text)
 		edited.Proficiencies = parseCSVList(otherProfE.Text)
-		edited.Inventory = parseInventoryLines(invE.Text)
+		edited.Inventory = mergeInventoryMetadata(parseInventoryLines(invE.Text), base.Inventory)
 		edited.Features = parseFeatureLines(featuresE.Text)
 		edited.Notes = strings.TrimSpace(notesE.Text)
 
@@ -612,7 +617,7 @@ func (g *gui) showSheetEditor(name string) {
 			maxSlots, err := parseSlotSpec(slotsE.Text)
 			if err != nil {
 				status.SetText("Slots: " + err.Error())
-				return
+				return domain.Character{}, false
 			}
 			sc := &domain.Spellcasting{Ability: abilityFromString(castSel.Selected)}
 			sc.Slots = mergeSlotUsage(maxSlots, base.Spellcasting)
@@ -624,12 +629,59 @@ func (g *gui) showSheetEditor(name string) {
 		}
 
 		edited.Normalize()
+		return edited, true
+	}
 
+	return content, status, collect
+}
+
+// showSheetEditor opens the full 5e character-sheet editor for the named local
+// party member. On save the edited sheet is applied under the session lock — but
+// only if the live record still matches the baseline captured when the dialog
+// opened, so a concurrent write (the DM, a rest, a Telegram edit) is never
+// clobbered — then logged to the timeline for the DM and persisted.
+func (g *gui) showSheetEditor(name string) {
+	if g.session == nil {
+		return
+	}
+	// Work from a value copy so cancelling changes nothing.
+	var base domain.Character
+	found := false
+	for _, c := range g.session.State.PartySnapshot() {
+		if strings.EqualFold(c.Name, name) {
+			base = c
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+	// Baseline snapshot of the character as it was when the dialog opened.
+	baseJSON, _ := json.Marshal(base)
+
+	content, status, collect := sheetEditorForm(base)
+
+	var pop *widget.PopUp
+	save := widget.NewButtonWithIcon("Save", nil, func() {
+		edited, ok := collect()
+		if !ok {
+			return // collect already reported the problem in status
+		}
+		// Reject a rename that collides (case-insensitive) with another member, so
+		// characters stay addressable by name (the editor looks them up by name).
+		if !strings.EqualFold(edited.Name, name) {
+			for _, other := range g.session.State.PartyNames() {
+				if strings.EqualFold(other, edited.Name) {
+					status.SetText("Another character is already named " + edited.Name + ". Choose a different name.")
+					return
+				}
+			}
+		}
 		// Apply under the lock, but only if the live record still matches the
-		// baseline captured when the dialog opened (otherwise a concurrent update
-		// would be clobbered — reject and ask the user to reopen).
+		// baseline (otherwise a concurrent update would be clobbered — reject).
 		conflict := false
-		_, ok := g.session.State.MutateCharacter(name, func(c *domain.Character) {
+		_, ok = g.session.State.MutateCharacter(name, func(c *domain.Character) {
 			if cur, _ := json.Marshal(c); !bytes.Equal(cur, baseJSON) {
 				conflict = true
 				return
@@ -653,7 +705,9 @@ func (g *gui) showSheetEditor(name string) {
 
 	scroll := container.NewVScroll(container.NewPadded(content))
 	scroll.SetMinSize(fyne.NewSize(480, 560))
-	box := container.NewBorder(nil, container.NewHBox(save, cancel), nil, nil, scroll)
+	box := container.NewBorder(
+		widget.NewLabelWithStyle("Edit character sheet", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+		container.NewVBox(status, container.NewHBox(save, cancel)), nil, nil, scroll)
 
 	pop = widget.NewModalPopUp(container.NewPadded(box), g.win.Canvas())
 	pop.Resize(fyne.NewSize(560, 680))
