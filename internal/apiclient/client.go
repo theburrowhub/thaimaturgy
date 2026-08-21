@@ -11,8 +11,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -113,6 +116,64 @@ func (c *Client) ListAdventures(ctx context.Context) ([]storage.AdventureInfo, e
 	var out []storage.AdventureInfo
 	err := c.do(ctx, "GET", "/api/adventures", nil, &out)
 	return out, err
+}
+
+// ImportAdventure uploads a .tar.gz module to the server (multipart/form-data,
+// file field "module") and returns the imported adventure's id and title. It
+// sends the X-Thaim-CSRF header the server's multipart endpoint requires (that
+// endpoint triggers no CORS preflight, so the header is its CSRF guard).
+func (c *Client) ImportAdventure(ctx context.Context, path string) (id, title string, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", "", err
+	}
+	defer f.Close()
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	part, err := mw.CreateFormFile("module", filepath.Base(path))
+	if err != nil {
+		return "", "", err
+	}
+	if _, err = io.Copy(part, f); err != nil {
+		return "", "", err
+	}
+	if err = mw.Close(); err != nil {
+		return "", "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/adventures/import", &buf)
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("X-Thaim-CSRF", "1")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		var e struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(data, &e) == nil && e.Error != "" {
+			return "", "", fmt.Errorf("%s (HTTP %d)", e.Error, resp.StatusCode)
+		}
+		return "", "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	var out struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", "", fmt.Errorf("decoding response: %w", err)
+	}
+	return out.ID, out.Title, nil
 }
 
 func (c *Client) ListSessions(ctx context.Context) ([]storage.SessionInfo, error) {
