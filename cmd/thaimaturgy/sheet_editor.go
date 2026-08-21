@@ -137,6 +137,23 @@ func mergeSpellMetadata(edited, prev []domain.Spell) []domain.Spell {
 	return edited
 }
 
+// mergeInventoryMetadata copies unexposed item fields (Weight) from the previous
+// inventory onto freshly parsed items, matched by name (case-insensitive), since
+// the editor's line format carries only name/quantity/equipped. Without this,
+// opening and saving a sheet would erase every item's weight.
+func mergeInventoryMetadata(edited, prev []domain.InventoryItem) []domain.InventoryItem {
+	weights := make(map[string]float64, len(prev))
+	for _, it := range prev {
+		weights[strings.ToLower(it.Name)] = it.Weight
+	}
+	for i := range edited {
+		if w, ok := weights[strings.ToLower(edited[i].Name)]; ok {
+			edited[i].Weight = w
+		}
+	}
+	return edited
+}
+
 // mergeSlotUsage preserves spent-slot counts from the previous spellcasting block
 // onto a freshly parsed max table (clamped to the new maxima), so editing the
 // slot maxima doesn't silently refill all spent slots.
@@ -509,25 +526,40 @@ func sheetEditorForm(base domain.Character) (content fyne.CanvasObject, status *
 		}
 		edited.Race = strings.TrimSpace(raceE.Text)
 		edited.Class = strings.TrimSpace(classE.Text)
-		edited.Level = atoiDefault(levelE.Text, base.Level)
 		edited.Background = strings.TrimSpace(bgE.Text)
 		edited.Alignment = strings.TrimSpace(alignE.Text)
 
-		for _, ab := range abilityOrder {
-			edited.Abilities.Set(ab, atoiDefault(abilityEntries[ab].Text, base.Abilities.Get(ab)))
+		// Every numeric field is parsed STRICTLY: a malformed value (e.g. "12x")
+		// records the first offending field so collect() reports it and returns
+		// false with the dialog kept open — never silently falling back to the
+		// baseline and reporting a misleading partial "success".
+		bad := ""
+		getInt := func(label, text string) int {
+			n, err := strconv.Atoi(strings.TrimSpace(text))
+			if err != nil && bad == "" {
+				bad = label
+			}
+			return n
 		}
-
-		edited.MaxHP = atoiDefault(maxHPE.Text, base.MaxHP)
-		edited.CurrentHP = atoiDefault(curHPE.Text, base.CurrentHP)
-		edited.TempHP = atoiDefault(tempHPE.Text, base.TempHP)
-		edited.AC = atoiDefault(acE.Text, base.AC)
-		edited.Initiative = atoiDefault(initE.Text, base.Initiative)
-		edited.Speed = atoiDefault(speedE.Text, base.Speed)
-		edited.ProficiencyBonus = atoiDefault(profE.Text, base.ProficiencyBonus)
-		edited.HitDiceUsed = atoiDefault(hdUsedE.Text, base.HitDiceUsed)
+		edited.Level = getInt("Level", levelE.Text)
+		for _, ab := range abilityOrder {
+			edited.Abilities.Set(ab, getInt(ab.String(), abilityEntries[ab].Text))
+		}
+		edited.MaxHP = getInt("Max HP", maxHPE.Text)
+		edited.CurrentHP = getInt("Current HP", curHPE.Text)
+		edited.TempHP = getInt("Temp HP", tempHPE.Text)
+		edited.AC = getInt("AC", acE.Text)
+		edited.Initiative = getInt("Initiative", initE.Text)
+		edited.Speed = getInt("Speed", speedE.Text)
+		edited.ProficiencyBonus = getInt("Prof. bonus", profE.Text)
+		edited.HitDiceUsed = getInt("Hit dice used", hdUsedE.Text)
 		edited.Inspiration = inspC.Checked
-		edited.Gold = atoiDefault(goldE.Text, base.Gold)
-		edited.XP = atoiDefault(xpE.Text, base.XP)
+		edited.Gold = getInt("Gold", goldE.Text)
+		edited.XP = getInt("XP", xpE.Text)
+		if bad != "" {
+			status.SetText(bad + " must be a whole number.")
+			return domain.Character{}, false
+		}
 
 		// Saving throws.
 		edited.SavingThrows = nil
@@ -561,7 +593,7 @@ func sheetEditorForm(base domain.Character) (content fyne.CanvasObject, status *
 
 		edited.Languages = parseCSVList(langE.Text)
 		edited.Proficiencies = parseCSVList(otherProfE.Text)
-		edited.Inventory = parseInventoryLines(invE.Text)
+		edited.Inventory = mergeInventoryMetadata(parseInventoryLines(invE.Text), base.Inventory)
 		edited.Features = parseFeatureLines(featuresE.Text)
 		edited.Notes = strings.TrimSpace(notesE.Text)
 
