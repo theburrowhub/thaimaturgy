@@ -105,6 +105,28 @@ func findEntries(obj fyne.CanvasObject) []*widget.Entry {
 	return nil
 }
 
+// TestMergeInventoryMetadataDuplicateNames guards that two items sharing a name
+// but with different weights each keep their own weight across an unchanged
+// open→save round trip (a name-keyed map would corrupt them to the last weight).
+func TestMergeInventoryMetadataDuplicateNames(t *testing.T) {
+	prev := []domain.InventoryItem{
+		{Name: "Potion", Quantity: 1, Weight: 0.5},
+		{Name: "Potion", Quantity: 1, Weight: 2.0},
+		{Name: "Rope", Quantity: 1, Weight: 5},
+	}
+	// An unchanged round-trip: format then parse reproduces the same lines and order.
+	merged := mergeInventoryMetadata(parseInventoryLines(formatInventoryLines(prev)), prev)
+	if len(merged) != 3 {
+		t.Fatalf("got %d items, want 3", len(merged))
+	}
+	if merged[0].Weight != 0.5 || merged[1].Weight != 2.0 {
+		t.Errorf("duplicate-name weights not preserved by occurrence: %v / %v", merged[0].Weight, merged[1].Weight)
+	}
+	if merged[2].Weight != 5 {
+		t.Errorf("Rope weight = %v; want 5", merged[2].Weight)
+	}
+}
+
 func weightOf(items []domain.InventoryItem, name string) float64 {
 	for _, it := range items {
 		if it.Name == name {

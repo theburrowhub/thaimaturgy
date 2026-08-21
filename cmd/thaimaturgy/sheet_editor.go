@@ -138,17 +138,23 @@ func mergeSpellMetadata(edited, prev []domain.Spell) []domain.Spell {
 }
 
 // mergeInventoryMetadata copies unexposed item fields (Weight) from the previous
-// inventory onto freshly parsed items, matched by name (case-insensitive), since
-// the editor's line format carries only name/quantity/equipped. Without this,
-// opening and saving a sheet would erase every item's weight.
+// inventory onto freshly parsed items, since the editor's line format carries only
+// name/quantity/equipped. Without this, opening and saving a sheet would erase
+// every item's weight. Prior weights are queued per normalized name IN ORDER and
+// consumed by occurrence, so two items with the same name but different weights
+// each keep their own weight (a single weight-per-name map would give every
+// same-named entry the last weight, corrupting the data).
 func mergeInventoryMetadata(edited, prev []domain.InventoryItem) []domain.InventoryItem {
-	weights := make(map[string]float64, len(prev))
+	byName := make(map[string][]float64, len(prev))
 	for _, it := range prev {
-		weights[strings.ToLower(it.Name)] = it.Weight
+		k := strings.ToLower(it.Name)
+		byName[k] = append(byName[k], it.Weight)
 	}
 	for i := range edited {
-		if w, ok := weights[strings.ToLower(edited[i].Name)]; ok {
-			edited[i].Weight = w
+		k := strings.ToLower(edited[i].Name)
+		if q := byName[k]; len(q) > 0 {
+			edited[i].Weight = q[0]
+			byName[k] = q[1:]
 		}
 	}
 	return edited
