@@ -49,6 +49,10 @@ type gui struct {
 
 	// Editor view (nil until first opened); shares this window.
 	editor *editor
+	// editorGen orders asynchronous editor-open navigations (remote GET loads), so a
+	// slow load can't overwrite a newer editor session opened since. Touched only on
+	// the UI thread. Bumped by every editor entry point (local and remote).
+	editorGen int
 
 	// Active session (nil on the library screen).
 	session *domain.Session
@@ -276,9 +280,11 @@ func (g *gui) editAdventure(id string) {
 		g.showErr(err)
 		return
 	}
+	g.editorGen++ // supersede any in-flight remote editor load
 	if g.editor == nil {
 		g.editor = newEditor(g)
 	}
+	g.editor.useLocalBackend(g.showLibrary, func(id string) { g.startSession(id) })
 	g.editor.adv = adv
 	g.editor.workingDir = g.store.AdventureDir(id)
 	g.editor.dirty = false
@@ -287,9 +293,11 @@ func (g *gui) editAdventure(id string) {
 
 // newAuthoring opens the editor on a fresh template to author or AI-import.
 func (g *gui) newAuthoring() {
+	g.editorGen++ // supersede any in-flight remote editor load
 	if g.editor == nil {
 		g.editor = newEditor(g)
 	}
+	g.editor.useLocalBackend(g.showLibrary, func(id string) { g.startSession(id) })
 	g.editor.newAdventure()
 	g.showEditor()
 }

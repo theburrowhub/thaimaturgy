@@ -67,6 +67,17 @@ type editor struct {
 	currentUID string
 }
 
+// useLocalBackend resets the (shared, reused) editor to persist to the on-disk
+// store, clearing any remote-editing state left over from a previous remote
+// session. Without this, reusing the editor for a local adventure would still see
+// saveHook set and PUT the local adventure's contents to the last remote one.
+func (e *editor) useLocalBackend(onBack func(), onPlay func(string)) {
+	e.remoteMode = false
+	e.saveHook = nil
+	e.onBack = onBack
+	e.onPlay = onPlay
+}
+
 // playCurrent saves the current adventure, ensures it's installed in the library,
 // and switches to a play session for it.
 func (e *editor) playCurrent() {
@@ -455,6 +466,14 @@ func (e *editor) addItem() {
 }
 
 func (e *editor) addImage() {
+	// Remote editing persists only adventure JSON (there is no asset-upload API),
+	// so a new image reference would point at a file the server never receives.
+	// Block it and steer the user to full-module import, which carries assets.
+	if e.remoteMode {
+		go nativeui.Info("Images not editable remotely",
+			"Adding or replacing image assets isn't available when editing on a server. Package the module and use Import (.tar.gz) to change assets.")
+		return
+	}
 	id := uniqueID("image", func(s string) bool { return e.adv.ImageByID(s) != nil })
 	e.adv.Images = append(e.adv.Images, domain.ImageRef{ID: id, Kind: "art"})
 	e.dirty = true
