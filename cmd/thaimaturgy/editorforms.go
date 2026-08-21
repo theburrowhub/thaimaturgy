@@ -150,7 +150,7 @@ func (e *editor) statBlockEditor(n *domain.NPC) fyne.CanvasObject {
 			widget.NewSeparator(),
 			widget.NewButton("+ Add stat block", func() {
 				n.StatBlock = &domain.StatBlock{}
-				e.dirty = true
+				e.markDirty()
 				e.refreshForm()
 			}),
 		)
@@ -174,7 +174,7 @@ func (e *editor) statBlockEditor(n *domain.NPC) fyne.CanvasObject {
 		e.actionsEditor(sb),
 		widget.NewButton("Remove stat block", func() {
 			n.StatBlock = nil
-			e.dirty = true
+			e.markDirty()
 			e.refreshForm()
 		}),
 	)
@@ -325,14 +325,14 @@ func (e *editor) rows(title string, n int, render func(i int) fyne.CanvasObject,
 		idx := i
 		rm := widget.NewButton("✕ Remove", func() {
 			remove(idx)
-			e.dirty = true
+			e.markDirty()
 			e.refreshForm()
 		})
 		box.Add(container.NewVBox(render(idx), rm, widget.NewSeparator()))
 	}
 	box.Add(widget.NewButton("+ Add", func() {
 		add()
-		e.dirty = true
+		e.markDirty()
 		e.refreshForm()
 	}))
 	return box
@@ -343,7 +343,7 @@ func (e *editor) rows(title string, n int, render func(i int) fyne.CanvasObject,
 func (e *editor) sEntry(p *string) *widget.Entry {
 	ent := widget.NewEntry()
 	ent.SetText(*p)
-	ent.OnChanged = func(s string) { *p = s; e.dirty = true }
+	ent.OnChanged = func(s string) { *p = s; e.markDirty() }
 	return ent
 }
 
@@ -352,7 +352,7 @@ func (e *editor) mEntry(p *string) *widget.Entry {
 	ent.Wrapping = fyne.TextWrapWord
 	ent.SetText(*p)
 	ent.SetMinRowsVisible(3)
-	ent.OnChanged = func(s string) { *p = s; e.dirty = true }
+	ent.OnChanged = func(s string) { *p = s; e.markDirty() }
 	return ent
 }
 
@@ -363,19 +363,19 @@ func (e *editor) iEntry(p *int) *widget.Entry {
 		s = strings.TrimSpace(s)
 		if s == "" {
 			*p = 0
-			e.dirty = true
+			e.markDirty()
 			return
 		}
 		if v, err := strconv.Atoi(s); err == nil {
 			*p = v
-			e.dirty = true
+			e.markDirty()
 		}
 	}
 	return ent
 }
 
 func (e *editor) bCheck(p *bool, label string) *widget.Check {
-	c := widget.NewCheck(label, func(b bool) { *p = b; e.dirty = true })
+	c := widget.NewCheck(label, func(b bool) { *p = b; e.markDirty() })
 	c.SetChecked(*p)
 	return c
 }
@@ -384,7 +384,7 @@ func (e *editor) listEntry(p *[]string) *widget.Entry {
 	ent := widget.NewMultiLineEntry()
 	ent.Wrapping = fyne.TextWrapWord
 	ent.SetText(strings.Join(*p, "\n"))
-	ent.OnChanged = func(s string) { *p = splitLines(s); e.dirty = true }
+	ent.OnChanged = func(s string) { *p = splitLines(s); e.markDirty() }
 	return ent
 }
 
@@ -394,7 +394,7 @@ func (e *editor) rowsEntry(p *[]domain.TableRow) *widget.Entry {
 	ent.Wrapping = fyne.TextWrapWord
 	ent.SetMinRowsVisible(6)
 	ent.SetText(formatTableRows(*p))
-	ent.OnChanged = func(s string) { *p = parseTableRows(s); e.dirty = true }
+	ent.OnChanged = func(s string) { *p = parseTableRows(s); e.markDirty() }
 	return ent
 }
 
@@ -441,7 +441,7 @@ func (e *editor) treeStr(p *string, uidPrefix string, isID bool) *widget.Entry {
 	ent.SetText(*p)
 	ent.OnChanged = func(s string) {
 		*p = s
-		e.dirty = true
+		e.markDirty()
 		if isID {
 			e.currentUID = uidPrefix + s
 		}

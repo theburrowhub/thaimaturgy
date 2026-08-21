@@ -51,6 +51,28 @@ type editor struct {
 	workingDir string // holds adventure.json + assets/
 	dirty      bool
 
+	// editRev bumps on every content edit (via markDirty); a save snapshots it and
+	// only clears the dirty flag if it is unchanged on completion, so edits made
+	// after the snapshot aren't marked as saved. saving serializes remote saves so
+	// an older async PUT can't land after (and overwrite) a newer one.
+	editRev int
+	saving  bool
+
+	// navGen reports the app's editor-navigation generation (gui.editorGen), which
+	// bumps on every navigation including "← Library". A save snapshots it and its
+	// success continuation (playCurrent) is skipped if it changed meanwhile — so a
+	// pending Play can't override a newer Back navigation. nil in tests.
+	navGen func() int
+
+	// Remote editing (#144): when saveHook is set the editor persists over the HTTP
+	// API (a server adventure) instead of to workingDir on disk, and remoteMode
+	// relaxes on-disk image validation (assets live on the server, not locally).
+	// saveHook runs its network I/O OFF the UI thread and reports the result by
+	// calling done on the UI thread (via fyne.Do), so a stalled server never
+	// freezes the GUI. It is invoked only from doSave.
+	saveHook   func(done func(error))
+	remoteMode bool
+
 	// translate toggles AI translation of the imported module into the configured
 	// import language. Off by default: import in the source document's language.
 	translate bool
@@ -61,22 +83,55 @@ type editor struct {
 	currentUID string
 }
 
+// useLocalBackend resets the (shared, reused) editor to persist to the on-disk
+// store, clearing any remote-editing state left over from a previous remote
+// session. Without this, reusing the editor for a local adventure would still see
+// saveHook set and PUT the local adventure's contents to the last remote one.
+func (e *editor) useLocalBackend(onBack func(), onPlay func(string)) {
+	e.remoteMode = false
+	e.saveHook = nil
+	// NOTE: do NOT clear e.saving here. A remote save may still be in flight; the
+	// serialization guard must stay set until that save's own completion clears it,
+	// so navigating through a local editor can't let a second remote save overlap
+	// the first. The guard is bounded by the save's context timeout.
+	e.onBack = onBack
+	e.onPlay = onPlay
+}
+
+// errSaveSuperseded marks a save whose result no longer applies to what's on
+// screen (the editor navigated away, or newer edits arrived after the snapshot),
+// so continuations like playCurrent don't act on stale server state.
+var errSaveSuperseded = fmt.Errorf("save superseded by a newer edit or navigation")
+
+// markDirty flags unsaved changes and advances the edit revision, so an in-flight
+// save that snapshotted an earlier revision won't clear the dirty flag on completion.
+func (e *editor) markDirty() {
+	e.dirty = true
+	e.editRev++
+}
+
 // playCurrent saves the current adventure, ensures it's installed in the library,
 // and switches to a play session for it.
 func (e *editor) playCurrent() {
 	if e.adv == nil {
 		return
 	}
-	if err := e.save(); err != nil {
-		return
-	}
-	if err := e.installToLibrary(); err != nil {
-		e.showErr(err)
-		return
-	}
-	if e.onPlay != nil {
-		e.onPlay(e.adv.ID)
-	}
+	e.doSave(func(err error) {
+		if err != nil {
+			return // doSave already surfaced it
+		}
+		// Remote mode already persisted to the server; there is no local working
+		// copy to install into the on-disk library.
+		if !e.remoteMode {
+			if err := e.installToLibrary(); err != nil {
+				e.showErr(err)
+				return
+			}
+		}
+		if e.onPlay != nil {
+			e.onPlay(e.adv.ID)
+		}
+	})
 }
 
 // installToLibrary makes the current working module available in the player's
@@ -142,6 +197,7 @@ func newEditor(g *gui) *editor {
 		visionProv: buildVisionProvider(cfg),
 		onBack:     g.showLibrary,
 		onPlay:     func(id string) { g.startSession(id) },
+		navGen:     func() int { return g.editorGen },
 	}
 	return e
 }
@@ -174,7 +230,7 @@ func (e *editor) buildUI() fyne.CanvasObject {
 				e.onBack()
 			}
 		}),
-		widget.NewButton("Save", func() { _ = e.save() }),
+		widget.NewButton("Save", func() { e.doSave(nil) }),
 		widget.NewButton("▶ Play", e.playCurrent),
 		widget.NewButton("Import…", e.importDialog),
 		translateCheck,
@@ -401,7 +457,7 @@ func (e *editor) refreshTree() {
 func (e *editor) addZone() {
 	id := uniqueID("zone", func(s string) bool { return e.adv.Zone(s) != nil })
 	e.adv.Zones = append(e.adv.Zones, domain.Zone{ID: id, Name: "New Zone"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("zone:" + id)
 }
@@ -415,7 +471,7 @@ func (e *editor) addRoom() {
 	z := e.adv.Zone(zid)
 	rid := uniqueID("room", func(s string) bool { r, _ := e.adv.Room(s); return r != nil })
 	z.Rooms = append(z.Rooms, domain.Room{ID: rid, Name: "New Room"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("room:" + zid + "::" + rid)
 }
@@ -423,7 +479,7 @@ func (e *editor) addRoom() {
 func (e *editor) addNPC() {
 	id := uniqueID("npc", func(s string) bool { return e.adv.NPC(s) != nil })
 	e.adv.NPCs = append(e.adv.NPCs, domain.NPC{ID: id, Name: "New NPC"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("npc:" + id)
 }
@@ -431,7 +487,7 @@ func (e *editor) addNPC() {
 func (e *editor) addEvent() {
 	id := uniqueID("event", func(s string) bool { return e.adv.Event(s) != nil })
 	e.adv.Events = append(e.adv.Events, domain.Event{ID: id, Name: "New Event"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("event:" + id)
 }
@@ -439,15 +495,23 @@ func (e *editor) addEvent() {
 func (e *editor) addItem() {
 	id := uniqueID("item", func(s string) bool { return e.adv.Item(s) != nil })
 	e.adv.Items = append(e.adv.Items, domain.Item{ID: id, Name: "New Item"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("item:" + id)
 }
 
 func (e *editor) addImage() {
+	// Remote editing persists only adventure JSON (there is no asset-upload API),
+	// so a new image reference would point at a file the server never receives.
+	// Block it and steer the user to full-module import, which carries assets.
+	if e.remoteMode {
+		go nativeui.Info("Images not editable remotely",
+			"Adding or replacing image assets isn't available when editing on a server. Package the module and use Import (.tar.gz) to change assets.")
+		return
+	}
 	id := uniqueID("image", func(s string) bool { return e.adv.ImageByID(s) != nil })
 	e.adv.Images = append(e.adv.Images, domain.ImageRef{ID: id, Kind: "art"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("img:" + id)
 }
@@ -455,7 +519,7 @@ func (e *editor) addImage() {
 func (e *editor) addTable() {
 	id := uniqueID("table", func(s string) bool { return e.adv.Table(s) != nil })
 	e.adv.Tables = append(e.adv.Tables, domain.Table{ID: id, Name: "New Table", Dice: "d20"})
-	e.dirty = true
+	e.markDirty()
 	e.refreshTree()
 	e.showForm("table:" + id)
 }
@@ -473,7 +537,7 @@ func (e *editor) deleteSelected() {
 		}
 		fyne.Do(func() {
 			e.removeByUID(uid)
-			e.dirty = true
+			e.markDirty()
 			e.currentUID = ""
 			e.refreshTree()
 			e.formHost.Objects = []fyne.CanvasObject{widget.NewLabel("Deleted.")}
@@ -656,6 +720,15 @@ func (e *editor) loadFromArchive(src string) {
 // importDialog builds a new module with AI from either a PDF file or a folder of
 // images, chosen from a single dialog.
 func (e *editor) importDialog() {
+	// AI import scaffolds a fresh working dir with locally-extracted images. In
+	// remote mode those assets are never uploaded (saves send JSON only), so the
+	// server would end up with references to files it doesn't have. Block it and
+	// steer the user to full-module import from the library, which carries assets.
+	if e.remoteMode {
+		go nativeui.Info("Import not available remotely",
+			"Building a module from a PDF/images isn't available when editing on a server (its images wouldn't be uploaded). Author locally and Import the .tar.gz, or use Import (.tar.gz) from the library.")
+		return
+	}
 	if !e.requireProvider() {
 		return
 	}
@@ -772,7 +845,7 @@ func (e *editor) runIngest(msg string, build func(workingDir string) (*domain.Ad
 			}
 			e.adv = adv
 			e.workingDir = dir
-			e.dirty = true
+			e.markDirty()
 			e.reload()
 			e.setStatus(fmt.Sprintf("Imported scaffold: %d zone(s), %d room(s), %d image(s). Review, then Save/Package.",
 				len(adv.Zones), countRooms(adv), len(adv.ImageRefs())))
@@ -804,6 +877,73 @@ func (e *editor) reload() {
 	e.formHost.Refresh()
 }
 
+// doSave persists the adventure and invokes onDone (on the UI thread) with the
+// result. In remote mode it delegates to saveHook, which runs its HTTP off the UI
+// thread and reports back via fyne.Do — so a slow/stalled server never freezes the
+// UI. In local mode it writes synchronously to the working dir. onDone may be nil.
+func (e *editor) doSave(onDone func(error)) {
+	if e.saveHook == nil {
+		err := e.save()
+		if onDone != nil {
+			onDone(err)
+		}
+		return
+	}
+	// Serialize remote saves: one in flight at a time, so an older PUT can't land
+	// after (and overwrite) a newer one.
+	if e.saving {
+		e.setStatus("A save is already in progress…")
+		return
+	}
+	e.saving = true
+	e.setStatus("Saving…")
+	advAtSnap := e.adv     // the adventure this save is for
+	revAtSnap := e.editRev // the content revision it captured
+	navAtSnap := 0         // the navigation generation it started under
+	if e.navGen != nil {
+		navAtSnap = e.navGen()
+	}
+	e.saveHook(func(err error) {
+		e.saving = false
+		// Superseded: the editor moved to a different adventure OR the app navigated
+		// away (e.g. "← Library") since this save started. The result is irrelevant to
+		// what's on screen now — don't touch its dirty flag or status, and report it
+		// as unsuccessful so a continuation (playCurrent) doesn't act on stale state
+		// or override the newer navigation.
+		navChanged := e.navGen != nil && e.navGen() != navAtSnap
+		if e.adv != advAtSnap || navChanged {
+			if onDone != nil {
+				onDone(errSaveSuperseded)
+			}
+			return
+		}
+		if err != nil {
+			e.showErr(err)
+			if onDone != nil {
+				onDone(err)
+			}
+			return
+		}
+		if e.editRev != revAtSnap {
+			// Newer edits arrived after the snapshot and weren't included in this
+			// save. Keep dirty set, and treat it as non-success so playCurrent won't
+			// launch a session on the older (just-saved) server state.
+			e.setStatus("Saved an earlier revision — you have newer unsaved changes.")
+			if onDone != nil {
+				onDone(errSaveSuperseded)
+			}
+			return
+		}
+		e.dirty = false
+		e.setStatus("Saved to server")
+		if onDone != nil {
+			onDone(nil)
+		}
+	})
+}
+
+// save writes the adventure.json to the local working dir. It is the on-disk
+// (local-mode) path; remote persistence goes through doSave/saveHook instead.
 func (e *editor) save() error {
 	if e.workingDir == "" {
 		e.showErr(fmt.Errorf("no working directory"))
@@ -826,6 +966,11 @@ func (e *editor) save() error {
 
 func (e *editor) validate() {
 	imageExists := func(rel string) bool {
+		// In remote mode the assets live on the server, not in a local working dir,
+		// so we can't stat them here — don't flag referenced images as missing.
+		if e.remoteMode {
+			return true
+		}
 		if e.workingDir == "" {
 			return false
 		}
@@ -1002,6 +1147,14 @@ func copyFileContents(src, dst string) error {
 // importImage copies a chosen file into workingDir/assets/<kind>/ and calls set
 // with the new relative path.
 func (e *editor) importImage(kind string, set func(string)) {
+	// In remote mode there is no asset-upload path: saves send JSON only, so pointing
+	// an ImageRef at a locally-copied file would replace a valid server reference with
+	// one whose bytes never reach the server. Block image import/replacement here too.
+	if e.remoteMode {
+		go nativeui.Info("Images not editable remotely",
+			"Replacing image assets isn't available when editing on a server. Package the module and use Import (.tar.gz) to change assets.")
+		return
+	}
 	if e.workingDir == "" {
 		e.showErr(fmt.Errorf("save or create a module first"))
 		return
@@ -1039,7 +1192,7 @@ func (e *editor) importImage(kind string, set func(string)) {
 		rel := filepath.ToSlash(filepath.Join(relDir, name))
 		fyne.Do(func() {
 			set(rel)
-			e.dirty = true
+			e.markDirty()
 			e.setStatus("Imported image: " + rel)
 		})
 	}()

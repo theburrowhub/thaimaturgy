@@ -35,11 +35,13 @@ func bg(seconds int) (context.Context, context.CancelFunc) {
 // showRemoteLibrary lists adventures and sessions fetched from the server.
 func (g *gui) showRemoteLibrary() {
 	g.stopRemoteSession()
+	g.editorGen++ // any pending editor load is now stale
 
+	newBtn := widget.NewButtonWithIcon("New adventure…", theme.DocumentCreateIcon(), g.newRemoteAdventure)
 	importBtn := widget.NewButtonWithIcon("Import (.tar.gz)…", theme.FolderOpenIcon(), g.remoteImportDialog)
 	charsBtn := widget.NewButtonWithIcon("Characters…", theme.AccountIcon(), func() { g.showRosterManager(g.remoteRosterOps()) })
 	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.showRemoteSettings)
-	hero := modernLibraryHero("thAImaturgy", "Connected to "+g.remote.BaseURL(), container.NewHBox(g.startModeSelector(), importBtn, charsBtn, settingsBtn))
+	hero := modernLibraryHero("thAImaturgy", "Connected to "+g.remote.BaseURL(), container.NewHBox(g.startModeSelector(), newBtn, importBtn, charsBtn, settingsBtn))
 
 	list := container.NewVBox()
 	status := widget.NewLabel("")
@@ -75,7 +77,10 @@ func (g *gui) reloadRemoteLibrary(list *fyne.Container, status *widget.Label, re
 			list.Add(widget.NewLabelWithStyle("Adventures", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
 			for _, a := range advs {
 				id, title := a.ID, a.Title
-				list.Add(widget.NewButton("▶  "+title, func() { g.remoteNewSession(id) }))
+				play := widget.NewButton("▶  "+title, func() { g.remoteNewSession(id) })
+				edit := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() { g.editRemoteAdventure(id) })
+				edit.Importance = widget.LowImportance
+				list.Add(container.NewBorder(nil, nil, nil, edit, play))
 			}
 			if serr != nil {
 				list.Add(widget.NewLabel("⚠ " + serr.Error()))
@@ -98,6 +103,7 @@ func (g *gui) reloadRemoteLibrary(list *fyne.Container, status *widget.Label, re
 // remoteImportDialog picks a .tar.gz module and uploads it to the server, then
 // refreshes the library (mirrors the local importDialog, but over the API).
 func (g *gui) remoteImportDialog() {
+	g.editorGen++ // starting an import supersedes any pending editor load
 	go func() {
 		path, ok := nativeui.OpenFile("Import adventure module",
 			nativeui.Filter{Name: "Adventure module", Patterns: []string{"*.tar.gz", "*.tgz", "*.gz"}})
@@ -117,6 +123,7 @@ func (g *gui) remoteImportDialog() {
 }
 
 func (g *gui) remoteNewSession(adventureID string) {
+	g.editorGen++       // navigating to a session supersedes any pending editor load
 	mode := g.startMode // capture on the UI thread; the goroutine must not read the
 	// selector-mutated field concurrently (data race), and the session should use
 	// the mode chosen when it was launched, not a later selector change.
@@ -166,6 +173,7 @@ func (g *gui) remoteDeleteSession(name string, list *fyne.Container, status *wid
 // openRemoteSession fetches the session in the background, then builds a session
 // view: transcript + party + command/oracle input + a live log tailed over SSE.
 func (g *gui) openRemoteSession(name string) {
+	g.editorGen++ // navigating to a session supersedes any pending editor load
 	go func() {
 		ctx, cancel := bg(20)
 		defer cancel()
@@ -528,6 +536,7 @@ func (g *gui) startRemoteLogStream(name string, logBox *fyne.Container, logScrol
 // The connection fields default to the current values and can be changed even when
 // the server is unreachable (e.g. wrong host/token), so the user can fix them here.
 func (g *gui) showRemoteSettings() {
+	g.editorGen++ // navigating to settings supersedes any pending editor load
 	// --- Connection: server URL + access token ---
 	urlEntry := widget.NewEntry()
 	urlEntry.SetText(g.remoteURL)

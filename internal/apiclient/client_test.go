@@ -352,3 +352,44 @@ func TestClientImportAdventure(t *testing.T) {
 		t.Error("expected an error from a 400 response")
 	}
 }
+
+func TestClientAdventureEditRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	c := liveServer(t, "")
+
+	adv, err := c.GetAdventure(ctx, "crypt")
+	if err != nil {
+		t.Fatalf("GetAdventure: %v", err)
+	}
+	if adv.Title != "The Crypt" || len(adv.Zones) != 1 {
+		t.Fatalf("got title=%q zones=%d; want The Crypt / 1", adv.Title, len(adv.Zones))
+	}
+
+	adv.Title = "The Sunken Crypt"
+	adv.Zones[0].Name = "Flooded Entrance"
+	if err := c.SaveAdventure(ctx, "crypt", adv); err != nil {
+		t.Fatalf("SaveAdventure: %v", err)
+	}
+
+	reloaded, err := c.GetAdventure(ctx, "crypt")
+	if err != nil {
+		t.Fatalf("re-GetAdventure: %v", err)
+	}
+	if reloaded.Title != "The Sunken Crypt" {
+		t.Errorf("title not persisted: %q", reloaded.Title)
+	}
+	if len(reloaded.Zones) != 1 || reloaded.Zones[0].Name != "Flooded Entrance" {
+		t.Errorf("zone edit not persisted: %+v", reloaded.Zones)
+	}
+
+	// Saving with an empty title is rejected by the server.
+	empty := *reloaded
+	empty.Title = "  "
+	if err := c.SaveAdventure(ctx, "crypt", &empty); err == nil {
+		t.Error("expected an error saving an adventure with a blank title")
+	}
+	// A missing adventure 404s.
+	if _, err := c.GetAdventure(ctx, "nope"); err == nil {
+		t.Error("expected an error fetching a missing adventure")
+	}
+}
