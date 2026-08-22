@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/theburrowhub/thaimaturgy/internal/appservice"
@@ -154,5 +156,32 @@ func TestSessionPerUserCap(t *testing.T) {
 	// The newest is still valid.
 	if resp, _ := req(t, "GET", ts.URL+"/api/whoami", tokens[len(tokens)-1], ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("newest token whoami = %d; want 200", resp.StatusCode)
+	}
+}
+
+func TestLoginBurstLocksOut(t *testing.T) {
+	ts, _ := authServer(t, "master-tok")
+
+	// A concurrent burst of failed logins must not bypass the limiter: it either
+	// returns 401 (verified wrong) or 429 (shed/locked), never succeeds, and the
+	// account ends up locked out.
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := http.Post(ts.URL+"/api/login", "application/json",
+				strings.NewReader(`{"username":"aria","password":"nope"}`))
+			if err == nil {
+				resp.Body.Close()
+			}
+		}()
+	}
+	wg.Wait()
+
+	// Even the CORRECT password is now refused with 429 (the account is locked).
+	resp, _ := req(t, "POST", ts.URL+"/api/login", "", `{"username":"aria","password":"pw123"}`)
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("after a failure burst, correct-password login = %d; want 429 (locked)", resp.StatusCode)
 	}
 }

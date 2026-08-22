@@ -285,19 +285,42 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	ipKey := "ip:" + clientIP(r)
 	acctKey := "user:" + domain.NormalizeUsername(body.Username)
-	for _, key := range []string{ipKey, acctKey} {
-		if locked, retry := s.loginAttempts.locked(key, now); locked {
-			w.Header().Set("Retry-After", retryAfterSeconds(retry))
-			httpError(w, http.StatusTooManyRequests, "too many login attempts — try again later")
-			return
+	lockedNow := func() bool {
+		for _, key := range []string{ipKey, acctKey} {
+			if locked, retry := s.loginAttempts.locked(key, time.Now()); locked {
+				w.Header().Set("Retry-After", retryAfterSeconds(retry))
+				httpError(w, http.StatusTooManyRequests, "too many login attempts — try again later")
+				return true
+			}
 		}
+		return false
+	}
+	// Fast pre-check: reject a locked key before doing any work.
+	if lockedNow() {
+		return
 	}
 
-	// Bound concurrent bcrypt work so a burst can't exhaust CPU.
-	s.verifySem <- struct{}{}
-	u, err := s.svc.Authenticate(body.Username, body.Password)
-	<-s.verifySem
+	// Admit to the verification stage without blocking: when bcrypt capacity is
+	// full, shed load with 429 rather than queuing unbounded goroutines that would
+	// each still run a hash check — the concurrent-burst bypass. The slot is held
+	// through Authenticate + createSession (both cheap after the hash) and released
+	// on any return.
+	select {
+	case s.verifySem <- struct{}{}:
+		defer func() { <-s.verifySem }()
+	default:
+		w.Header().Set("Retry-After", "1")
+		httpError(w, http.StatusTooManyRequests, "the server is busy — try again shortly")
+		return
+	}
+	// Re-check lockout AFTER admission: a burst that all passed the pre-check must
+	// not still run bcrypt once the key locked while they were queued/among the
+	// first wave.
+	if lockedNow() {
+		return
+	}
 
+	u, err := s.svc.Authenticate(body.Username, body.Password)
 	if err != nil {
 		if errors.Is(err, appservice.ErrInvalidCredentials) {
 			s.loginAttempts.recordFail(ipKey, now)
