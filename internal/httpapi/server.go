@@ -79,6 +79,13 @@ type Server struct {
 
 	authMu       sync.Mutex             // guards authSessions
 	authSessions map[string]authSession // per-user session tokens → user id + expiry (#151)
+	// Sessions are held in memory: they DO NOT survive a server restart, so users
+	// re-login after one. This is intentional (simplicity; no session store to
+	// persist/rotate) — the master token still works across restarts for the GUI.
+
+	loginAttempts *loginTracker // per-IP/per-account login throttle (#151)
+	verifySem     chan struct{} // caps concurrent password-hash verifications
+	authSeq       uint64        // monotonic session-creation counter (guarded by authMu)
 }
 
 // OnConfigSaved registers a callback run after a successful config save (see the
@@ -92,10 +99,12 @@ func (s *Server) OnConfigSaved(fn func(*domain.Config)) *Server {
 // safe when bound to loopback).
 func New(svc *appservice.Service, token string) *Server {
 	return &Server{
-		svc:          svc,
-		token:        token,
-		tickets:      make(map[string]time.Time),
-		authSessions: make(map[string]authSession),
+		svc:           svc,
+		token:         token,
+		tickets:       make(map[string]time.Time),
+		authSessions:  make(map[string]authSession),
+		loginAttempts: newLoginTracker(),
+		verifySem:     make(chan struct{}, verifyConcurrency),
 	}
 }
 
@@ -190,9 +199,13 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		user, loopback, ok := s.resolveUser(r)
-		if !ok {
-			httpError(w, http.StatusUnauthorized, "missing or invalid token")
+		user, loopback, status := s.resolveUser(r)
+		if status != 0 {
+			if status == http.StatusInternalServerError {
+				httpError(w, status, "the user store is temporarily unavailable")
+			} else {
+				httpError(w, status, "missing or invalid token")
+			}
 			return
 		}
 		// Token-less loopback still needs the anti-CSRF / anti-DNS-rebinding guard.

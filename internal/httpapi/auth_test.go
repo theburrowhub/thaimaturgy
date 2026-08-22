@@ -111,3 +111,48 @@ func TestTokenlessLoopbackIsAdmin(t *testing.T) {
 		t.Fatalf("token-less loopback whoami = %d %v; want 200 admin", resp.StatusCode, out)
 	}
 }
+
+func TestLoginThrottling(t *testing.T) {
+	ts, _ := authServer(t, "")
+
+	// loginMaxFails wrong attempts each get 401; the next is locked out with 429.
+	for i := 0; i < loginMaxFails; i++ {
+		if resp, _ := req(t, "POST", ts.URL+"/api/login", "", `{"username":"aria","password":"nope"}`); resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("attempt %d = %d; want 401", i+1, resp.StatusCode)
+		}
+	}
+	// Even the CORRECT password is refused while locked out (429).
+	resp, _ := req(t, "POST", ts.URL+"/api/login", "", `{"username":"aria","password":"pw123"}`)
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("after %d fails, login = %d; want 429", loginMaxFails, resp.StatusCode)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Error("a 429 should carry a Retry-After header")
+	}
+}
+
+func TestSessionPerUserCap(t *testing.T) {
+	// A master token is set so an evicted/invalid session token is rejected (401)
+	// rather than falling through to token-less loopback admin.
+	ts, _ := authServer(t, "master-tok")
+
+	var tokens []string
+	for i := 0; i < maxSessionsPerUser+2; i++ {
+		_, out := req(t, "POST", ts.URL+"/api/login", "", `{"username":"aria","password":"pw123"}`)
+		tok, _ := out["token"].(string)
+		if tok == "" {
+			t.Fatalf("login %d returned no token", i)
+		}
+		tokens = append(tokens, tok)
+	}
+	// The two oldest sessions were evicted past the per-user cap.
+	for i := 0; i < 2; i++ {
+		if resp, _ := req(t, "GET", ts.URL+"/api/whoami", tokens[i], ""); resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("evicted token %d whoami = %d; want 401", i, resp.StatusCode)
+		}
+	}
+	// The newest is still valid.
+	if resp, _ := req(t, "GET", ts.URL+"/api/whoami", tokens[len(tokens)-1], ""); resp.StatusCode != http.StatusOK {
+		t.Errorf("newest token whoami = %d; want 200", resp.StatusCode)
+	}
+}
