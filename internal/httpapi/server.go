@@ -128,6 +128,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/logout", s.handleLogout)
 	mux.HandleFunc("GET /api/whoami", s.handleWhoami)
 
+	// Admin user management (#151): all require an admin caller (enforced in-handler).
+	mux.HandleFunc("GET /api/users", s.listUsers)
+	mux.HandleFunc("POST /api/users", s.createUser)
+	mux.HandleFunc("GET /api/users/{id}", s.getUser)
+	mux.HandleFunc("PUT /api/users/{id}", s.updateUser)
+	mux.HandleFunc("DELETE /api/users/{id}", s.deleteUser)
+
 	mux.HandleFunc("GET /api/adventures", s.listAdventures)
 	mux.HandleFunc("POST /api/adventures/import", s.importAdventure)
 	mux.HandleFunc("POST /api/import-jobs", s.startImportJob)
